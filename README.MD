@@ -34,23 +34,25 @@ This project aims to provide robust tools for quantitative traders looking to sy
 *   MetaTrader5 (for execution in Hito 3)
 *   Git & GitHub
 
+
+
 ## Project Structure
 
-quant-trading-optimizer/
-├── data/ # Placeholder for historical data files (.csv) - NOT versioned via Git
-├── scripts/ # Executable scripts (runners for backtest, sweeps, etc.)
-├── src/ # Main source code
-│ ├── data_handling/ # Data loading, cleaning, alignment
-│ ├── indicators/ # Indicator calculation logic
-│ ├── strategy/ # Backtrader strategy classes
-│ ├── backtesting/ # Backtesting engine setup and execution logic
-│ ├── plotting/ # Plotly visualization functions
-│ └── utils/ # Utility functions (optional)
-├── notebooks/ # Optional: Jupyter notebooks for exploration
-├── venv/ # Python virtual environment (ignored by Git)
-├── .gitignore # Specifies intentionally untracked files
-├── LICENSE # MIT License file
-└── README.md # This file
+*   `quant-trading-optimizer/`
+    *   `data/`: Placeholder for historical data files (.csv) - NOT versioned via Git
+    *   `scripts/`: Executable scripts (runners for backtest, sweeps, etc.)
+    *   `src/`: Main source code
+        *   `data_handling/`: Data loading, cleaning, alignment
+        *   `indicators/`: Indicator calculation logic
+        *   `strategy/`: Backtrader strategy classes
+        *   `backtesting/`: Backtesting engine setup and execution logic
+        *   `plotting/`: Plotly visualization functions
+        *   `utils/`: Utility functions (optional)
+    *   `notebooks/`: Optional: Jupyter notebooks for exploration
+    *   `venv/`: Python virtual environment (ignored by Git)
+    *   `.gitignore`: Specifies intentionally untracked files
+    *   `LICENSE`: MIT License file
+    *   `README.md`: This file
 
 
 
