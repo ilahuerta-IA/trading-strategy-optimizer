@@ -1,0 +1,24 @@
+# Entorno Virtual
+venv/
+venv
+
+# Archivos compilados de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Archivos de configuración del IDE/Editor (Ejemplos)
+.vscode/
+.idea/
+*.swp
+
+# Archivos de datos grandes (si decides no versionarlos)
+data/*.csv
+
+# Archivos de credenciales o secretos
+credentials.json
+.env
+
+# Logs y archivos temporales
+*.log
+*.tmp
