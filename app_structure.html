@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dash App Structure Documentation</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 950px; margin: auto; background-color: #f9f9f9; }
+        h1, h2, h3 { color: #2c3e50; border-bottom: 1px solid #bdc3c7; padding-bottom: 5px; }
+        h1 { text-align: center; border-bottom-width: 2px; }
+        h2 { margin-top: 30px; color: #16a085; }
+        h3 { margin-top: 20px; color: #2980b9; border-bottom: none; }
+        code { background-color: #ecf0f1; padding: 2px 5px; border-radius: 3px; font-family: Consolas, Monaco, monospace; font-size: 0.9em; color: #c0392b; }
+        pre > code { display: block; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; background-color: #34495e; color: #ecf0f1; font-size: 0.85em;}
+        .block { background-color: #ffffff; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 20px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .decorator { color: #8e44ad; font-weight: bold; }
+        .component-id { font-weight: bold; color: #27ae60; }
+        .callback-io { margin-left: 20px; font-size: 0.9em; }
+        .callback-io strong { color: #d35400; }
+        .relationship { border-left: 4px solid #3498db; padding-left: 15px; background-color: #eaf2f8; margin-top: 15px; }
+        ul { margin-top: 5px; }
+        li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <h1>Dash Application Structure: Quant Bot Dashboard</h1>
+
+    <div class="block">
+        <h2>Overview</h2>
+        <p>This document outlines the structure of the Dash application (`app.py`) designed for visualizing financial data and eventually backtest results. It uses Dash for the web framework, Dash Bootstrap Components for layout, and Plotly for charting.</p>
+        <p>The application currently displays two candlestick charts in subplots with a shared X-axis (time). Users select assets via dropdowns, and the charts update accordingly with an initial zoom applied. Direct mouse interaction handles panning and zooming within the chart.</p>
+    </div>
+
+    <div class="block">
+        <h2>1. Configuration & Setup</h2>
+        <p>Global variables and settings defined at the beginning of the script.</p>
+        <ul>
+            <li><code>PROJECT_ROOT</code>, <code>PROCESSED_DATA_DIR</code>: Define file paths.</li>
+            <li><code>PLOTLY_THEME</code>: Sets the visual theme for Plotly charts (e.g., "plotly_dark"). Applied globally via <code>pio.templates.default</code>.</li>
+            <li><code>DEFAULT_BARS_TO_SHOW</code>: Controls the number of data points shown in the initial chart view.</li>
+            <li><code>HIDE_PLOTLY_MODEBAR</code>: Boolean to control the visibility of Plotly's default chart tools.</li>
+            <li>Data Discovery: Code block that scans the <code>PROCESSED_DATA_DIR</code> to find available <code>.parquet</code> files, storing their names in the <code>available_files</code> list. This list populates the dropdown options.</li>
+            <li>Dash App Initialization: <code>app = dash.Dash(...)</code> creates the Dash application instance, linking it with Bootstrap themes.</li>
+        </ul>
+    </div>
+
+    <div class="block">
+        <h2>2. Helper Functions</h2>
+        <p>Reusable utility functions defined to perform specific tasks.</p>
+
+        <h3><code>load_parquet_data(file_path: str) -> Optional[pd.DataFrame]</code></h3>
+        <ul>
+            <li><strong>Purpose:</strong> Loads data from a specified Parquet file path into a Pandas DataFrame.</li>
+            <li><strong>Features:</strong> Includes basic caching (currently cleared often), ensures the DataFrame index is a `DatetimeIndex`, sorts the data by time, and returns a copy. Includes error handling.</li>
+            <li><strong>Called By:</strong> <code>create_figure_on_asset_change</code> (Callback).</li>
+        </ul>
+        <pre><code>def load_parquet_data(file_path: str) -> Optional[pd.DataFrame]:
+    # ... implementation ...</code></pre>
+
+        <h3><code>_annotation_defaults() -> Dict</code></h3>
+        <ul>
+            <li><strong>Purpose:</strong> Returns a dictionary of default style settings for annotations used on empty plots (e.g., "No data loaded").</li>
+            <li><strong>Called By:</strong> <code>create_dual_subplot_figure</code>.</li>
+        </ul>
+        <pre><code>def _annotation_defaults() -> Dict:
+    # ... implementation ...</code></pre>
+
+         <h3><code>_calculate_y_range(min_val: float, max_val: float) -> Optional[List[float]]</code></h3>
+        <ul>
+            <li><strong>Purpose:</strong> Calculates a Y-axis range with padding based on minimum and maximum values. Used for setting initial Y-zoom.</li>
+            <li><strong>Called By:</strong> Not called in the *final stable version* (Y-axis uses autorange). Was used in previous versions.</li>
+        </ul>
+        <pre><code>def _calculate_y_range(min_val: float, max_val: float) -> Optional[List[float]]:
+    # ... implementation ...</code></pre>
+    </div>
+
+    <div class="block">
+        <h2>3. Figure Creation Function</h2>
+        <p>Handles the generation of the main Plotly visualization.</p>
+
+        <h3><code>create_dual_subplot_figure(df1, title1, df2, title2, xaxis_range) -> go.Figure</code></h3>
+        <ul>
+            <li><strong>Purpose:</strong> Creates the Plotly figure object containing the two vertically stacked subplots.</li>
+            <li><strong>Arguments:</strong> Takes the two Pandas DataFrames (or None), titles for the subplots, and the calculated initial X-axis range.</li>
+            <li><strong>Core Logic:</strong>
+                <ul>
+                    <li>Uses <code>make_subplots(rows=2, cols=1, shared_xaxes=True)</code> to create the shared-axis structure.</li>
+                    <li>Adds <code>go.Candlestick</code> traces for the provided dataframes (df1 to row 1, df2 to row 2).</li>
+                    <li>Adds annotations if data is missing.</li>
+                    <li>Updates the figure layout (theme, colors, margins, height).</li>
+                    <li>Applies the passed <code>xaxis_range</code> and sets <code>autorange=True</code> for both Y-axes.</li>
+                    <li>Adds `rangebreaks` to hide weekends on the X-axes.</li>
+                    <li>Ensures `xaxis_rangeslider_visible=False`.</li>
+                </ul>
+            </li>
+            <li><strong>Called By:</strong> <code>create_figure_on_asset_change</code> (Callback).</li>
+            <li><strong>Returns:</strong> A Plotly `go.Figure` object.</li>
+        </ul>
+        <pre><code>def create_dual_subplot_figure(
+    df1: Optional[pd.DataFrame], title1: str,
+    df2: Optional[pd.DataFrame], title2: str,
+    xaxis_range: Optional[List] = None
+) -> go.Figure:
+    # ... implementation ...</code></pre>
+    </div>
+
+     <div class="block">
+        <h2>4. Layout Definition (`app.layout`)</h2>
+        <p>Defines the structure and components of the web application's user interface using Dash HTML and Dash Bootstrap Components.</p>
+        <ul>
+            <li><strong>Structure:</strong> Uses `dbc.Container`, `dbc.Row`, `dbc.Col` for a responsive grid layout.</li>
+            <li><strong>Key Components & IDs:</strong>
+                <ul>
+                    <li><code>dcc.Store(<span class="component-id">id='sidebar-state'</span>)</code>: Stores whether the sidebar is open or closed.</li>
+                    <li><code>html.H3(...)</code>: Main application title.</li>
+                    <li><code>dbc.Button(<span class="component-id">id='sidebar-toggle-button'</span>)</code>: Button to hide/show the sidebar.</li>
+                    <li>Sidebar Column (<span class="component-id">id='sidebar-column'</span>): Contains controls.
+                        <ul>
+                            <li><code>dcc.Dropdown(<span class="component-id">id='asset-dropdown-1'</span>)</code>: Selects the asset for the top chart.</li>
+                            <li><code>dcc.Dropdown(<span class="component-id">id='asset-dropdown-2'</span>)</code>: Selects the asset for the bottom chart.</li>
+                            <li><code>dbc.Button(<span class="component-id">id='run-backtest-button'</span>)</code>: Placeholder for triggering backtests.</li>
+                        </ul>
+                    </li>
+                     <li>Main Content Column (<span class="component-id">id='main-content-column'</span>): Contains the chart.
+                        <ul>
+                            <li><code>dcc.Graph(<span class="component-id">id='dual-subplot-chart'</span>)</code>: Displays the Plotly figure generated by the callback. Configured to hide the modebar.</li>
+                        </ul>
+                    </li>
+                </ul>
+             </li>
+        </ul>
+         <pre><code># Simplified Structure Example
+sidebar_content = [...]
+main_content = [...]
+app.layout = dbc.Container([...
+    dbc.Row([...]) # Header
+    dbc.Row([
+        dbc.Col(sidebar_content, id="sidebar-column", ...),
+        dbc.Col(main_content, id="main-content-column", ...)
+    ])
+], ...)</code></pre>
+    </div>
+
+     <div class="block">
+        <h2>5. Callbacks (`@app.callback`)</h2>
+        <p>These functions define the interactivity of the application. They link user inputs (or other component changes) to outputs (updating other components).</p>
+        <p>Callbacks run on the Python server when their specified `Input` properties change.</p>
+
+        <h3 id="toggle_sidebar"><code>toggle_sidebar</code></h3>
+        <ul>
+             <li><span class="decorator">@app.callback(...)</span></li>
+             <li><strong>Purpose:</strong> Hides or shows the sidebar when the toggle button is clicked.</li>
+             <li class="callback-io"><strong>Input:</strong> <code>n_clicks</code> from <span class="component-id">id='sidebar-toggle-button'</span>.</li>
+             <li class="callback-io"><strong>State:</strong> Current <code>data</code> from <span class="component-id">id='sidebar-state'</span>.</li>
+             <li class="callback-io"><strong>Outputs:</strong> Updates `width`, `lg`, `className` properties of <span class="component-id">id='sidebar-column'</span> and <span class="component-id">id='main-content-column'</span>, and updates the <code>data</code> in <span class="component-id">id='sidebar-state'</span>.</li>
+             <li><strong>Relationship:</strong> Reads user clicks, modifies column layout properties based on stored state.</li>
+        </ul>
+         <pre><code>@app.callback(
+    Output("sidebar-column", "width"), # ... other outputs ...
+    Input("sidebar-toggle-button", "n_clicks"), State("sidebar-state", "data"), prevent_initial_call=True
+)
+def toggle_sidebar(n_clicks: int, current_state: Dict):
+    # ... implementation ...</code></pre>
+
+        <h3 id="create_figure_on_asset_change"><code>create_figure_on_asset_change</code></h3>
+        <ul>
+             <li><span class="decorator">@app.callback(...)</span></li>
+             <li><strong>Purpose:</strong> The main function responsible for generating/updating the chart display when the selected assets change.</li>
+             <li class="callback-io"><strong>Inputs:</strong> <code>value</code> from <span class="component-id">id='asset-dropdown-1'</span> and <span class="component-id">id='asset-dropdown-2'</span>.</li>
+             <li><strong>State:</strong> None.</li>
+             <li class="callback-io"><strong>Output:</strong> Updates the <code>figure</code> property of <span class="component-id">id='dual-subplot-chart'</span>.</li>
+             <li><strong>Relationship:</strong>
+                 <ul>
+                     <li>Triggered by dropdown changes.</li>
+                     <li>Calls <code>load_parquet_data</code> to get data for selected assets.</li>
+                     <li>Calculates the initial X-axis range based on the loaded data and <code>DEFAULT_BARS_TO_SHOW</code>.</li>
+                     <li>Calls <code>create_dual_subplot_figure</code>, passing the loaded dataframes and the calculated initial X-axis range.</li>
+                     <li>Returns the complete Plotly `go.Figure` object generated by <code>create_dual_subplot_figure</code>.</li>
+                 </ul>
+             </li>
+        </ul>
+         <pre><code>@app.callback(
+    Output('dual-subplot-chart', 'figure'),
+    Input('asset-dropdown-1', 'value'),
+    Input('asset-dropdown-2', 'value'),
+)
+def create_figure_on_asset_change(selected_file_1: str, selected_file_2: str) -> go.Figure:
+    # ... implementation ...</code></pre>
+
+    </div>
+
+     <div class="block relationship">
+        <h2>6. Key Relationships & Flow</h2>
+        <ol>
+            <li>**Initialization:**
+                <ul>
+                    <li>Python script runs (`python app.py`).</li>
+                    <li>Helper functions and figure creation functions are defined.</li>
+                    <li>Available data files are discovered.</li>
+                    <li>Dash app (`app`) is initialized with Bootstrap theme.</li>
+                    <li>App layout (`app.layout`) is defined using components and discovered file list.</li>
+                    <li>Callbacks (`toggle_sidebar`, `create_figure_on_asset_change`) are registered with Dash.</li>
+                    <li>Dash server starts (`app.run`).</li>
+                </ul>
+            </li>
+             <li>**Initial Page Load:**
+                <ul>
+                    <li>Browser requests the app URL.</li>
+                    <li>Dash serves the initial HTML layout.</li>
+                     <li>The `create_figure_on_asset_change` callback runs automatically because its `Input` components (dropdowns) have initial values.</li>
+                    <li>This callback loads default data, calculates the initial view ranges, calls `create_dual_subplot_figure` to generate the initial Plotly figure, and sends it back to the browser to render in the `dcc.Graph` component (<span class="component-id">id='dual-subplot-chart'</span>).</li>
+                </ul>
+            </li>
+             <li>**User Interaction (Asset Change):**
+                 <ul>
+                    <li>User selects a new asset in <span class="component-id">id='asset-dropdown-1'</span> or <span class="component-id">id='asset-dropdown-2'</span>.</li>
+                    <li>The browser sends the new dropdown value to the Dash server.</li>
+                    <li>This triggers the `create_figure_on_asset_change` callback again.</li>
+                    <li>The callback repeats its logic: loads the *new* data, calculates the initial ranges for the *new* data, calls `create_dual_subplot_figure` to generate a *completely new* figure object, and returns it to update the `dcc.Graph`.</li>
+                </ul>
+             </li>
+             <li>**User Interaction (Sidebar Toggle):**
+                 <ul>
+                     <li>User clicks the <span class="component-id">id='sidebar-toggle-button'</span>.</li>
+                    <li>Browser sends the `n_clicks` update to the server.</li>
+                    <li>Triggers the `toggle_sidebar` callback.</li>
+                     <li>The callback reads the current state from `dcc.Store`, calculates the new layout properties (widths, classes), updates the `dcc.Store`, and returns the new properties to update the `dbc.Col` components in the layout.</li>
+                 </ul>
+             </li>
+              <li>**User Interaction (Chart Pan/Zoom):**
+                 <ul>
+                    <li>User interacts directly with the `dcc.Graph` component using the mouse (drag to pan X, mouse-over-axis + wheel to zoom Y).</li>
+                    <li>These interactions are handled **natively by Plotly.js within the browser**.</li>
+                    <li>Because the two subplots share an X-axis (`shared_xaxes=True`), Plotly.js automatically keeps their X-axis views synchronized during these interactions.</li>
+                    <li>**No server-side callbacks are involved** for these direct chart interactions in this stable version.</li>
+                 </ul>
+             </li>
+        </ol>
+    </div>
+
+     <div class="block">
+        <h2>7. Running the App</h2>
+        <p>Execute the script from the terminal:</p>
+        <pre><code>python app.py</code></pre>
+        <p>Then open the URL provided (usually <code>http://127.0.0.1:8050/</code>) in your web browser.</p>
+    </div>
+
+</body>
+</html>
