@@ -32,6 +32,11 @@ import scipy.stats
 
 import backtrader as bt
 
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns # Although pyfolio uses it internally, explicit import isn't needed here
+import quantstats as qs
+
 
 # --- Helper Function to Safely Parse Kwargs Strings ---
 def parse_kwargs_str(kwargs_str):
@@ -121,24 +126,127 @@ class MACrossOver(bt.Strategy):
         ('pd2', 20),
         # Add period for PearsonR if you want it configurable
         ('corr_period', 20),
+        # --- CCI Indicator ---
+        ('cci_period', 20),  # Period for CCI
+        ('atr_period', 14),  # Period for ATR
+        ('atr_multiplier', 1.5)
     )
 
     def __init__(self):
-        # Assign indicators to self attributes
-        self.ma1 = self.p.ma(self.data0, period=self.p.pd1, subplot=True)
-        # Assign the second MA also to self, using self.ma1 for plotmaster
-        self.ma2 = self.p.ma(self.data1, period=self.p.pd2, plotmaster=self.ma1)
-        # Assign PearsonR to self, using its own period parameter
-        self.correlation = PearsonR(self.data0, self.data1, period=self.p.corr_period)
+        # Keep references to datas for convenience
+        self.spy = self.data0
+        self.gld = self.data1
+
+         # SPY Indicators
+        self.sma_spy = self.p.ma(self.spy, period=self.p.pd1, plotmaster=self.spy)
+        self.cci_spy = bt.ind.CommodityChannelIndex(self.spy, period=self.p.cci_period)
+        self.atr_spy = bt.ind.AverageTrueRange(self.spy, period=self.p.atr_period, plotmaster=self.spy) # Keep ATR if needed later
+
+        # GLD Indicators
+        self.sma_gld = self.p.ma(self.gld, period=self.p.pd2, plotmaster=self.spy) # Plot GLD SMA on SPY's chart
+        self.cci_gld = bt.ind.CommodityChannelIndex(self.gld, period=self.p.cci_period) # CCI for GLD
+
+        # Cross-Asset Indicators
+        self.correlation = PearsonR(self.spy, self.gld, period=self.p.corr_period)
+
+        # Optional: Add levels to CCI plots for visual reference
+        self.cci_spy.plotinfo.plotyhlines = [-20, 20, 70] # Add lines to SPY CCI plot
+        self.cci_gld.plotinfo.plotyhlines = [-20, 20, 70] # Add lines to GLD CCI plot
+
+        # Calculate minimum periods needed + a small buffer
+        self.min_period = max(self.p.pd1, self.p.pd2, self.p.corr_period, self.p.cci_period, self.p.atr_period)
+        self.warmup_bars = self.min_period + 5 # e.g., wait 5 bars after indicators are ready
+
+        # To keep track of pending orders (optional but good practice)
+        self.order = None
+
+    def log(self, txt, dt=None):
+        ''' Logging function for this strategy'''
+        dt = dt or self.datas[0].datetime.datetime(0) # Use system datetime
+        print(f'{dt.isoformat()} | {txt}')
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            # Buy/Sell order submitted/accepted to/by broker - Nothing to do
+            return
+
+        # Check if an order has been completed
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(f'BUY EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
+            elif order.issell():
+                self.log(f'SELL EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
+            self.bar_executed = len(self) # Bar number when order was executed
+
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            self.log(f'Order Canceled/Margin/Rejected: Status {order.getstatusname()}')
+
+        # Write down: no pending order
+        self.order = None   
     
     # Add a minimal next method to make the strategy complete
     def next(self):
-        # Strategy logic would go here (e.g., check for crossovers)
-        # For now, just pass to allow running and plotting
-        # You can print values here for debugging if needed:
-        # if len(self.ma1) > 0 and len(self.ma2) > 0 and len(self.correlation) > 0:
-        #    print(f"Date: {self.datas[0].datetime.date(0)}, MA1: {self.ma1[0]:.2f}, MA2: {self.ma2[0]:.2f}, Corr: {self.correlation[0]:.2f}")
-        pass
+         # --- Use datetime from data0 for consistency in logs ---
+        current_dt = self.datas[0].datetime.datetime(0)
+        
+         # Check if an order is pending ... if yes, we cannot send a 2nd one
+        if self.order:
+            self.log(f'Pending order detected, skipping bar {len(self)}')
+            return
+        
+        if len(self) < self.warmup_bars:
+            return # Wait for all indicators and buffer period
+        
+        # --- Explicitly check position sizes for BOTH assets ---
+        spy_position_size = self.getposition(self.spy).size
+        gld_position_size = self.getposition(self.gld).size
+        is_position_open = spy_position_size != 0 or gld_position_size != 0
+
+        # --- Entry Logic ---
+        if not is_position_open:
+            # --- Potential SPY Long Entry ---
+            spy_cci_cond = self.cci_spy[0] > 70
+            spy_sma_cond = self.sma_spy[0] > self.sma_spy[-1]
+            gld_sma_cond = self.sma_gld[0] < self.sma_gld[-1] # GLD SMA falling
+            gld_cci_cond = self.cci_gld[0] < -20
+
+            if spy_cci_cond and spy_sma_cond and gld_sma_cond and gld_cci_cond:
+                self.log(f'SPY LONG ENTRY SIGNAL: CCI_SPY={self.cci_spy[0]:.2f}, SMA_SPY Rising, SMA_GLD Falling, CCI_GLD={self.cci_gld[0]:.2f}')
+                # --- Place Buy Order ---
+                self.order = self.buy(data=self.spy)
+                # Set stop price attribute *if* using a sizer that needs it
+                # self.calculated_stop_price = potential_spy_stop
+
+            # --- Potential GLD Long Entry ---
+            # Only check if SPY entry didn't trigger and still no position
+            else: # No SPY signal found, check GLD
+                gld_cci_entry_cond = self.cci_gld[0] > 70
+                gld_sma_rising_cond = self.sma_gld[0] > self.sma_gld[-1]
+                spy_sma_falling_cond = self.sma_spy[0] < self.sma_spy[-1] # SPY SMA falling
+                spy_cci_cond = self.cci_spy[0] < -20
+
+                if gld_cci_entry_cond and gld_sma_rising_cond and spy_sma_falling_cond and spy_cci_cond:
+                    self.log(f'GLD LONG ENTRY SIGNAL: CCI_GLD={self.cci_gld[0]:.2f}, SMA_GLD Rising, SMA_SPY Falling, CCI_SPY={self.cci_spy[0]:.2f}')
+                    # --- Place Buy Order ---
+                    self.order = self.buy(data=self.gld)
+                    # Set stop price attribute *if* using a sizer that needs it
+                    # self.calculated_stop_price = potential_gld_stop
+
+        # --- Exit Logic ---
+        else: # is_position_open is True
+            # --- Check SPY Exit ---
+            if spy_position_size != 0: # Check if specifically holding SPY
+                self.log(f'Position Check: In SPY. Checking exit. CCI_SPY={self.cci_spy[0]:.2f}') # Debug Log
+                if self.cci_spy[0] < 20:
+                    self.log(f'SPY LONG EXIT SIGNAL: CCI_SPY={self.cci_spy[0]:.2f} < 20')
+                    self.order = self.close(data=self.spy) # Close SPY position
+
+            # --- Check GLD Exit ---
+            elif gld_position_size != 0: # Check if specifically holding GLD
+                self.log(f'Position Check: In GLD. Checking exit. CCI_GLD={self.cci_gld[0]:.2f}') # Debug Log
+                if self.cci_gld[0] < 20:
+                    self.log(f'GLD LONG EXIT SIGNAL: CCI_GLD={self.cci_gld[0]:.2f} < 20')
+                    self.order = self.close(data=self.gld) # Close GLD positionn
 
 
 def runstrat(args=None):
@@ -188,14 +296,16 @@ def runstrat(args=None):
     csv_params = dict(
         dataname=None, # Will be set per data feed below
         nullvalue=float('NaN'), # How NaNs are represented
+        headers=True,    # Indicate the CSV has a header row
+        skiprows=1,      # Skip the header row when reading data lines
         dtformat=('%Y-%m-%d %H:%M:%S%z'), # CSV has timezone like '2023-10-27 15:55:00-04:00'
-        datetime=0,  # Column index for datetime
-        time=-1,     # Time is part of datetime column
-        high=2,      # Column index for High
-        low=3,       # Column index for Low
-        open=1,      # Column index for Open
-        close=4,     # Column index for Close
-        volume=5,    # Column index for Volume
+        datetime=0,      # Use index 0 for Datetime column
+        time=-1,         # Keep -1 as time is part of datetime
+        high=2,          # Use index 2 for High column
+        low=3,           # Use index 3 for Low column
+        open=1,          # Use index 1 for Open column
+        close=4,         # Use index 4 for Close column
+        volume=5,        # Use index 5 for Volume column
         openinterest=-1, # No Open Interest column
         timeframe=bt.TimeFrame.Minutes, # Data timeframe
         compression=5                  # Number of minutes
@@ -208,6 +318,8 @@ def runstrat(args=None):
     feed_params_0['dataname'] = args.data0
     try:
         data0 = CSVDataFeed(**feed_params_0, **data_kwargs) # Combine CSV params and date filters
+        data0.plotinfo.plotvolume = False # Don´t show volumen
+        data0.plotinfo.plotvolsubplot = False
         print(f"Adding data0 (5 min) to Cerebro. Date Filters: {data_kwargs}")
         cerebro.adddata(data0) # Use adddata, NO RESAMPLING
     except Exception as e:
@@ -223,6 +335,8 @@ def runstrat(args=None):
         print(f"Adding data1 (5 min) to Cerebro. Date Filters: {data_kwargs}")
         cerebro.adddata(data1) # Use adddata, NO RESAMPLING
         data1.plotinfo.plotmaster = data0 # Plot prices on the same chart
+        data1.plotinfo.plotvolume = False # Don´t show volumen
+        data1.plotinfo.plotvolsubplot = False
     except Exception as e:
         print(f"FATAL ERROR loading data1 from {args.data1}: {e}")
         print("Check file path, file format, and CSV parameters in the script.")
@@ -232,8 +346,25 @@ def runstrat(args=None):
     # --- Broker ---
     print(f"Parsing broker args: '{args.broker}'")
     broker_kwargs = parse_kwargs_str(args.broker)
-    print(f"Applying broker kwargs: {broker_kwargs}")
-    cerebro.broker = bt.brokers.BackBroker(**broker_kwargs)
+    broker_init_kwargs = broker_kwargs.copy()
+    commission_config = {}
+    if 'commission' in broker_init_kwargs:
+        # Remove commission from the dictionary used for initial broker creation
+        commission_value = broker_init_kwargs.pop('commission')
+        # Store how we want to apply it later (e.g., as percentage)
+        commission_config['commission'] = commission_value
+        commission_config['percabs'] = True # Assume 0.001 means 0.1%
+
+    print(f"Initial Broker kwargs (commission removed if present): {broker_init_kwargs}")
+    cerebro.broker = bt.brokers.BackBroker(**broker_init_kwargs)
+
+    if commission_config:
+        commission_value = commission_config['commission']
+        commission_perc = commission_value * 100
+        print(f"Setting commission explicitly via setcommission: {commission_perc:.3f}%")
+        cerebro.broker.setcommission(**commission_config)
+    else:
+        print("No commission specified or parsed for setcommission.")
 
     # --- Sizer ---
     print(f"Parsing sizer args: '{args.sizer}'")
@@ -247,38 +378,251 @@ def runstrat(args=None):
     print(f"Applying strategy kwargs: {strat_kwargs}")
     cerebro.addstrategy(MACrossOver, **strat_kwargs)
 
+    # --- ADD ANALYZERS ---
+    print("Adding Analyzers: TradeAnalyzer, DrawDown, PyFolio")
+    # Standard Trade Analyzer
+    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
+    # Drawdown Analyzer
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+    # PyFolio Analyzer (requires pyfolio installed)
+    # This is key for getting returns, positions, transactions easily
+    cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
+    # This calculates returns based on portfolio value changes
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn')
+    # --- END ANALYZERS ---
+
     # --- Observer ---
+    print("Adding Value Observer")
+    cerebro.addobserver(bt.observers.Value)
     # Calculate 5-day rolling log returns (based on daily closes)
-    print("Adding LogReturns2 Observer (Daily, 5-day compression)")
-    cerebro.addobserver(bt.observers.LogReturns2,
-                    timeframe=bt.TimeFrame.Days,
-                    compression=5) # Example: 5-day rolling period
+    # print("Adding LogReturns2 Observer (Daily, 5-day compression)")
+    # cerebro.addobserver(bt.observers.LogReturns2,
+                    #timeframe=bt.TimeFrame.Days,
+                    #compression=5) # Example: 5-day rolling period
 
     # --- Execute ---
     print(f"Parsing cerebro args: '{args.cerebro}'")
     run_kwargs = parse_kwargs_str(args.cerebro)
     print(f"Applying cerebro.run kwargs: {run_kwargs}")
     print("Running Cerebro...")
-    cerebro.run(**run_kwargs)
+    # Store the result of run() to access analyzers
+    results = cerebro.run(**run_kwargs)
     print("Cerebro run finished.")
 
+    # --- Get Strategy Instance (assuming only one) ---
+    strat_instance = results[0]
+
+    # --- Process Analyzer Results ---
+    print("\n--- Backtest Analysis Results ---")
+    if hasattr(strat_instance.analyzers, 'tradeanalyzer'):
+        trade_analysis = strat_instance.analyzers.tradeanalyzer.get_analysis()
+        # ... (process trade_analysis later) ...
+    else:
+        print("TradeAnalyzer results not found.")
+        trade_analysis = None
+
+    if hasattr(strat_instance.analyzers, 'drawdown'):
+        drawdown_analysis = strat_instance.analyzers.drawdown.get_analysis()
+        print(f"Max Drawdown: {drawdown_analysis.max.drawdown:.2f}%")
+        print(f"Max Drawdown ($): {drawdown_analysis.max.moneydown:.2f}")
+    else:
+        print("DrawDown analyzer results not found.")
+        drawdown_analysis = None
+    
+    pyfolio_analysis = None
+    if hasattr(strat_instance.analyzers, 'pyfolio'):
+        pyfolio_analysis = strat_instance.analyzers.pyfolio.get_analysis()
+        # pyfolio_analysis is a dict containing returns, positions, transactions, gross_lev
+        print("PyFolio analysis data extracted.")
+    else:
+        print("PyFolio analyzer results not found. Cannot generate tearsheet.")
+    
+    # --- Calculate Metrics (Example: Profit Factor) ---
+    if trade_analysis and 'pnl' in trade_analysis and 'gross' in trade_analysis.pnl:
+        gross_pnl = trade_analysis.pnl.gross
+        if 'won' in gross_pnl and 'lost' in gross_pnl and gross_pnl.lost.total != 0:
+             profit_factor = abs(gross_pnl.won.total / gross_pnl.lost.total)
+             print(f"Profit Factor: {profit_factor:.2f}")
+             print(f"Total Net PnL: {trade_analysis.pnl.net.total:.2f}")
+             print(f"Total # Trades: {trade_analysis.total.closed}")
+             print(f"# Winning Trades: {trade_analysis.won.total}")
+             print(f"# Losing Trades: {trade_analysis.lost.total}")
+        else:
+             print("Profit Factor: N/A (No losing trades or missing PnL data)")
+             print(f"Total Net PnL: {trade_analysis.pnl.net.total:.2f}")
+    
     # --- Plot ---
     if args.plot is not None:
         print(f"Parsing plot args: '{args.plot}'")
         plot_kwargs = parse_kwargs_str(args.plot)
         # Set default plot style to candlestick if not specified by user
         plot_kwargs.setdefault('style', 'candlestick')
+        #plot_kwargs.setdefault('style', 'line')      # Default style = line
+        plot_kwargs.setdefault('figsize', (20, 10))  # Default figsize (NOTE: This is a tuple!)
         print(f"Applying plot kwargs: {plot_kwargs}")
         print("Generating plot...")
         try:
              cerebro.plot(**plot_kwargs)
              print("Plot generation finished.")
+             plt.show()
         except Exception as e_plot:
              print(f"ERROR generating plot: {e_plot}")
              print("Plotting might require 'matplotlib'. Install with: pip install matplotlib")
 
     else:
         print("Plotting not requested.")
+
+    # --- Generate QuantStats HTML Report ---
+    # ---> Use TimeReturn Analyzer results <---
+    timereturn_analysis = None
+    returns_data = None
+    if hasattr(strat_instance.analyzers, 'timereturn'):
+        try:
+            timereturn_analysis = strat_instance.analyzers.timereturn.get_analysis()
+            # Convert the TimeReturn dict to a pandas Series
+            returns_data = pd.Series(timereturn_analysis)
+            print(f"TimeReturn analysis extracted. Shape: {returns_data.shape}")
+        except Exception as e_tr:
+             print(f"Error getting TimeReturn analysis: {e_tr}")
+             returns_data = None # Ensure it's None on error
+    else:
+         print("TimeReturn analyzer results not found. Cannot generate QuantStats report.")
+
+
+    # ---> Proceed only if returns_data was successfully extracted <---
+    if returns_data is not None and not returns_data.empty:
+        try:
+            print(f"\nGenerating QuantStats HTML report (saving to 'stats_report.html')...")
+
+            # --- Minimal Cleanup (TimeReturn should be cleaner) ---
+            # 1. Ensure index is datetime
+            if not isinstance(returns_data.index, pd.DatetimeIndex):
+                print("Converting TimeReturn index to DatetimeIndex...")
+                returns_data.index = pd.to_datetime(returns_data.index)
+
+            # 2. Sort index
+            returns_data = returns_data.sort_index()
+
+            # 3. Localize timezone if needed (critical for quantstats)
+            if returns_data.index.tz is None:
+                print("Localizing TimeReturn index to UTC for QuantStats...")
+                returns_data = returns_data.tz_localize('UTC')
+            else:
+                print(f"Converting TimeReturn index from {returns_data.index.tz} to UTC...")
+                returns_data = returns_data.tz_convert('UTC')
+
+            # 4. Check for duplicates after localization (less likely with TimeReturn)
+            if returns_data.index.has_duplicates:
+                 print("Warning: Duplicate indices found in TimeReturn data. Aggregating mean.")
+                 # Using mean might be better than sum for daily returns if duplicates exist
+                 returns_data = returns_data.groupby(returns_data.index).mean()
+            # --- End cleanup ---
+
+            print("Cleaned TimeReturn data shape:", returns_data.shape)
+            if returns_data.empty or returns_data.isnull().all():
+                 print("Returns data is empty or all NaN after cleanup. Skipping report.")
+            else:
+                 # Generate the HTML report using the TimeReturn Series
+                 qs.reports.html(returns_data, # Use returns from TimeReturn
+                                 output='stats_report.html',
+                                 title=f'{args.data0.split(".")[0]}_{args.data1.split(".")[0]} Strategy Analysis')
+                 print(f"QuantStats report saved to 'stats_report.html'. Open this file in a web browser.")
+
+        except ImportError:
+            print("\nQuantStats not installed. Skipping report generation.")
+            print("Install with: pip install quantstats")
+        except Exception as e_qs:
+            print(f"\nError generating QuantStats report: {e_qs}")
+            print("Check TimeReturn data format and content (e.g., NaNs, index).")
+            # print("TimeReturn data info:")
+            # returns_data.info()
+            # print(returns_data.head())
+            # print(returns_data.tail())
+    else:
+         print("\nReturns data from TimeReturn analyzer is missing or empty. Cannot generate QuantStats report.")
+    # --- End QuantStats Report ---
+
+    # --- Detailed Trade Analysis (using PyFolio transactions) ---
+    # This section should remain the same as the previous version that worked
+    if pyfolio_analysis and 'transactions' in pyfolio_analysis:
+        # ... (Keep the working code for reconstructing and analyzing transactions_df) ...
+        # --- Reconstruct Transactions DataFrame (Handling list-in-list from Dict) ---
+        transactions_df = pd.DataFrame() # Initialize empty
+        header = None
+        try:
+            transactions_raw = pyfolio_analysis['transactions']
+            if isinstance(transactions_raw, dict) and len(transactions_raw) > 0:
+                data_rows = []
+                timestamps = []
+
+                if 'date' in transactions_raw:
+                     header_list_of_list = transactions_raw.get('date')
+                     if isinstance(header_list_of_list, list) and len(header_list_of_list) == 1 and isinstance(header_list_of_list[0], list):
+                          header = header_list_of_list[0]
+                     else:
+                          print("Warning: Header format under 'date' key is unexpected.")
+                else:
+                     print("Warning: Could not find header row ('date' key) in transaction data dictionary.")
+
+                for ts, value_list in transactions_raw.items():
+                    if ts == 'date': continue
+                    if isinstance(value_list, list) and len(value_list) == 1 and isinstance(value_list[0], list):
+                         data_rows.append(value_list[0])
+                         timestamps.append(ts)
+                    else:
+                         print(f"Warning: Skipping transaction item with unexpected format at {ts}: {value_list}")
+
+                if header and data_rows:
+                    if all(len(row) == len(header) for row in data_rows):
+                         transactions_df = pd.DataFrame(data_rows, columns=header, index=pd.to_datetime(timestamps))
+                         transactions_df.index.name = 'dt'
+                         print("\nReconstructed Transactions DataFrame from Dict (corrected).")
+                    else:
+                         print("\nError: Row lengths in transaction data do not match header length.")
+                         transactions_df = pd.DataFrame()
+                elif not header:
+                    print("\nError: Failed to extract valid header from transaction data.")
+                    transactions_df = pd.DataFrame()
+                else:
+                    print("\nTransaction data contains header but no valid trade rows were processed.")
+                    transactions_df = pd.DataFrame()
+            else:
+                print("\nTransactions data from PyFolio analyzer is not a non-empty dictionary.")
+        except Exception as e_tx:
+            print(f"\nError during transactions DataFrame reconstruction: {e_tx}")
+            transactions_df = pd.DataFrame()
+
+        if not transactions_df.empty:
+            print("\n--- Transaction Log Columns Available ---")
+            print(transactions_df.columns)
+            print("\n--- Detailed Trade List (Transactions) ---")
+            desired_cols = ['symbol', 'amount', 'price', 'value']
+            available_cols = [col for col in desired_cols if col in transactions_df.columns]
+            if available_cols:
+                 print(f"Displaying columns: {available_cols}")
+                 print(transactions_df[available_cols].to_string())
+            else:
+                 print(f"Could not find desired columns {desired_cols}. Printing all available columns:")
+                 print(transactions_df.to_string())
+            if 'amount' in transactions_df.columns and 'symbol' in transactions_df.columns:
+                try:
+                    transactions_df['amount'] = pd.to_numeric(transactions_df['amount'], errors='coerce')
+                    buy_transactions = transactions_df.dropna(subset=['amount'])[transactions_df['amount'] > 0]
+                    if not buy_transactions.empty:
+                         entries_per_asset = buy_transactions['symbol'].value_counts()
+                         print("\n--- Entries per Asset (Buy Transactions) ---")
+                         print(entries_per_asset)
+                    else:
+                         print("\nNo buy transactions found after filtering.")
+                except Exception as e_count:
+                     print(f"\nError processing entries per asset: {e_count}")
+            else:
+                print("\nCannot calculate entries per asset: 'amount' or 'symbol' column missing.")
+        else:
+             print("\nTransaction data is empty or could not be parsed, skipping detailed analysis.")
+    else:
+        print("\nNo transaction data found for detailed trade analysis.")
+    # --- End Detailed Trade Analysis ---
 
 
 def parse_args(pargs=None):
@@ -313,17 +657,17 @@ def parse_args(pargs=None):
     parser.add_argument('--cerebro', required=False, default='',
                         metavar='kwargs', help='kwargs for cerebro.run (e.g., stdstats=False)')
 
-    parser.add_argument('--broker', required=False, default='cash=10000,commission=0.001', # Example default
+    parser.add_argument('--broker', required=False, default='cash=100000,commission=0.001', # Example default
                         metavar='kwargs', help='kwargs for BackBroker (e.g., cash=10000)')
 
-    parser.add_argument('--sizer', required=False, default='stake=10', # Example default
+    parser.add_argument('--sizer', required=False, default='stake=5', # Example default
                         metavar='kwargs', help='kwargs for FixedSize sizer (e.g., stake=100)')
 
     parser.add_argument('--strat', required=False, default='',
                         metavar='kwargs', help='kwargs for strategy (e.g., pd1=15,pd2=45)')
 
     # Adjusted plot argument check in runstrat, const='{}' is fine
-    parser.add_argument('--plot', required=False, default=None, # Default None means "don't plot"
+    parser.add_argument('--plot', required=False, default={}, # Default None means "don't plot"
                         nargs='?', const='{}', # If flag exists, value is '{}'
                         metavar='kwargs', help='Enable plotting and pass plot kwargs (e.g., style=line)')
 
