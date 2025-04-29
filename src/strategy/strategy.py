@@ -32,10 +32,8 @@ import scipy.stats
 
 import backtrader as bt
 
-import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns # Although pyfolio uses it internally, explicit import isn't needed here
-import quantstats as qs
+
 
 
 # --- Helper Function to Safely Parse Kwargs Strings ---
@@ -220,32 +218,30 @@ class MACrossOver(bt.Strategy):
             # --- Potential GLD Long Entry ---
             # Only check if SPY entry didn't trigger and still no position
             else: # No SPY signal found, check GLD
-                gld_cci_entry_cond = self.cci_gld[0] > 70
+                gld_cci_entry_cond = self.cci_gld[0] > 100
                 gld_sma_rising_cond = self.sma_gld[0] > self.sma_gld[-1]
                 spy_sma_falling_cond = self.sma_spy[0] < self.sma_spy[-1] # SPY SMA falling
-                spy_cci_cond = self.cci_spy[0] < -20
+                spy_cci_cond = self.cci_spy[0] < 0
 
                 if gld_cci_entry_cond and gld_sma_rising_cond and spy_sma_falling_cond and spy_cci_cond:
                     self.log(f'GLD LONG ENTRY SIGNAL: CCI_GLD={self.cci_gld[0]:.2f}, SMA_GLD Rising, SMA_SPY Falling, CCI_SPY={self.cci_spy[0]:.2f}')
                     # --- Place Buy Order ---
                     self.order = self.buy(data=self.gld)
-                    # Set stop price attribute *if* using a sizer that needs it
-                    # self.calculated_stop_price = potential_gld_stop
-
+                    
         # --- Exit Logic ---
         else: # is_position_open is True
             # --- Check SPY Exit ---
             if spy_position_size != 0: # Check if specifically holding SPY
-                self.log(f'Position Check: In SPY. Checking exit. CCI_SPY={self.cci_spy[0]:.2f}') # Debug Log
+                #self.log(f'Position Check: In SPY. Checking exit. CCI_SPY={self.cci_spy[0]:.2f}') # Debug Log
                 if self.cci_spy[0] < 20:
-                    self.log(f'SPY LONG EXIT SIGNAL: CCI_SPY={self.cci_spy[0]:.2f} < 20')
+                    #self.log(f'SPY LONG EXIT SIGNAL: CCI_SPY={self.cci_spy[0]:.2f} < 20')
                     self.order = self.close(data=self.spy) # Close SPY position
 
             # --- Check GLD Exit ---
             elif gld_position_size != 0: # Check if specifically holding GLD
-                self.log(f'Position Check: In GLD. Checking exit. CCI_GLD={self.cci_gld[0]:.2f}') # Debug Log
+                #self.log(f'Position Check: In GLD. Checking exit. CCI_GLD={self.cci_gld[0]:.2f}') # Debug Log
                 if self.cci_gld[0] < 20:
-                    self.log(f'GLD LONG EXIT SIGNAL: CCI_GLD={self.cci_gld[0]:.2f} < 20')
+                    #self.log(f'GLD LONG EXIT SIGNAL: CCI_GLD={self.cci_gld[0]:.2f} < 20')
                     self.order = self.close(data=self.gld) # Close GLD positionn
 
 
@@ -379,16 +375,11 @@ def runstrat(args=None):
     cerebro.addstrategy(MACrossOver, **strat_kwargs)
 
     # --- ADD ANALYZERS ---
-    print("Adding Analyzers: TradeAnalyzer, DrawDown, PyFolio")
+    print("Adding Analyzers: TradeAnalyzer, DrawDown")
     # Standard Trade Analyzer
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
     # Drawdown Analyzer
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
-    # PyFolio Analyzer (requires pyfolio installed)
-    # This is key for getting returns, positions, transactions easily
-    cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
-    # This calculates returns based on portfolio value changes
-    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn')
     # --- END ANALYZERS ---
 
     # --- Observer ---
@@ -414,50 +405,97 @@ def runstrat(args=None):
 
     # --- Process Analyzer Results ---
     print("\n--- Backtest Analysis Results ---")
+    drawdown_analysis = None
+    trade_analysis = None
+
+    # --- Extract Drawdown ---
+    if hasattr(strat_instance.analyzers, 'drawdown'):
+        try:
+            drawdown_analysis = strat_instance.analyzers.drawdown.get_analysis()
+            print(f"\nMax Drawdown:       {drawdown_analysis.max.drawdown:.2f}%")
+            print(f"Max Drawdown ($):   {drawdown_analysis.max.moneydown:.2f}")
+        except Exception as e:
+            print(f"Error processing DrawDown Analyzer: {e}")
+    else:
+        print("\nDrawDown analyzer results not found.")
+
+    # --- Extract and Print Trade Analysis ---
     if hasattr(strat_instance.analyzers, 'tradeanalyzer'):
-        trade_analysis = strat_instance.analyzers.tradeanalyzer.get_analysis()
-        # ... (process trade_analysis later) ...
+        try:
+            trade_analysis = strat_instance.analyzers.tradeanalyzer.get_analysis()
+
+            print("\n--- Trade Analysis ---")
+            if trade_analysis.total.total > 0: # Check if any trades were analyzed
+                print(f"Total Closed Trades:{trade_analysis.total.closed:6d}")
+                print(f"Total Open Trades:  {trade_analysis.total.open:6d}")
+                print("")
+                print(f"Winning Trades:     {trade_analysis.won.total:6d}")
+                print(f"Losing Trades:      {trade_analysis.lost.total:6d}")
+                print("")
+
+                # PnL Stats
+                print(f"Total Net PnL:    ${trade_analysis.pnl.net.total:9.2f}")
+                print(f"Avg Net PnL:      ${trade_analysis.pnl.net.average:9.2f}")
+                print("")
+                print(f"Total Winning PnL:${trade_analysis.won.pnl.total:9.2f}")
+                print(f"Avg Winning PnL:  ${trade_analysis.won.pnl.average:9.2f}")
+                print(f"Max Winning PnL:  ${trade_analysis.won.pnl.max:9.2f}")
+                print("")
+                print(f"Total Losing PnL: ${trade_analysis.lost.pnl.total:9.2f}")
+                print(f"Avg Losing PnL:   ${trade_analysis.lost.pnl.average:9.2f}")
+                print(f"Max Losing PnL:   ${trade_analysis.lost.pnl.max:9.2f}")
+                print("")
+
+                # Profit Factor
+                if trade_analysis.lost.total > 0 and trade_analysis.lost.pnl.total != 0:
+                     profit_factor = abs(trade_analysis.won.pnl.total / trade_analysis.lost.pnl.total)
+                     print(f"Profit Factor:      {profit_factor:9.2f}")
+                else:
+                     print(f"Profit Factor:           N/A (No Losses)")
+
+                # SQN (System Quality Number) - Requires Returns Analyzer, skip for now or use simplified approx if needed
+                # print(f"SQN:              {trade_analysis.sqn:9.2f}") # Might be None without Returns
+
+                # --- Print PnL for Each Closed Trade ---
+                print("\n--- PnL per Closed Trade ---")
+                if 'trades' in trade_analysis and isinstance(trade_analysis.trades, list) and len(trade_analysis.trades) > 0:
+                    # The 'trades' key holds a list of dicts, each dict has 'pnl', 'pnlcomm'
+                    trade_num = 0
+                    for trade_info in trade_analysis.trades:
+                        # Need to access underlying dict items
+                        if isinstance(trade_info, dict) and 'pnl' in trade_info and 'pnlcomm' in trade_info:
+                             trade_num += 1
+                             pnl = trade_info['pnl']        # PnL before commission
+                             pnlcomm = trade_info['pnlcomm'] # PnL after commission
+                             status = "WIN" if pnlcomm > 0 else "LOSS" if pnlcomm < 0 else "FLAT"
+                             # We don't easily get the asset name here without more complex analysis
+                             print(f"Trade #{trade_num:3d}: Status: {status:4s}, Net PnL: ${pnlcomm:8.2f} (Gross PnL: ${pnl:8.2f})")
+                        else:
+                             print(f"Warning: Unexpected format for trade_info: {trade_info}")
+                else:
+                    print("No individual trade PnL data available in TradeAnalyzer output.")
+                # --- End PnL per Trade ---
+
+            else:
+                 print("No trades were executed or analyzed.")
+
+        except Exception as e:
+            print(f"Error processing Trade Analyzer: {e}")
+            import traceback
+            traceback.print_exc() # Print full traceback for debugging analyzer errors
+
     else:
         print("TradeAnalyzer results not found.")
-        trade_analysis = None
 
-    if hasattr(strat_instance.analyzers, 'drawdown'):
-        drawdown_analysis = strat_instance.analyzers.drawdown.get_analysis()
-        print(f"Max Drawdown: {drawdown_analysis.max.drawdown:.2f}%")
-        print(f"Max Drawdown ($): {drawdown_analysis.max.moneydown:.2f}")
-    else:
-        print("DrawDown analyzer results not found.")
-        drawdown_analysis = None
-    
-    pyfolio_analysis = None
-    if hasattr(strat_instance.analyzers, 'pyfolio'):
-        pyfolio_analysis = strat_instance.analyzers.pyfolio.get_analysis()
-        # pyfolio_analysis is a dict containing returns, positions, transactions, gross_lev
-        print("PyFolio analysis data extracted.")
-    else:
-        print("PyFolio analyzer results not found. Cannot generate tearsheet.")
-    
-    # --- Calculate Metrics (Example: Profit Factor) ---
-    if trade_analysis and 'pnl' in trade_analysis and 'gross' in trade_analysis.pnl:
-        gross_pnl = trade_analysis.pnl.gross
-        if 'won' in gross_pnl and 'lost' in gross_pnl and gross_pnl.lost.total != 0:
-             profit_factor = abs(gross_pnl.won.total / gross_pnl.lost.total)
-             print(f"Profit Factor: {profit_factor:.2f}")
-             print(f"Total Net PnL: {trade_analysis.pnl.net.total:.2f}")
-             print(f"Total # Trades: {trade_analysis.total.closed}")
-             print(f"# Winning Trades: {trade_analysis.won.total}")
-             print(f"# Losing Trades: {trade_analysis.lost.total}")
-        else:
-             print("Profit Factor: N/A (No losing trades or missing PnL data)")
-             print(f"Total Net PnL: {trade_analysis.pnl.net.total:.2f}")
+    # --- End Process Analyzer Results ---
     
     # --- Plot ---
     if args.plot is not None:
         print(f"Parsing plot args: '{args.plot}'")
         plot_kwargs = parse_kwargs_str(args.plot)
         # Set default plot style to candlestick if not specified by user
-        plot_kwargs.setdefault('style', 'candlestick')
-        #plot_kwargs.setdefault('style', 'line')      # Default style = line
+        #plot_kwargs.setdefault('style', 'candlestick')
+        plot_kwargs.setdefault('style', 'line')      # Default style = line
         plot_kwargs.setdefault('figsize', (20, 10))  # Default figsize (NOTE: This is a tuple!)
         print(f"Applying plot kwargs: {plot_kwargs}")
         print("Generating plot...")
@@ -471,159 +509,6 @@ def runstrat(args=None):
 
     else:
         print("Plotting not requested.")
-
-    # --- Generate QuantStats HTML Report ---
-    # ---> Use TimeReturn Analyzer results <---
-    timereturn_analysis = None
-    returns_data = None
-    if hasattr(strat_instance.analyzers, 'timereturn'):
-        try:
-            timereturn_analysis = strat_instance.analyzers.timereturn.get_analysis()
-            # Convert the TimeReturn dict to a pandas Series
-            returns_data = pd.Series(timereturn_analysis)
-            print(f"TimeReturn analysis extracted. Shape: {returns_data.shape}")
-        except Exception as e_tr:
-             print(f"Error getting TimeReturn analysis: {e_tr}")
-             returns_data = None # Ensure it's None on error
-    else:
-         print("TimeReturn analyzer results not found. Cannot generate QuantStats report.")
-
-
-    # ---> Proceed only if returns_data was successfully extracted <---
-    if returns_data is not None and not returns_data.empty:
-        try:
-            print(f"\nGenerating QuantStats HTML report (saving to 'stats_report.html')...")
-
-            # --- Minimal Cleanup (TimeReturn should be cleaner) ---
-            # 1. Ensure index is datetime
-            if not isinstance(returns_data.index, pd.DatetimeIndex):
-                print("Converting TimeReturn index to DatetimeIndex...")
-                returns_data.index = pd.to_datetime(returns_data.index)
-
-            # 2. Sort index
-            returns_data = returns_data.sort_index()
-
-            # 3. Localize timezone if needed (critical for quantstats)
-            if returns_data.index.tz is None:
-                print("Localizing TimeReturn index to UTC for QuantStats...")
-                returns_data = returns_data.tz_localize('UTC')
-            else:
-                print(f"Converting TimeReturn index from {returns_data.index.tz} to UTC...")
-                returns_data = returns_data.tz_convert('UTC')
-
-            # 4. Check for duplicates after localization (less likely with TimeReturn)
-            if returns_data.index.has_duplicates:
-                 print("Warning: Duplicate indices found in TimeReturn data. Aggregating mean.")
-                 # Using mean might be better than sum for daily returns if duplicates exist
-                 returns_data = returns_data.groupby(returns_data.index).mean()
-            # --- End cleanup ---
-
-            print("Cleaned TimeReturn data shape:", returns_data.shape)
-            if returns_data.empty or returns_data.isnull().all():
-                 print("Returns data is empty or all NaN after cleanup. Skipping report.")
-            else:
-                 # Generate the HTML report using the TimeReturn Series
-                 qs.reports.html(returns_data, # Use returns from TimeReturn
-                                 output='stats_report.html',
-                                 title=f'{args.data0.split(".")[0]}_{args.data1.split(".")[0]} Strategy Analysis')
-                 print(f"QuantStats report saved to 'stats_report.html'. Open this file in a web browser.")
-
-        except ImportError:
-            print("\nQuantStats not installed. Skipping report generation.")
-            print("Install with: pip install quantstats")
-        except Exception as e_qs:
-            print(f"\nError generating QuantStats report: {e_qs}")
-            print("Check TimeReturn data format and content (e.g., NaNs, index).")
-            # print("TimeReturn data info:")
-            # returns_data.info()
-            # print(returns_data.head())
-            # print(returns_data.tail())
-    else:
-         print("\nReturns data from TimeReturn analyzer is missing or empty. Cannot generate QuantStats report.")
-    # --- End QuantStats Report ---
-
-    # --- Detailed Trade Analysis (using PyFolio transactions) ---
-    # This section should remain the same as the previous version that worked
-    if pyfolio_analysis and 'transactions' in pyfolio_analysis:
-        # ... (Keep the working code for reconstructing and analyzing transactions_df) ...
-        # --- Reconstruct Transactions DataFrame (Handling list-in-list from Dict) ---
-        transactions_df = pd.DataFrame() # Initialize empty
-        header = None
-        try:
-            transactions_raw = pyfolio_analysis['transactions']
-            if isinstance(transactions_raw, dict) and len(transactions_raw) > 0:
-                data_rows = []
-                timestamps = []
-
-                if 'date' in transactions_raw:
-                     header_list_of_list = transactions_raw.get('date')
-                     if isinstance(header_list_of_list, list) and len(header_list_of_list) == 1 and isinstance(header_list_of_list[0], list):
-                          header = header_list_of_list[0]
-                     else:
-                          print("Warning: Header format under 'date' key is unexpected.")
-                else:
-                     print("Warning: Could not find header row ('date' key) in transaction data dictionary.")
-
-                for ts, value_list in transactions_raw.items():
-                    if ts == 'date': continue
-                    if isinstance(value_list, list) and len(value_list) == 1 and isinstance(value_list[0], list):
-                         data_rows.append(value_list[0])
-                         timestamps.append(ts)
-                    else:
-                         print(f"Warning: Skipping transaction item with unexpected format at {ts}: {value_list}")
-
-                if header and data_rows:
-                    if all(len(row) == len(header) for row in data_rows):
-                         transactions_df = pd.DataFrame(data_rows, columns=header, index=pd.to_datetime(timestamps))
-                         transactions_df.index.name = 'dt'
-                         print("\nReconstructed Transactions DataFrame from Dict (corrected).")
-                    else:
-                         print("\nError: Row lengths in transaction data do not match header length.")
-                         transactions_df = pd.DataFrame()
-                elif not header:
-                    print("\nError: Failed to extract valid header from transaction data.")
-                    transactions_df = pd.DataFrame()
-                else:
-                    print("\nTransaction data contains header but no valid trade rows were processed.")
-                    transactions_df = pd.DataFrame()
-            else:
-                print("\nTransactions data from PyFolio analyzer is not a non-empty dictionary.")
-        except Exception as e_tx:
-            print(f"\nError during transactions DataFrame reconstruction: {e_tx}")
-            transactions_df = pd.DataFrame()
-
-        if not transactions_df.empty:
-            print("\n--- Transaction Log Columns Available ---")
-            print(transactions_df.columns)
-            print("\n--- Detailed Trade List (Transactions) ---")
-            desired_cols = ['symbol', 'amount', 'price', 'value']
-            available_cols = [col for col in desired_cols if col in transactions_df.columns]
-            if available_cols:
-                 print(f"Displaying columns: {available_cols}")
-                 print(transactions_df[available_cols].to_string())
-            else:
-                 print(f"Could not find desired columns {desired_cols}. Printing all available columns:")
-                 print(transactions_df.to_string())
-            if 'amount' in transactions_df.columns and 'symbol' in transactions_df.columns:
-                try:
-                    transactions_df['amount'] = pd.to_numeric(transactions_df['amount'], errors='coerce')
-                    buy_transactions = transactions_df.dropna(subset=['amount'])[transactions_df['amount'] > 0]
-                    if not buy_transactions.empty:
-                         entries_per_asset = buy_transactions['symbol'].value_counts()
-                         print("\n--- Entries per Asset (Buy Transactions) ---")
-                         print(entries_per_asset)
-                    else:
-                         print("\nNo buy transactions found after filtering.")
-                except Exception as e_count:
-                     print(f"\nError processing entries per asset: {e_count}")
-            else:
-                print("\nCannot calculate entries per asset: 'amount' or 'symbol' column missing.")
-        else:
-             print("\nTransaction data is empty or could not be parsed, skipping detailed analysis.")
-    else:
-        print("\nNo transaction data found for detailed trade analysis.")
-    # --- End Detailed Trade Analysis ---
-
 
 def parse_args(pargs=None):
 
