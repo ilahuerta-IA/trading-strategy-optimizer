@@ -9,8 +9,8 @@ from indicators.correlation import PearsonR
 class MACrossOver(bt.Strategy):
     params = (
         ('ma', bt.ind.MovAv.SMA),
-        ('pd1', 20),
-        ('pd2', 20),
+        ('pd1', 50),
+        ('pd2', 50),
         # Add period for PearsonR if you want it configurable
         ('corr_period', 20),
         # --- CCI Indicator ---
@@ -58,15 +58,15 @@ class MACrossOver(bt.Strategy):
             return
 
         # Check if an order has been completed
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log(f'BUY EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
-            elif order.issell():
-                self.log(f'SELL EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
-            self.bar_executed = len(self) # Bar number when order was executed
+        #if order.status in [order.Completed]:
+            #if order.isbuy():
+                #self.log(f'BUY EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
+            #elif order.issell():
+                #self.log(f'SELL EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
+            #self.bar_executed = len(self) # Bar number when order was executed
 
-        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log(f'Order Canceled/Margin/Rejected: Status {order.getstatusname()}')
+        #elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            #self.log(f'Order Canceled/Margin/Rejected: Status {order.getstatusname()}')
 
         # Write down: no pending order
         self.order = None   
@@ -78,7 +78,7 @@ class MACrossOver(bt.Strategy):
         
          # Check if an order is pending ... if yes, we cannot send a 2nd one
         if self.order:
-            self.log(f'Pending order detected, skipping bar {len(self)}')
+            #self.log(f'Pending order detected, skipping bar {len(self)}')
             return
         
         if len(self) < self.warmup_bars:
@@ -96,27 +96,29 @@ class MACrossOver(bt.Strategy):
             spy_sma_cond = self.sma_spy[0] > self.sma_spy[-1]
             gld_sma_cond = self.sma_gld[0] < self.sma_gld[-1] # GLD SMA falling
             gld_cci_cond = self.cci_gld[0] < -20
-            #pearson_cond = self.correlation[0] < -0.0
+            pearson_cond = self.correlation[0] < -0.8
 
-            if spy_cci_cond and spy_sma_cond and gld_sma_cond and gld_cci_cond:
-                self.log(f'SPY LONG ENTRY SIGNAL: CCI_SPY={self.cci_spy[0]:.2f}, SMA_SPY Rising, SMA_GLD Falling, CCI_GLD={self.cci_gld[0]:.2f}')
+            if spy_cci_cond and spy_sma_cond and gld_sma_cond and gld_cci_cond and pearson_cond:
+                #self.log(f'SPY LONG ENTRY SIGNAL: CCI_SPY={self.cci_spy[0]:.2f}, SMA_SPY Rising, SMA_GLD Falling, CCI_GLD={self.cci_gld[0]:.2f}')
                 # --- Place Buy Order ---
                 self.order = self.buy(data=self.spy)
                 # Set stop price attribute *if* using a sizer that needs it
                 # self.calculated_stop_price = potential_spy_stop
+                
 
             # --- Potential GLD Long Entry ---
             # Only check if SPY entry didn't trigger and still no position
             else: # No SPY signal found, check GLD
-                gld_cci_entry_cond = self.cci_gld[0] > 100
+                gld_cci_entry_cond = self.cci_gld[0] > 70
                 gld_sma_rising_cond = self.sma_gld[0] > self.sma_gld[-1]
                 spy_sma_falling_cond = self.sma_spy[0] < self.sma_spy[-1] # SPY SMA falling
-                spy_cci_cond = self.cci_spy[0] < 0
+                spy_cci_cond = self.cci_spy[0] < -20
 
-                if gld_cci_entry_cond and gld_sma_rising_cond and spy_sma_falling_cond and spy_cci_cond:
-                    self.log(f'GLD LONG ENTRY SIGNAL: CCI_GLD={self.cci_gld[0]:.2f}, SMA_GLD Rising, SMA_SPY Falling, CCI_SPY={self.cci_spy[0]:.2f}')
+                if gld_cci_entry_cond and gld_sma_rising_cond and spy_sma_falling_cond and spy_cci_cond and pearson_cond:
+                    #self.log(f'GLD LONG ENTRY SIGNAL: CCI_GLD={self.cci_gld[0]:.2f}, SMA_GLD Rising, SMA_SPY Falling, CCI_SPY={self.cci_spy[0]:.2f}')
                     # --- Place Buy Order ---
                     self.order = self.buy(data=self.gld)
+                    
                     
         # --- Exit Logic ---
         else: # is_position_open is True
@@ -124,12 +126,12 @@ class MACrossOver(bt.Strategy):
             if spy_position_size != 0: # Check if specifically holding SPY
                 #self.log(f'Position Check: In SPY. Checking exit. CCI_SPY={self.cci_spy[0]:.2f}') # Debug Log
                 if self.cci_spy[0] < 20:
-                    self.log(f'SPY LONG EXIT SIGNAL: CCI_SPY={self.cci_spy[0]:.2f} < 20')
+                    #self.log(f'SPY LONG EXIT SIGNAL: CCI_SPY={self.cci_spy[0]:.2f} < 20')
                     self.order = self.close(data=self.spy) # Close SPY position
 
             # --- Check GLD Exit ---
             elif gld_position_size != 0: # Check if specifically holding GLD
                 #self.log(f'Position Check: In GLD. Checking exit. CCI_GLD={self.cci_gld[0]:.2f}') # Debug Log
                 if self.cci_gld[0] < 20:
-                    self.log(f'GLD LONG EXIT SIGNAL: CCI_GLD={self.cci_gld[0]:.2f} < 20')
+                    #self.log(f'GLD LONG EXIT SIGNAL: CCI_GLD={self.cci_gld[0]:.2f} < 20')
                     self.order = self.close(data=self.gld) # Close GLD position
