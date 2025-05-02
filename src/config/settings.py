@@ -21,16 +21,23 @@ if not DATA_PATH.exists():
 # --- Default Data Files ---
 #DEFAULT_DATA0_PATH = str(DATA_PATH / "SPY_5m_1Mon.csv")
 #DEFAULT_DATA1_PATH = str(DATA_PATH / "GLD_5m_1Mon.csv")
-DEFAULT_DATA0_PATH = str(DATA_PATH / "SPY_5m_1Yea.csv")
-DEFAULT_DATA1_PATH = str(DATA_PATH / "XAUUSD_5m_1Yea.csv")
+DEFAULT_DATA_PATH_1 = str(DATA_PATH / "SPY_5m_1Yea.csv")
+DEFAULT_DATA_PATH_2 = str(DATA_PATH / "XAUUSD_5m_1Yea.csv")
 
 # --- Default Date Filters ---
 DEFAULT_FROM_DATE = None
 DEFAULT_TO_DATE = None
 
+# --- Default Strategy ---
+DEFAULT_STRATEGY_NAME = 'SMACrossOver' # Default to the new simple strategy
+
+# --- Default STRATEGY Args (Matching SMACrossOverStrategy) ---
+DEFAULT_STRAT_ARGS = 'p_fast_d0=20,p_slow_d0=50,p_fast_d1=20,p_slow_d1=50'
+DEFAULT_CEREBRO_ARGS = ''
+
 # --- Default Broker/Sizer/Strategy Args ---
 DEFAULT_BROKER_ARGS = 'cash=100000,commission=0.001'
-DEFAULT_SIZER_ARGS = 'stake=5'
+DEFAULT_SIZER_ARGS = 'stake=10'
 DEFAULT_STRAT_ARGS = ''
 DEFAULT_CEREBRO_ARGS = ''
 

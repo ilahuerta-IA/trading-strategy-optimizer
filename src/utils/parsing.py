@@ -1,51 +1,54 @@
-# --- Helper Function to Safely Parse Kwargs Strings ---
+# utils/parsing.py
+
 def parse_kwargs_str(kwargs_str):
     """
     Safely parses a string like "key1=value1,key2=value2" into a dictionary.
     Attempts to convert values to numbers (int/float) if possible.
+    Handles basic boolean strings ('true'/'false') and quoted strings.
     """
     parsed_kwargs = {}
     if not kwargs_str:
         return parsed_kwargs
-    
-    # Handle the special case from argparse where --plot with no args becomes '{}'
-    if kwargs_str == '{}':
-        return parsed_kwargs # Return empty dict for plotting defaults
+
+    if kwargs_str == '{}': # Handle empty plot args special case
+        return parsed_kwargs
 
     pairs = kwargs_str.split(',')
     for pair in pairs:
         pair = pair.strip()
-        if not pair:
+        if not pair or '=' not in pair:
+            # Skip empty pairs or pairs without '='
+            if pair: print(f"Warning: Skipping malformed kwarg item (no '='): {pair}")
             continue
         try:
             key, value = pair.split('=', 1)
             key = key.strip()
             value = value.strip()
 
-            # Attempt to convert value to numeric if possible
+            # Attempt numeric conversion first
             try:
                 if '.' in value:
                     parsed_kwargs[key] = float(value)
                 else:
                     parsed_kwargs[key] = int(value)
             except ValueError:
-                # Keep as string if conversion fails (handle simple cases)
-                # More robust parsing might be needed for quoted strings etc.
-                 # Basic check for boolean True/False strings
-                if value.lower() == 'true':
+                # Not numeric, check for boolean or keep as string
+                lower_val = value.lower()
+                if lower_val == 'true':
                     parsed_kwargs[key] = True
-                elif value.lower() == 'false':
+                elif lower_val == 'false':
                     parsed_kwargs[key] = False
                 else:
-                    # Remove potential quotes if they exist at start/end
+                    # Handle quoted strings
                     if (value.startswith("'") and value.endswith("'")) or \
                        (value.startswith('"') and value.endswith('"')):
                         parsed_kwargs[key] = value[1:-1]
                     else:
+                        # Keep as potentially meaningful string (e.g., 'SMA')
                         parsed_kwargs[key] = value
 
         except ValueError:
+            # This might catch the split error if '=' wasn't present, but covered above
             print(f"Warning: Skipping malformed kwarg pair: {pair}")
-            continue # Skip pairs that don't contain '='
+            continue
     return parsed_kwargs
-# --- End Helper Function ---

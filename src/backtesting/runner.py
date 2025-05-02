@@ -2,13 +2,14 @@ import backtrader as bt
 import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt # Keep if plotting results
+import importlib # Needed for dynamic imports
+from typing import Dict, Any, Callable
 
-# Adjust import paths
+# Assuming parse_kwargs_str is in utils.parsing
 from utils.parsing import parse_kwargs_str
-from strategies.ma_cci_crossover import MACrossOver
-from config import settings # Import the settings
+from config import settings
 
-def setup_and_run_backtest(args): # Accepts parsed args
+def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, Any]]):
     """Sets up and runs the Backtrader Cerebro engine."""
 
     cerebro = bt.Cerebro()
@@ -53,36 +54,51 @@ def setup_and_run_backtest(args): # Accepts parsed args
     csv_params = settings.CSV_PARAMS.copy()
     # --- End CSV Data Feed Parameters ---
 
-    # --- Load Data Feeds ---
-    print(f"Attempting to load data0 from: {args.data0}")
-    feed_params_0 = csv_params.copy()
-    feed_params_0['dataname'] = args.data0
+    # --- Load Data Feeds AND Set Name ---
     try:
-        data0 = CSVDataFeed(**feed_params_0, **data_kwargs) # Combine CSV params and date filters
-        data0.plotinfo.plotvolume = False # Don´t show volumen
+        print(f"Attempting to load data 1 from: {args.data_path_1}")
+        feed_params_0 = csv_params.copy()
+        feed_params_0['dataname'] = args.data_path_1
+        data0 = CSVDataFeed(**feed_params_0, **data_kwargs)
+        data0.plotinfo.plotvolume = False
         data0.plotinfo.plotvolsubplot = False
-        print(f"Adding data0 (5 min) to Cerebro. Date Filters: {data_kwargs}")
-        cerebro.adddata(data0) # Use adddata, NO RESAMPLING
+        # --- CRUCIAL: Set the data feed name from the filename ---
+        data0_name = Path(args.data_path_1).stem # e.g., "SPY_5m_1Yea"
+        data0._name = data0_name
+        # ---
+        # data0.compensate(data0) # Optional: consider implications
+        # data0.pad_missing(False) # Optional: consider implications
+        print(f"Adding data feed '{data0._name}' to Cerebro. Date Filters: {data_kwargs}")
+        cerebro.adddata(data0)
     except Exception as e:
-        print(f"FATAL ERROR loading data0 from {args.data0}: {e}")
-        print("Check file path, file format, and CSV parameters in the script.")
-        return # Exit if loading fails
+        print(f"FATAL ERROR loading data from {args.data_path_1}: {e}")
+        import traceback
+        traceback.print_exc()
+        return
 
-    print(f"Attempting to load data1 from: {args.data1}")
-    feed_params_1 = csv_params.copy()
-    feed_params_1['dataname'] = args.data1
+    # --- Load Second Data Feed (if different) AND Set Name ---
+    # Allows using the same file twice if needed, just pass same path
     try:
-        data1 = CSVDataFeed(**feed_params_1, **data_kwargs) # Combine CSV params and date filters
-        print(f"Adding data1 (5 min) to Cerebro. Date Filters: {data_kwargs}")
-        cerebro.adddata(data1) # Use adddata, NO RESAMPLING
-        data1.plotinfo.plotmaster = data0 # Plot prices on the same chart
-        data1.plotinfo.plotvolume = False # Don´t show volumen
+        print(f"Attempting to load data 2 from: {args.data_path_2}")
+        feed_params_1 = csv_params.copy()
+        feed_params_1['dataname'] = args.data_path_2
+        data1 = CSVDataFeed(**feed_params_1, **data_kwargs)
+        data1.plotinfo.plotmaster = data0 # Plot on same chart as data0
+        data1.plotinfo.plotvolume = False
         data1.plotinfo.plotvolsubplot = False
+        # --- CRUCIAL: Set the data feed name from the filename ---
+        data1_name = Path(args.data_path_2).stem # e.g., "XAUUSD_5m_1Yea"
+        data1._name = data1_name
+        # ---
+        # data1.compensate(data1) # Optional: consider implications
+        # data1.pad_missing(False) # Optional: consider implications
+        print(f"Adding data feed '{data1._name}' to Cerebro. Date Filters: {data_kwargs}")
+        cerebro.adddata(data1)
     except Exception as e:
-        print(f"FATAL ERROR loading data1 from {args.data1}: {e}")
-        print("Check file path, file format, and CSV parameters in the script.")
-        return # Exit if loading fails
-    # --- End Load Data Feeds ---
+        print(f"FATAL ERROR loading data from {args.data_path_2}: {e}")
+        import traceback
+        traceback.print_exc()
+        return
 
     # --- Broker ---
     print(f"Parsing broker args: '{args.broker}'")
@@ -113,11 +129,43 @@ def setup_and_run_backtest(args): # Accepts parsed args
     print(f"Applying sizer kwargs: {sizer_kwargs}")
     cerebro.addsizer(bt.sizers.FixedSize, **sizer_kwargs) # Assuming FixedSize is always desired
 
-    # --- Strategy ---
-    print(f"Parsing strategy args: '{args.strat}'")
-    strat_kwargs = parse_kwargs_str(args.strat)
-    print(f"Applying strategy kwargs: {strat_kwargs}")
-    cerebro.addstrategy(MACrossOver, **strat_kwargs)
+     # --- Dynamic Strategy Selection ---
+    strategy_name = args.strategy_name
+    print(f"Selecting strategy: {strategy_name}")
+    strat_kwargs = parse_kwargs_func(args.strat)
+    strat_kwargs['run_name'] = args.run_name # Inject run_name
+
+    strategy_class = None
+    try:
+        # Assuming strategies are in the 'strategies' package
+        # Map strategy name argument to module and class name
+        if strategy_name == 'SMACrossOver':
+            module_name = 'strategies.sma_crossover'
+            class_name = 'SMACrossOverStrategy'
+        elif strategy_name == 'MACrossOver':
+             module_name = 'strategies.ma_cci_crossover'
+             class_name = 'MACrossOver'
+        # Add more 'elif' blocks for future strategies here
+        # elif strategy_name == 'AnotherStrategy':
+        #    module_name = 'strategies.another_strategy'
+        #    class_name = 'AnotherStrategyClass'
+        else:
+            raise ValueError(f"Unknown strategy name provided: {strategy_name}")
+
+        # Import the module dynamically
+        strategy_module = importlib.import_module(module_name)
+        # Get the class from the imported module
+        strategy_class = getattr(strategy_module, class_name)
+
+    except (ImportError, AttributeError, ValueError) as e:
+        print(f"FATAL ERROR: Could not load strategy '{strategy_name}': {e}")
+        print("Check --strategy-name argument and ensure the strategy file/class exists.")
+        return
+
+    if strategy_class:
+        print(f"Applying strategy kwargs for {strategy_name}: {strat_kwargs}")
+        cerebro.addstrategy(strategy_class, **strat_kwargs)
+    # --- End Strategy Selection ---
 
     # --- ADD ANALYZERS ---
     print("Adding Analyzers: TradeAnalyzer, DrawDown")
