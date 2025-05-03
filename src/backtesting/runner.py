@@ -145,6 +145,9 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
         elif strategy_name == 'MACrossOver':
              module_name = 'strategies.ma_cci_crossover'
              class_name = 'MACrossOver'
+        elif strategy_name == 'BBandPearsonDivergence':
+             module_name = 'strategies.bband_pearson_divergence'
+             class_name = 'BBandPearsonDivergence'
         # Add more 'elif' blocks for future strategies here
         # elif strategy_name == 'AnotherStrategy':
         #    module_name = 'strategies.another_strategy'
@@ -289,7 +292,9 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
         # Set default plot style to candlestick if not specified by user
         #plot_kwargs.setdefault('style', 'candlestick')
         plot_kwargs.setdefault('style', 'line')      # Default style = line
-        plot_kwargs.setdefault('figsize', (20, 10))  # Default figsize (NOTE: This is a tuple!)
+        plot_kwargs.setdefault('volume', False) # Disable volume subplot
+        plot_kwargs.setdefault('broker', False) # Disable detailed broker cash/value plot
+        plot_kwargs.setdefault('figsize', (20, 10))  # Default figsize
         print(f"Applying plot kwargs: {plot_kwargs}")
         print("Generating plot...")
         try:

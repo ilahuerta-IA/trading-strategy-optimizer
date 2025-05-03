@@ -29,11 +29,28 @@ DEFAULT_FROM_DATE = None
 DEFAULT_TO_DATE = None
 
 # --- Default Strategy ---
-DEFAULT_STRATEGY_NAME = 'SMACrossOver' # Default to the new simple strategy
+#DEFAULT_STRATEGY_NAME = 'MACrossOver'
+#DEFAULT_STRATEGY_NAME = 'SMACrossOver' # Default to the new simple strategy
+DEFAULT_STRATEGY_NAME = 'BBandPearsonDivergence'
+
+
+# Defaults for MACrossOver (strategies/ma_cci_crossover.py)
+# Note: Ensure MACrossOver strategy handles 'ma=SMA' string correctly if needed, or use specific params.
+#DEFAULT_STRAT_ARGS = 'ma=SMA,pd1=50,pd2=50,corr_period=20,cci_period=20,atr_period=14,atr_multiplier=1.5,cci_exit_level=20'
 
 # --- Default STRATEGY Args (Matching SMACrossOverStrategy) ---
-DEFAULT_STRAT_ARGS = 'p_fast_d0=20,p_slow_d0=50,p_fast_d1=20,p_slow_d1=50'
-DEFAULT_CEREBRO_ARGS = ''
+#DEFAULT_STRAT_ARGS = 'p_fast_d0=20,p_slow_d0=50,p_fast_d1=20,p_slow_d1=50'
+
+# Defaults for BBandPearsonDivergence <-- ADD THESE
+DEFAULT_STRAT_ARGS = 'bb_period_d0=20,' \
+                    'bb_dev_d0=2.0,' \
+                    'bb_period_d1=20,' \
+                    'bb_dev_d1=2.0,' \
+                    'pearson_period=20,' \
+                    'pearson_decrease_lookback=2,' \
+                    'pearson_decrease_pct=0.6,' \
+                    'exit_on_bbmid=True'
+
 
 # --- Default Broker/Sizer/Strategy Args ---
 DEFAULT_BROKER_ARGS = 'cash=100000,commission=0.001'
@@ -71,3 +88,12 @@ CSV_PARAMS = dict(
 
     tz='UTC', # set if data is known to be UTC
 )
+
+# Ensure a strategy name and args are actually defined
+if 'DEFAULT_STRATEGY_NAME' not in locals():
+    raise ValueError("DEFAULT_STRATEGY_NAME is not defined in settings.py. Please uncomment one strategy.")
+if 'DEFAULT_STRAT_ARGS' not in locals():
+    raise ValueError("DEFAULT_STRAT_ARGS is not defined in settings.py. Please uncomment the corresponding arguments.")
+
+print(f"[Settings] Default Strategy: {DEFAULT_STRATEGY_NAME}")
+print(f"[Settings] Default Strat Args: {DEFAULT_STRAT_ARGS}")
