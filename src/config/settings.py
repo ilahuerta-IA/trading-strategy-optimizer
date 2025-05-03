@@ -30,8 +30,8 @@ DEFAULT_TO_DATE = None
 
 # --- Default Strategy ---
 #DEFAULT_STRATEGY_NAME = 'MACrossOver'
-#DEFAULT_STRATEGY_NAME = 'SMACrossOver' # Default to the new simple strategy
-DEFAULT_STRATEGY_NAME = 'BBandPearsonDivergence'
+DEFAULT_STRATEGY_NAME = 'SMACrossOver' # Default to the new simple strategy
+#DEFAULT_STRATEGY_NAME = 'BBandPearsonDivergence'
 
 
 # Defaults for MACrossOver (strategies/ma_cci_crossover.py)
@@ -39,17 +39,17 @@ DEFAULT_STRATEGY_NAME = 'BBandPearsonDivergence'
 #DEFAULT_STRAT_ARGS = 'ma=SMA,pd1=50,pd2=50,corr_period=20,cci_period=20,atr_period=14,atr_multiplier=1.5,cci_exit_level=20'
 
 # --- Default STRATEGY Args (Matching SMACrossOverStrategy) ---
-#DEFAULT_STRAT_ARGS = 'p_fast_d0=20,p_slow_d0=50,p_fast_d1=20,p_slow_d1=50'
+DEFAULT_STRAT_ARGS = 'p_fast_d0=20,p_slow_d0=50,p_fast_d1=20,p_slow_d1=50'
 
 # Defaults for BBandPearsonDivergence <-- ADD THESE
-DEFAULT_STRAT_ARGS = 'bb_period_d0=20,' \
-                    'bb_dev_d0=2.0,' \
-                    'bb_period_d1=20,' \
-                    'bb_dev_d1=2.0,' \
-                    'pearson_period=20,' \
-                    'pearson_decrease_lookback=2,' \
-                    'pearson_decrease_pct=0.6,' \
-                    'exit_on_bbmid=True'
+# DEFAULT_STRAT_ARGS = 'bb_period_d0=20,' \
+#                     'bb_dev_d0=2.0,' \
+#                     'bb_period_d1=20,' \
+#                     'bb_dev_d1=2.0,' \
+#                     'pearson_period=20,' \
+#                     'pearson_decrease_lookback=2,' \
+#                     'pearson_decrease_pct=0.6,' \
+#                     'exit_on_bbmid=True'
 
 
 # --- Default Broker/Sizer/Strategy Args ---
