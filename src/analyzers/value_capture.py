@@ -4,14 +4,18 @@ import collections
 
 class ValueCaptureAnalyzer(bt.Analyzer):
     """
-    Analyzer to capture portfolio value and corresponding datetimes
-    at each step of the strategy.
+    Analyzer to capture portfolio value, asset OHLC prices,
+    and corresponding datetimes at each step of the strategy.
     """
     def __init__(self):
         self.values = []
         self.datetimes = []
         self.d0_closes = []
         self.d1_closes = []
+        # Capture OHLC for both data feeds
+        self.d0_ohlc = {'open': [], 'high': [], 'low': [], 'close': []}
+        self.d1_ohlc = {'open': [], 'high': [], 'low': [], 'close': []}
+        
 
     def start(self):
         # Optional: Initialize with starting cash if needed,
@@ -26,16 +30,23 @@ class ValueCaptureAnalyzer(bt.Analyzer):
         self.datetimes.append(current_dt)
         self.values.append(current_value)
         # print(f"DEBUG ValueCapture: {current_dt} - {current_value}") # Optional Debug
-        # --- Capture closing prices ---
+        
+
+        # Capture OHLC prices
         try:
-            self.d0_closes.append(self.strategy.data0.close[0])
-        except IndexError:
-            self.d0_closes.append(float('nan')) # Handle potential initial missing data
+            self.d0_ohlc['open'].append(self.strategy.data0.open[0])
+            self.d0_ohlc['high'].append(self.strategy.data0.high[0])
+            self.d0_ohlc['low'].append(self.strategy.data0.low[0])
+            self.d0_ohlc['close'].append(self.strategy.data0.close[0])
+        except IndexError: # Handle potential initial missing data
+            for key in self.d0_ohlc: self.d0_ohlc[key].append(float('nan'))
         try:
-            self.d1_closes.append(self.strategy.data1.close[0])
-        except IndexError:
-             self.d1_closes.append(float('nan')) # Handle potential initial missing data
-        # ---
+            self.d1_ohlc['open'].append(self.strategy.data1.open[0])
+            self.d1_ohlc['high'].append(self.strategy.data1.high[0])
+            self.d1_ohlc['low'].append(self.strategy.data1.low[0])
+            self.d1_ohlc['close'].append(self.strategy.data1.close[0])
+        except IndexError: # Handle potential initial missing data
+            for key in self.d1_ohlc: self.d1_ohlc[key].append(float('nan'))
 
     def stop(self):
         # Nothing specific needed here usually, data is in lists
@@ -46,6 +57,6 @@ class ValueCaptureAnalyzer(bt.Analyzer):
         return collections.OrderedDict(
             datetimes=self.datetimes,
             values=self.values,
-            d0_close=self.d0_closes,
-            d1_close=self.d1_closes
+            d0_ohlc=self.d0_ohlc,
+            d1_ohlc=self.d1_ohlc
         )

@@ -47,9 +47,10 @@ def parse_args(pargs=None):
                         metavar='kwargs', help='kwargs to override selected strategy params (e.g., p_fast=15,p_slow=40)')
     parser.add_argument('--cerebro', default=settings.DEFAULT_CEREBRO_ARGS,
                         metavar='kwargs', help='kwargs for cerebro.run (e.g., stdstats=False)')
-    parser.add_argument('--plot', default=None,
-                        nargs='?', const='{}',
-                        metavar='kwargs', help='Enable plotting and pass plot kwargs (e.g., style=candlestick)')
+    parser.add_argument('--plot', action='store_true',
+                        help='Enable plotting (generates custom plot and attempts default Backtrader plot)')
+    parser.add_argument('--candlestick', action='store_true', # Defaults to False if not present
+                        help='Plot data0 as candlestick instead of line in the custom plot.')
     parser.add_argument('--run-name', default=default_run_name,
                         help='Identifier name for this backtest run')
 
@@ -77,7 +78,8 @@ if __name__ == '__main__':
                 analysis_data=results_data.value_analysis,
                 run_name=args.run_name,
                 data0_name=data0_name,
-                data1_name=data1_name
+                data1_name=data1_name,
+                use_candlestick=args.candlestick
             )
         else:
             print("Custom Plot Skipped: Value analysis data not found or is None in results.")
