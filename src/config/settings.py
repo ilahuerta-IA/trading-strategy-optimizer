@@ -21,8 +21,8 @@ if not DATA_PATH.exists():
 # --- Default Data Files ---
 #DEFAULT_DATA0_PATH = str(DATA_PATH / "SPY_5m_1Mon.csv")
 #DEFAULT_DATA1_PATH = str(DATA_PATH / "GLD_5m_1Mon.csv")
-DEFAULT_DATA_PATH_1 = str(DATA_PATH / "SPY_5m_1Yea.csv")
-DEFAULT_DATA_PATH_2 = str(DATA_PATH / "XAUUSD_5m_1Yea.csv")
+DEFAULT_DATA_PATH_1 = str(DATA_PATH / "SPY_5m_1Yea.csv")#"XAUUSD_5m_1Yea.csv")#"SPY_5m_1Yea.csv")
+DEFAULT_DATA_PATH_2 = str(DATA_PATH / "XAUUSD_5m_1Yea.csv")#"XAUUSD_5m_1Yea.csv")
 
 # --- Default Date Filters ---
 DEFAULT_FROM_DATE = None

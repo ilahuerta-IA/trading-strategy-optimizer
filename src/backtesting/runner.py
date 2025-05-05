@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import importlib
 import traceback # Import traceback for detailed error printing
 from typing import Dict, Any, Callable # For type hinting
+import collections # Import collections for OrderedDict if used in analyzers
+from pprint import pprint # For pretty printing dicts
 
 # --- Import the Analyzer ---
 from analyzers.value_capture import ValueCaptureAnalyzer
@@ -151,10 +153,23 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
         print("FATAL: Strategy class not loaded.")
         return None # Return None on error
 
-    # --- Add Standard Analyzers ---
+    # --- Add Analyzers ---
     print("Adding Standard Analyzers: TradeAnalyzer, DrawDown")
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+    print("Adding More Analyzers: SharpeRatio, SQN, TimeReturn (Monthly), Transactions")
+    # Sharpe Ratio (assuming default risk-free rate for now)
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe',
+                        # timeframe=bt.TimeFrame.Days, # Adjust if needed
+                        # annualization=252 # Adjust based on timeframe
+                        )
+    # System Quality Number
+    cerebro.addanalyzer(bt.analyzers.SQN, _name='sqn')
+    # Monthly Returns
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='monthlyreturns',
+                        timeframe=bt.TimeFrame.Months)
+    # Detailed Trade List or Transactions
+    cerebro.addanalyzer(bt.analyzers.Transactions, _name='transactions')
 
     # --- Add Custom Value Capture Analyzer ---
     print("Adding Custom Analyzer: ValueCaptureAnalyzer")
@@ -181,137 +196,174 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
 
     # --- Process and Package Results ---
     print("\n--- Processing Backtest Results ---")
-    # Use strat_kwargs captured earlier for parameters
     output_result = BacktestResult(args.run_name, strategy_name, strat_kwargs)
 
-    # --- Refined Checks on Results list ---
-    if results is None:
-         print("Error: Cerebro run did not return results.")
-         return output_result
-    if not isinstance(results, list) or len(results) == 0:
-         print("Error: Cerebro run returned invalid or empty results list.")
-         return output_result
-    if results[0] is None:
-        print("Error: The first element in the results list (strategy instance) is None.")
-        return output_result
-    # --- End Refined Checks ---
+    if results is None or not isinstance(results, list) or len(results) == 0 or results[0] is None:
+         print("Error: Cerebro run did not return valid results.")
+         return output_result # Return potentially empty results object
 
-    # If checks passed, get the instance
     strat_instance = results[0]
     print(f"Strategy instance obtained: {type(strat_instance)}")
 
-    # --- Extract and Print Standard Analyzer Results ---
-    drawdown_analysis = None # Initialize local variable
-    trade_analysis = None    # Initialize local variable
+    # --- Create dictionary to hold all extracted analysis ---
+    analysis_results = {}
 
-    # --- Drawdown ---
-    print("\n--- Drawdown Analysis ---")
-    try:
-        # Use hasattr for robust check before accessing analyzer
-        if hasattr(strat_instance.analyzers, 'drawdown'):
-            drawdown_analysis = strat_instance.analyzers.drawdown.get_analysis()
-            output_result.metrics['drawdown'] = drawdown_analysis # Store it
-            if drawdown_analysis and hasattr(drawdown_analysis, 'max'): # Check structure before printing
-                 print(f"Max Drawdown:       {drawdown_analysis.max.drawdown:.2f}%")
-                 print(f"Max Drawdown ($):   {drawdown_analysis.max.moneydown:.2f}")
+    # --- Function to safely get analysis ---
+    def get_analyzer_output(analyzer_name):
+        analysis = None # Default to None
+        try:
+            # --- Use direct attribute access ---
+            if hasattr(strat_instance.analyzers, analyzer_name):
+                # Access the analyzer directly by its _name attribute
+                analyzer = getattr(strat_instance.analyzers, analyzer_name)
+                analysis = analyzer.get_analysis()
+                print(f"Successfully extracted '{analyzer_name}' analysis.")
+            # --- End direct attribute access ---
             else:
-                 print("Drawdown analysis structure incomplete or None.")
+                print(f"Analyzer attribute '{analyzer_name}' not found.")
+        except Exception as e:
+            print(f"Error processing Analyzer '{analyzer_name}': {e}")
+            # traceback.print_exc() # Optional for more detail
+        return analysis # Return analysis or None
+
+    # --- Extract from all analyzers ---
+    analysis_results['drawdown'] = get_analyzer_output('drawdown')
+    analysis_results['tradeanalyzer'] = get_analyzer_output('tradeanalyzer')
+    analysis_results['sharpe'] = get_analyzer_output('sharpe')
+    analysis_results['sqn'] = get_analyzer_output('sqn')
+    analysis_results['monthlyreturns'] = get_analyzer_output('monthlyreturns')
+    analysis_results['transactions'] = get_analyzer_output('transactions') 
+    # analysis_results['valuecapture'] = get_analyzer_output('valuecapture') # Keep commented
+
+    # Store metrics dict in the final result object
+    output_result.metrics = analysis_results
+    # output_result.value_analysis = analysis_results.get('valuecapture') # Keep commented
+
+    # --- Detailed Terminal Printing ---
+    print("\n\n" + "="*80)
+    print(f"BACKTEST REPORT: {args.run_name}")
+    print("="*80)
+
+    # --- Run Configuration ---
+    print("\n--- Run Configuration ---")
+    print(f"Strategy:         {strategy_name}")
+    print(f"Parameters:")
+    pprint(strat_kwargs, indent=4) # Pretty print parameters
+    print(f"Data 0:           {data0_name}.csv") # Assumes csv extension
+    print(f"Data 1:           {data1_name}.csv")
+    print(f"From Date:        {args.fromdate or 'Start of Data'}")
+    print(f"To Date:          {args.todate or 'End of Data'}")
+    # Extract initial cash if possible (might require accessing broker obj before run)
+    # print(f"Initial Cash:     {cerebro.broker.startingcash:.2f}") # Example
+    print(f"Broker Args:      '{args.broker}'")
+    print(f"Sizer Args:       '{args.sizer}'")
+
+    # --- Overall Performance Metrics ---
+    print("\n--- Overall Performance ---")
+    ta = analysis_results.get('tradeanalyzer')
+    dd = analysis_results.get('drawdown')
+    sharpe = analysis_results.get('sharpe')
+    sqn = analysis_results.get('sqn')
+
+    total_net_pnl = ta.get('pnl', {}).get('net', {}).get('total', 0.0) if ta else 0.0
+    print(f"Total Net PnL:      ${total_net_pnl:12.2f}")
+
+    if dd:
+        print(f"Max Drawdown:        {dd.get('max', {}).get('drawdown', 0.0):.2f}%")
+        print(f"Max Drawdown ($):   ${dd.get('max', {}).get('moneydown', 0.0):12.2f}")
+    else:
+        print("Max Drawdown:       N/A")
+        print("Max Drawdown ($):   N/A")
+
+    if sharpe and sharpe.get('sharperatio'):
+         print(f"Sharpe Ratio:        {sharpe['sharperatio']:.3f}")
+    else:
+         print(f"Sharpe Ratio:       N/A")
+
+    if sqn and sqn.get('sqn'):
+        print(f"SQN:                 {sqn['sqn']:.3f}")
+    else:
+        print(f"SQN:                N/A")
+
+
+    # Trade Stats from TradeAnalyzer
+    if ta:
+        closed_trades = ta.get('total', {}).get('closed', 0)
+        won_total = ta.get('won', {}).get('total', 0)
+        lost_total = ta.get('lost', {}).get('total', 0)
+        print(f"Total Closed Trades:{closed_trades:6d}")
+        print(f"Winning Trades:     {won_total:6d}")
+        print(f"Losing Trades:      {lost_total:6d}")
+        win_rate = (won_total / closed_trades * 100) if closed_trades > 0 else 0.0
+        print(f"Win Rate (%):       {win_rate:8.2f}%")
+
+        # PnL Stats
+        won_pnl_total = ta.get('won', {}).get('pnl', {}).get('total', 0.0)
+        lost_pnl_total = ta.get('lost', {}).get('pnl', {}).get('total', 0.0)
+        if lost_pnl_total != 0:
+            profit_factor = abs(won_pnl_total / lost_pnl_total)
+            print(f"Profit Factor:       {profit_factor:9.2f}")
+        elif won_pnl_total > 0:
+            print(f"Profit Factor:       Infinity")
         else:
-             print("DrawDown analyzer attribute not found.")
-    except Exception as e: # Catch any other exception during processing
-         print(f"Error processing DrawDown Analyzer: {e}")
+            print(f"Profit Factor:       N/A")
 
-    # --- Trade Analysis ---
-    print("\n--- Trade Analysis ---")
-    try:
-        # Use hasattr for robust check
-        if hasattr(strat_instance.analyzers, 'tradeanalyzer'):
-            trade_analysis = strat_instance.analyzers.tradeanalyzer.get_analysis()
-            output_result.metrics['trade_analysis'] = trade_analysis # Store it
+        print(f"Avg Trade Net PnL:  ${ta.get('pnl', {}).get('net', {}).get('average', 0.0):9.2f}")
+        print(f"Avg Winning Trade:  ${ta.get('won', {}).get('pnl', {}).get('average', 0.0):9.2f}")
+        print(f"Avg Losing Trade:   ${ta.get('lost', {}).get('pnl', {}).get('average', 0.0):9.2f}")
+        print(f"Max Winning Trade:  ${ta.get('won', {}).get('pnl', {}).get('max', 0.0):9.2f}")
+        print(f"Max Losing Trade:   ${ta.get('lost', {}).get('pnl', {}).get('max', 0.0):9.2f}")
+    else:
+        print("Trade statistics N/A (TradeAnalyzer failed or no trades).")
 
-            # --- Print details ONLY if analysis is valid ---
-            if trade_analysis: # Check if analysis object is not None/empty
-                # Use .get() with defaults for safe access
-                total_trades = trade_analysis.get('total', {}).get('total', 0)
-                closed_trades = trade_analysis.get('total', {}).get('closed', 0)
 
-                if total_trades > 0:
-                    print(f"Total Closed Trades:{closed_trades:6d}")
-                    print(f"Total Open Trades:  {trade_analysis.get('total', {}).get('open', 0):6d}")
-                    print("")
-                    print(f"Winning Trades:     {trade_analysis.get('won', {}).get('total', 0):6d}")
-                    print(f"Losing Trades:      {trade_analysis.get('lost', {}).get('total', 0):6d}")
-                    print("")
+    # --- Detailed Transactions List ---
+    print("\n--- Transactions List ---") # Update title
+    transactions_output = analysis_results.get('transactions')
+    if isinstance(transactions_output, dict) and len(transactions_output) > 0:
+        # Header for Transactions output
+        print(f"{'Date':<19s} | {'Symbol':<15s} | {'Amount':>8s} | {'Price':>11s} | {'Value':>12s}")
+        print("-"*70) # Adjusted width
 
-                    # PnL Stats
-                    print(f"Total Net PnL:    ${trade_analysis.get('pnl', {}).get('net', {}).get('total', 0.0):9.2f}")
-                    print(f"Avg Net PnL:      ${trade_analysis.get('pnl', {}).get('net', {}).get('average', 0.0):9.2f}")
-                    print("")
-                    print(f"Total Winning PnL:${trade_analysis.get('won', {}).get('pnl', {}).get('total', 0.0):9.2f}")
-                    print(f"Avg Winning PnL:  ${trade_analysis.get('won', {}).get('pnl', {}).get('average', 0.0):9.2f}")
-                    print(f"Max Winning PnL:  ${trade_analysis.get('won', {}).get('pnl', {}).get('max', 0.0):9.2f}")
-                    print("")
-                    print(f"Total Losing PnL: ${trade_analysis.get('lost', {}).get('pnl', {}).get('total', 0.0):9.2f}")
-                    print(f"Avg Losing PnL:   ${trade_analysis.get('lost', {}).get('pnl', {}).get('average', 0.0):9.2f}")
-                    print(f"Max Losing PnL:   ${trade_analysis.get('lost', {}).get('pnl', {}).get('max', 0.0):9.2f}")
-                    print("")
+        # Sort transactions by datetime keys
+        sorted_dts = sorted(transactions_output.keys())
+        tx_num = 0
+        for dt in sorted_dts:
+            for tx_list in transactions_output[dt]:
+                 tx_num += 1
+                 # Unpack the list safely
+                 amount = tx_list[0] if len(tx_list) > 0 else 0
+                 price = tx_list[1] if len(tx_list) > 1 else 0.0
+                 # sid = tx_list[2] # sid might not be useful here
+                 symbol = str(tx_list[3])[:15] if len(tx_list) > 3 else 'N/A'
+                 value = tx_list[4] if len(tx_list) > 4 else 0.0
+                 dt_str = dt.strftime('%Y-%m-%d %H:%M:%S')
 
-                    # Profit Factor
-                    lost_total_pnl = trade_analysis.get('lost', {}).get('pnl', {}).get('total', 0.0)
-                    won_total_pnl = trade_analysis.get('won', {}).get('pnl', {}).get('total', 0.0)
-                    if lost_total_pnl != 0:
-                         profit_factor = abs(won_total_pnl / lost_total_pnl)
-                         print(f"Profit Factor:      {profit_factor:9.2f}")
-                    elif won_total_pnl > 0:
-                          print(f"Profit Factor:      Infinity (No Losses)")
-                    else:
-                          print(f"Profit Factor:      N/A (No Wins or Losses)")
+                 print(f"{dt_str:<19s} | {symbol:<15s} | {amount:>8d} | {price:>11.2f} | {value:>12.2f}")
 
-                    # --- Print PnL for Each Closed Trade ---
-                    print("\n--- PnL per Closed Trade ---")
-                    trades_list = trade_analysis.get('trades', [])
-                    if isinstance(trades_list, list) and len(trades_list) > 0:
-                        trade_num = 0
-                        for trade_info in trades_list:
-                            if isinstance(trade_info, dict) and 'pnl' in trade_info and 'pnlcomm' in trade_info:
-                                 trade_num += 1
-                                 pnl = trade_info.get('pnl', 0.0)
-                                 pnlcomm = trade_info.get('pnlcomm', 0.0)
-                                 status = "WIN" if pnlcomm > 0 else "LOSS" if pnlcomm < 0 else "FLAT"
-                                 print(f"Trade #{trade_num:3d}: Status: {status:4s}, Net PnL: ${pnlcomm:8.2f} (Gross PnL: ${pnl:8.2f})")
-                            else:
-                                 print(f"Warning: Unexpected format for trade_info item: {type(trade_info)}")
-                    elif closed_trades > 0:
-                         print("Trade list structure unexpected or missing, but closed trades exist.")
-                    else:
-                         print("No individual closed trade PnL data available.")
-                    # --- End PnL per Trade ---
-                else:
-                     print("No trades were executed or analyzed.")
-            else:
-                print("Trade analysis returned None or was empty.")
-        else:
-            print("TradeAnalyzer attribute not found.")
-    except Exception as e: # Catch any other exception during processing
-         print(f"Error processing Trade Analyzer: {e}")
-         traceback.print_exc()
+    else:
+        print("No detailed transaction list available (Transactions analyzer missing, no transactions, or unexpected format).")
 
-    # --- Custom Analyzer Results ---
-    print("\n--- Custom Analyzer Results ---")
-    print("\n--- Custom Analyzer Results ---")
-    try:
-        # Use hasattr for safety, though we added it, good practice
-        if hasattr(strat_instance.analyzers, 'valuecapture'):
-            value_analysis = strat_instance.analyzers.valuecapture.get_analysis()
-            output_result.value_analysis = value_analysis # Store the result
-            print(f"ValueCapture: Captured {len(value_analysis.get('values', []))} portfolio value points.")
-        else:
-             print("ValueCapture analyzer attribute not found.")
-    except Exception as e: # Catch potential errors during get_analysis
-         print(f"Error processing ValueCapture Analyzer: {e}")
-         # Ensure value_analysis is None if extraction fails
-         output_result.value_analysis = None
+    # --- Monthly Returns ---
+    print("\n--- Monthly Returns ---")
+    monthly_returns = analysis_results.get('monthlyreturns')
+    if monthly_returns:
+        # The keys are datetime objects representing the start of the month
+        # Sort by date just in case
+        sorted_months = sorted(monthly_returns.keys())
+        print(f"{'Month':<10s} | {'Return (%)':>10s}")
+        print("-"*25)
+        for month_start_dt in sorted_months:
+            ret = monthly_returns[month_start_dt] * 100 # Convert to percentage
+            # Format month as YYYY-MM
+            month_str = month_start_dt.strftime('%Y-%m')
+            print(f"{month_str:<10s} | {ret:>10.2f}%")
+    else:
+        print("No monthly returns data available (TimeReturn analyzer missing).")
 
+    print("\n" + "="*80)
+    print("--- End of Report ---")
+    
     # --- Generate Default Plot (if requested via args.plot) ---
     if args.plot:
         print("\n--- Generating Default Backtrader Plot ---")
@@ -322,13 +374,6 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
         plot_kwargs.setdefault('value', False) # Disable observer plot line (if observer was added)
         plot_kwargs.setdefault('broker', False)
         plot_kwargs.setdefault('figsize', (20, 10))
-
-        # Allow overriding via command line (this part might need adjustment if --plot becomes just a flag)
-        # If args.plot is just a flag, how do we pass kwargs?
-        # We might need a separate --plot-args argument in main.py in the future.
-        # For now, this only applies our defaults if --plot flag is present.
-        # plot_user_kwargs = parse_kwargs_func(args.plot if isinstance(args.plot, str) else '{}') # Safely parse if it's a string
-        # plot_kwargs.update(plot_user_kwargs) # Merge user args
 
         plot_title = f"Backtest: {args.run_name} ({strategy_name} on {data0_name} / {data1_name})"
         print(f"Plot Title Hint (Default Plot): {plot_title}")
