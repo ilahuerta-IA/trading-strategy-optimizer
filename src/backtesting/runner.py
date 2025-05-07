@@ -233,11 +233,11 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
     analysis_results['sqn'] = get_analyzer_output('sqn')
     analysis_results['monthlyreturns'] = get_analyzer_output('monthlyreturns')
     analysis_results['transactions'] = get_analyzer_output('transactions') 
-    # analysis_results['valuecapture'] = get_analyzer_output('valuecapture') # Keep commented
+    analysis_results['valuecapture'] = get_analyzer_output('valuecapture')
 
     # Store metrics dict in the final result object
     output_result.metrics = analysis_results
-    # output_result.value_analysis = analysis_results.get('valuecapture') # Keep commented
+    output_result.value_analysis = analysis_results.get('valuecapture')
 
     # --- Detailed Terminal Printing ---
     print("\n\n" + "="*80)
