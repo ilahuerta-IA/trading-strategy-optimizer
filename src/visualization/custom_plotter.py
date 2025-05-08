@@ -1,142 +1,138 @@
 # visualization/custom_plotter.py
-# import plotly.graph_objects as go # Keep if plot_backtest_data is still present
 from lightweight_charts import Chart
 import pandas as pd
-import traceback # For detailed error printing
+# import numpy as np # Not needed for real data
+import traceback
 
-# --- Keep the old Plotly function for reference if needed ---
-# You can comment out or delete this entire function if you are
-# only using lightweight-charts going forward.
-def plot_backtest_data(analysis_data, run_name="Backtest", data0_name="Data0", data1_name="Data1", use_candlestick=False):
-    """
-    (DEPRECATED - Use plot_with_lightweight_charts)
-    Creates a Plotly chart showing:
-    - Data0 as Candlestick or Line (Left Y-axis) based on use_candlestick flag
-    - Data1 as Line (Right Y-axis)
-    - Portfolio Value as Line (Right Offset Y-axis)
-    Attempts to remove weekend gaps from X-axis.
-    """
-    print("--- NOTE: plot_backtest_data (Plotly) is likely deprecated. Use plot_with_lightweight_charts. ---")
-    # --- Data extraction ---
-    # ... (Implementation using Plotly - kept for reference) ...
-    # ... (Make sure necessary Plotly imports are present if uncommented) ...
-    pass # Placeholder if function body removed
+# Keep the old Plotly function if needed
+# def plot_backtest_data(...): pass
 
-
-# --- Lightweight Charts Plotting Function with Subcharts ---
+# --- Lightweight Charts Plotting Function with REAL DATA and Corrected Subchart Positions ---
 def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name="Data0", data1_name="Data1"):
     """
     Creates an interactive chart using lightweight-charts-python:
-    - Main Chart: Data0 as Candles/OHLC
-    - Subchart 1: Data1 Close as Line
-    - Subchart 2: Portfolio Value as Line
+    
+    - Main Chart: Data0 OHLC (Real Data)
+    - Subchart 1 (Top): Data1 Close (Real Data)
+    - Subchart 2 (Bottom): Portfolio Value (Real Data)
     """
-    print("Attempting plot with lightweight-charts using subcharts...")
+    print("Attempting plot with lightweight-charts using Top/Bottom subcharts...")
 
-    # --- Extract Data ---
+    # --- Extract Real Data ---
     datetimes = analysis_data.get('datetimes', [])
     values = analysis_data.get('values', [])
     d0_ohlc = analysis_data.get('d0_ohlc', {})
     d1_ohlc = analysis_data.get('d1_ohlc', {})
 
     # --- Basic Validation ---
-    # Check for presence and minimum length if desired
-    min_len = 10 # Example minimum length
+    min_len = 10
     if (not datetimes or len(datetimes) < min_len or
         not d0_ohlc or not d0_ohlc.get('close') or len(d0_ohlc['close']) < min_len or
         not values or len(values) < min_len or
         not d1_ohlc or not d1_ohlc.get('close') or len(d1_ohlc['close']) < min_len):
         print("Lightweight Charts Plotter Warning: Missing or insufficient essential data.")
-        # Optionally check lengths match if strict alignment needed
-        # if not (len(datetimes) == len(values) == len(d0_ohlc['close']) == len(d1_ohlc['close'])):
-        #    print("Lightweight Charts Plotter Warning: Data lengths mismatch.")
-        #    return # Or proceed carefully
         return
 
-
-    # --- Prepare DataFrames ---
+    # --- Prepare DataFrames using REAL data ---
     try:
-        # Main Data 0 (OHLC)
-        d0_df = pd.DataFrame({
-            'time': pd.to_datetime(datetimes),
-            'open': d0_ohlc.get('open', []),
-            'high': d0_ohlc.get('high', []),
-            'low': d0_ohlc.get('low', []),
-            'close': d0_ohlc.get('close', [])
-        })
-        # Drop rows where essential OHLC data might be NaN (or zero if that indicates missing)
+        d0_df = pd.DataFrame({ 'time': pd.to_datetime(datetimes), 'open': d0_ohlc.get('open', []), 'high': d0_ohlc.get('high', []), 'low': d0_ohlc.get('low', []), 'close': d0_ohlc.get('close', []) })
         d0_df.dropna(subset=['time', 'open', 'high', 'low', 'close'], inplace=True)
-        # Optional: Set time as index if preferred, though library handles 'time' column
-        # d0_df.set_index('time', inplace=True)
-        if d0_df.empty: raise ValueError("Data0 DataFrame is empty after processing.")
-        print(f"DEBUG: d0_df length: {len(d0_df)}")
+        if d0_df.empty: raise ValueError("Data0 DataFrame is empty.")
+        print(f"DEBUG: Real d0_df length: {len(d0_df)}")
 
-        # Data 1 Line (Needs 'time' and column matching line name)
-        d1_line_name = f'{data1_name} Close'
-        d1_close = d1_ohlc.get('close', [])
-        if len(datetimes) == len(d1_close):
-             d1_line_df = pd.DataFrame({'time': pd.to_datetime(datetimes), d1_line_name: d1_close})
-             d1_line_df.dropna(inplace=True)
-        else: d1_line_df = pd.DataFrame() # Will be empty if lengths mismatch
-        if d1_line_df.empty: print("Lightweight Charts Plotter Warning: Data1 DataFrame is empty.")
-        print(f"DEBUG: d1_line_df length: {len(d1_line_df)}")
+        d1_line_name = f'{data1_name} Close'; d1_close = d1_ohlc.get('close', [])
+        if len(datetimes) == len(d1_close): d1_line_df = pd.DataFrame({'time': pd.to_datetime(datetimes), d1_line_name: d1_close}); d1_line_df.dropna(inplace=True)
+        else: print(f"LW Warning: Data1 length mismatch, skipping."); d1_line_df = pd.DataFrame()
+        print(f"DEBUG: Real d1_line_df length: {len(d1_line_df)}")
 
-        # Portfolio Value Line (Needs 'time' and column matching line name)
         value_line_name = 'Portfolio Value'
-        if len(datetimes) == len(values):
-            value_line_df = pd.DataFrame({'time': pd.to_datetime(datetimes), value_line_name: values})
-            value_line_df.dropna(inplace=True)
-        else: value_line_df = pd.DataFrame() # Will be empty if lengths mismatch
-        if value_line_df.empty: print("Lightweight Charts Plotter Warning: Value DataFrame is empty.")
-        print(f"DEBUG: value_line_df length: {len(value_line_df)}")
+        if len(datetimes) == len(values): value_line_df = pd.DataFrame({'time': pd.to_datetime(datetimes), value_line_name: values}); value_line_df.dropna(inplace=True)
+        else: print(f"LW Warning: Value length mismatch, skipping."); value_line_df = pd.DataFrame()
+        print(f"DEBUG: Real value_line_df length: {len(value_line_df)}")
+
+        # --- Get Start and End Dates for Visible Range ---
+        if not d0_df.empty:
+             start_time = d0_df['time'].iloc[0]
+             end_time = d0_df['time'].iloc[-1]
+             print(f"DEBUG: Data range: {start_time} to {end_time}")
+        else:
+             start_time, end_time = None, None
 
     except Exception as e:
-        print(f"Lightweight Charts Plotter Error creating DataFrames: {e}")
-        traceback.print_exc()
-        return
+        print(f"Lightweight Charts Plotter Error creating DataFrames: {e}"); traceback.print_exc(); return
 
-    # --- Create and Configure Chart with Subcharts ---
+
+    # --- Create and Configure Chart with Subcharts (Using User's Corrected Logic) ---
     try:
-        chart = Chart(width=1000, height=400) # Initial height for main pane
-        chart.legend(visible=True)
+        # Set height fractions for layout
+        top_subchart_height = 0.4    # e.g., 40% for top subchart
+        main_chart_height = 0.4      # e.g., 40% for main chart
+        bottom_subchart_height = 0.2 # e.g., 20% for bottom subchart
+        # Ensure they sum to 1.0 or handle potential gaps/overlaps
 
-        # Apply Styling
-        chart.layout(background_color='#131722', text_color='#D9D9D9', font_size=12, font_family='Trebuchet MS')
+        # Initialize Main Chart - Use inner_height for its relative size
+        chart = Chart(inner_width=1, inner_height=main_chart_height)
+        chart.legend(visible=True)
+        chart.layout(background_color='#131722', text_color='#D9D9D9')
         chart.grid(vert_enabled=True, horz_enabled=True, color='#3C4043')
         chart.candle_style(up_color='#26A69A', down_color='#EF5350', wick_up_color='#26A69A', wick_down_color='#EF5350', border_visible=False, wick_visible=True)
-        chart.watermark(f'{run_name} - {data0_name}', color='rgba(180, 180, 180, 0.5)')
+        chart.watermark(f'{data0_name} OHLC (Main)', color='rgba(180, 180, 180, 0.5)')
 
-        # Set main data (Data 0 OHLC)
+
+        # --- Create Subchart 1 (Data 1) ---
+        subchart_1 = None
+        line_1 = None
+        if not d1_line_df.empty:
+            print("Creating subchart 1 (Top) for Data 1...")
+            subchart_1 = chart.create_subchart(position='top', width=1.0, height=top_subchart_height, sync=True)
+            line_1 = subchart_1.create_line(d1_line_name, color='orange', width=1, price_label=True)
+        else:
+            print("Skipping Data 1 subchart due to empty DataFrame.")
+
+        # --- Create Subchart 2 (Portfolio Value) positioned BOTTOM ---
+        subchart_2 = None
+        line_2 = None
+        if not value_line_df.empty:
+             print("Creating subchart 2 (Bottom) for Portfolio Value...")
+             subchart_2 = chart.create_subchart(position='bottom', width=1.0, height=bottom_subchart_height, sync=True)
+             line_2 = subchart_2.create_line(value_line_name, color='green', width=2, style='dashed', price_label=True)
+        else:
+            print("Skipping Portfolio Value subchart due to empty DataFrame.")
+
+        # Set data AFTER creating all chart/subchart/line objects
+        print("Setting main chart data...")
         chart.set(d0_df)
 
-        # --- Create Subchart for Data 1 ---
-        if not d1_line_df.empty:
-            print("Creating subchart for Data 1...")
-            # Adjust height fraction as needed
-            subchart_d1 = chart.create_subchart(position='bottom', width=1.0, height=0.25, sync=True)
-            subchart_d1.watermark(f'{data1_name}', color='rgba(180, 180, 180, 0.4)', font_size=16)
-            # Create line ON THE SUBCHART
-            line_d1 = subchart_d1.create_line(d1_line_name, color='orange', width=1, price_label=True)
-            line_d1.set(d1_line_df)
+        if subchart_1 and line_1 and not d1_line_df.empty:
+            print("Setting data for subchart 1 (Data 1)...")
+            line_1.set(d1_line_df)
 
-        # --- Create Subchart for Portfolio Value ---
-        if not value_line_df.empty:
-             print("Creating subchart for Portfolio Value...")
-             # Adjust height fraction as needed
-             subchart_value = chart.create_subchart(position='bottom', width=1.0, height=0.25, sync=True)
-             subchart_value.watermark('Portfolio Value', color='rgba(180, 180, 180, 0.4)', font_size=16)
-             # Create line ON THE SUBCHART
-             line_value = subchart_value.create_line(value_line_name, color='green', width=2, style='dashed', price_label=True)
-             line_value.set(value_line_df)
+        if subchart_2 and line_2 and not value_line_df.empty:
+            print("Setting data for subchart 2 (Portfolio Value)...")
+            line_2.set(value_line_df)
 
 
-        print("Displaying lightweight chart with subcharts...")
-        # block=True pauses script until chart window closed
-        # block=False opens chart and script continues (might exit too soon)
+        print("Attempting chart.fit() to fit content...")
+        chart.fit()
+
+        # Explicitly Set Visible Time Range
+        if start_time and end_time:
+            print(f"Setting visible range from {start_time} to {end_time}")
+            try:
+        # Pass pandas Timestamps directly if possible, or convert to strings/seconds
+                chart.set_visible_range(start_time, end_time)
+            except Exception as e_range:
+                print(f"ERROR setting visible range: {e_range}")
+                print("Attempting chart.fit()")
+                chart.fit() # Fallback to fitContent if set_visible_range fails
+        else:
+            print("Fitting content to view (no start/end time found).")
+            chart.fit() # Use fitContent if start/end unavailable
+
+        print("Displaying lightweight chart with Top/Bottom subcharts...")
         chart.show(block=True)
         print("Lightweight chart closed.")
 
     except Exception as e:
         print(f"ERROR generating/displaying lightweight chart: {e}")
         traceback.print_exc()
-
