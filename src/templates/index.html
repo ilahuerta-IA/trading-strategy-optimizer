@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0" />
+    <title>Backtrader Custom JS Chart</title>
+    <script type="text/javascript" src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { padding: 0; margin: 0; background-color: #131722; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .chart-pane { width: 100%; position: relative; }
+        #mainChartContainer { flex: 0.6; }
+        #subChart1Container { flex: 0.2; }
+        #subChart2Container { flex: 0.2; }
+        #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 20px; z-index: 9999; display: block; }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading chart data...</div>
+    <div id="mainChartContainer" class="chart-pane"></div>
+    <div id="subChart1Container" class="chart-pane"></div>
+    <div id="subChart2Container" class="chart-pane"></div>
+
+    <script type="text/javascript">
+        const mainChartDiv = document.getElementById('mainChartContainer');
+        const subChart1Div = document.getElementById('subChart1Container');
+        const subChart2Div = document.getElementById('subChart2Container');
+        const loadingDiv = document.getElementById('loading');
+
+        const commonChartOptions = { /* ... your common options ... */
+            layout: { background: { color: '#131722' }, textColor: '#D9D9D9', fontSize: 12 },
+            grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+            timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#484848' },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        };
+
+        // --- Initialize Charts ---
+        const mainChart = LightweightCharts.createChart(mainChartDiv, { ...commonChartOptions, width: mainChartDiv.clientWidth, height: mainChartDiv.clientHeight });
+        const subChart1 = LightweightCharts.createChart(subChart1Div, { ...commonChartOptions, width: subChart1Div.clientWidth, height: subChart1Div.clientHeight, timeScale: { ...commonChartOptions.timeScale, visible: false } });
+        const subChart2 = LightweightCharts.createChart(subChart2Div, { ...commonChartOptions, width: subChart2Div.clientWidth, height: subChart2Div.clientHeight, timeScale: { ...commonChartOptions.timeScale, visible: false } });
+
+        // --- Sync Time Scales ---
+        mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => { if (range) { subChart1.timeScale().setVisibleLogicalRange(range); subChart2.timeScale().setVisibleLogicalRange(range); } });
+        subChart1.timeScale().subscribeVisibleLogicalRangeChange(range => { if (range) { mainChart.timeScale().setVisibleLogicalRange(range); subChart2.timeScale().setVisibleLogicalRange(range); } });
+        subChart2.timeScale().subscribeVisibleLogicalRangeChange(range => { if (range) { mainChart.timeScale().setVisibleLogicalRange(range); subChart1.timeScale().setVisibleLogicalRange(range); } });
+
+        // --- Sync Crosshairs (Simplified, ensure LightweightCharts object is used) ---
+        function syncCrosshair(sourceChart, targetCharts, param) {
+            if (param.time) { // Check if time is available
+                targetCharts.forEach(targetChart => {
+                    if (targetChart) { // Check if targetChart is initialized
+                        targetChart.setCrosshairPosition?.(param.price, param.time, param.seriesData.get(sourceChart.series));
+                    }
+                });
+            }
+        }
+        // Note: param.seriesData.get(sourceChart.series) is problematic if series types differ or not on source
+        // A simpler time-based sync is more robust for different chart types:
+        mainChart.subscribeCrosshairMove(param => { if(param.time) { [subChart1, subChart2].forEach(sc => sc.setCrosshairPosition?.(0, param.time, null)); }});
+        subChart1.subscribeCrosshairMove(param => { if(param.time) { [mainChart, subChart2].forEach(sc => sc.setCrosshairPosition?.(0, param.time, null)); }});
+        subChart2.subscribeCrosshairMove(param => { if(param.time) { [mainChart, subChart1].forEach(sc => sc.setCrosshairPosition?.(0, param.time, null)); }});
+
+
+        // --- Data Series (Using new API) ---
+        const mainCandlestickSeries = mainChart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#26A69A', downColor: '#EF5350', borderVisible: false });
+        const data1LineSeries = subChart1.addSeries(LightweightCharts.LineSeries, { color: 'orange', lineWidth: 1.5 });
+        const portfolioValueLineSeries = subChart2.addSeries(LightweightCharts.LineSeries, { color: 'green', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 2 });
+
+        // Fetch data and populate charts
+        fetch('/api/chart_data')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) { /* ... error handling ... */ return; }
+                console.log("Data received. Populating charts...");
+
+                if (data.data0_ohlc && data.data0_ohlc.length > 0) {
+                    mainCandlestickSeries.setData(data.data0_ohlc);
+                }
+                if (data.data1_line && data.data1_line.length > 0) {
+                    data1LineSeries.setData(data.data1_line);
+                }
+                if (data.portfolio_value_line && data.portfolio_value_line.length > 0) {
+                    portfolioValueLineSeries.setData(data.portfolio_value_line);
+                }
+
+                // --- KEY CHANGE: Explicitly set the visible range or fit content AFTER data is set ---
+                if (data.data0_ohlc && data.data0_ohlc.length > 0) {
+                    const firstDataPointTime = data.data0_ohlc[0].time;
+                    const lastDataPointTime = data.data0_ohlc[data.data0_ohlc.length - 1].time;
+
+                    console.log(`Attempting to set visible range: ${new Date(firstDataPointTime*1000)} to ${new Date(lastDataPointTime*1000)}`);
+                    mainChart.timeScale().setVisibleRange({
+                        from: firstDataPointTime,
+                        to: lastDataPointTime,
+                    });
+                    // As an alternative or fallback, try fitContent:
+                    // mainChart.timeScale().fitContent();
+                    console.log("Visible range/fitContent command sent.");
+                }
+                // --- END KEY CHANGE ---
+
+                loadingDiv.style.display = 'none';
+            })
+            .catch(error => { /* ... error handling ... */ });
+
+        function resizeCharts() { /* ... */ }
+        window.addEventListener('resize', resizeCharts);
+        resizeCharts();
+    </script>
+</body>
+</html>

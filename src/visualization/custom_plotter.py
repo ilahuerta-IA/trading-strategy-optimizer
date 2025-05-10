@@ -1,20 +1,17 @@
 # visualization/custom_plotter.py
 from lightweight_charts import Chart
 import pandas as pd
-# import numpy as np # Not needed for real data
+# import numpy as np
 import traceback
+import time # For a small delay if needed
 
-# Keep the old Plotly function if needed
-# def plot_backtest_data(...): pass
-
-# --- Lightweight Charts Plotting Function with REAL DATA and Corrected Subchart Positions ---
 def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name="Data0", data1_name="Data1"):
     """
     Creates an interactive chart using lightweight-charts-python:
-    
-    - Main Chart: Data0 OHLC (Real Data)
     - Subchart 1 (Top): Data1 Close (Real Data)
+    - Main Chart (Middle): Data0 OHLC (Real Data)
     - Subchart 2 (Bottom): Portfolio Value (Real Data)
+    Attempts to show the full time range.
     """
     print("Attempting plot with lightweight-charts using Top/Bottom subcharts...")
 
@@ -33,7 +30,7 @@ def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name=
         print("Lightweight Charts Plotter Warning: Missing or insufficient essential data.")
         return
 
-    # --- Prepare DataFrames using REAL data ---
+    # --- Prepare DataFrames ---
     try:
         d0_df = pd.DataFrame({ 'time': pd.to_datetime(datetimes), 'open': d0_ohlc.get('open', []), 'high': d0_ohlc.get('high', []), 'low': d0_ohlc.get('low', []), 'close': d0_ohlc.get('close', []) })
         d0_df.dropna(subset=['time', 'open', 'high', 'low', 'close'], inplace=True)
@@ -50,27 +47,15 @@ def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name=
         else: print(f"LW Warning: Value length mismatch, skipping."); value_line_df = pd.DataFrame()
         print(f"DEBUG: Real value_line_df length: {len(value_line_df)}")
 
-        # --- Get Start and End Dates for Visible Range ---
-        if not d0_df.empty:
-             start_time = d0_df['time'].iloc[0]
-             end_time = d0_df['time'].iloc[-1]
-             print(f"DEBUG: Data range: {start_time} to {end_time}")
-        else:
-             start_time, end_time = None, None
-
     except Exception as e:
         print(f"Lightweight Charts Plotter Error creating DataFrames: {e}"); traceback.print_exc(); return
 
-
-    # --- Create and Configure Chart with Subcharts (Using User's Corrected Logic) ---
+    # --- Create and Configure Chart ---
     try:
-        # Set height fractions for layout
-        top_subchart_height = 0.4    # e.g., 40% for top subchart
-        main_chart_height = 0.4      # e.g., 40% for main chart
-        bottom_subchart_height = 0.2 # e.g., 20% for bottom subchart
-        # Ensure they sum to 1.0 or handle potential gaps/overlaps
+        top_subchart_height = 0.25
+        main_chart_height = 0.50 # Give main chart more space
+        bottom_subchart_height = 0.25
 
-        # Initialize Main Chart - Use inner_height for its relative size
         chart = Chart(inner_width=1, inner_height=main_chart_height)
         chart.legend(visible=True)
         chart.layout(background_color='#131722', text_color='#D9D9D9')
@@ -78,60 +63,70 @@ def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name=
         chart.candle_style(up_color='#26A69A', down_color='#EF5350', wick_up_color='#26A69A', wick_down_color='#EF5350', border_visible=False, wick_visible=True)
         chart.watermark(f'{data0_name} OHLC (Main)', color='rgba(180, 180, 180, 0.5)')
 
-
-        # --- Create Subchart 1 (Data 1) ---
-        subchart_1 = None
-        line_1 = None
+        subchart_1 = None; line_1 = None
         if not d1_line_df.empty:
             print("Creating subchart 1 (Top) for Data 1...")
             subchart_1 = chart.create_subchart(position='top', width=1.0, height=top_subchart_height, sync=True)
             line_1 = subchart_1.create_line(d1_line_name, color='orange', width=1, price_label=True)
-        else:
-            print("Skipping Data 1 subchart due to empty DataFrame.")
 
-        # --- Create Subchart 2 (Portfolio Value) positioned BOTTOM ---
-        subchart_2 = None
-        line_2 = None
+        subchart_2 = None; line_2 = None
         if not value_line_df.empty:
              print("Creating subchart 2 (Bottom) for Portfolio Value...")
              subchart_2 = chart.create_subchart(position='bottom', width=1.0, height=bottom_subchart_height, sync=True)
              line_2 = subchart_2.create_line(value_line_name, color='green', width=2, style='dashed', price_label=True)
-        else:
-            print("Skipping Portfolio Value subchart due to empty DataFrame.")
 
-        # Set data AFTER creating all chart/subchart/line objects
+        # Set data
         print("Setting main chart data...")
         chart.set(d0_df)
+        if subchart_1 and line_1 and not d1_line_df.empty: print("Setting data for subchart 1..."); line_1.set(d1_line_df)
+        if subchart_2 and line_2 and not value_line_df.empty: print("Setting data for subchart 2..."); line_2.set(value_line_df)
 
-        if subchart_1 and line_1 and not d1_line_df.empty:
-            print("Setting data for subchart 1 (Data 1)...")
-            line_1.set(d1_line_df)
+        print("Displaying lightweight chart...")
+        chart.show(block=False) # Show non-blocking to allow sending more commands
+        print("Chart window opened (non-blocking).")
 
-        if subchart_2 and line_2 and not value_line_df.empty:
-            print("Setting data for subchart 2 (Portfolio Value)...")
-            line_2.set(value_line_df)
+        # --- Attempt to adjust view AFTER chart is shown ---
+        # Give the JS a moment to initialize the chart fully in the webview
+        # This is a bit of a hack; a proper solution might involve JS callbacks
+        # from the chart confirming it's ready.
+        time.sleep(1) # Wait 1 second
 
+        if not d0_df.empty:
+            first_bar_index = 0 # The JS library uses logical bar indices
+            # For the first bar visible, you can try to use a negative offset or a large negative number
+            # to push the view as far left as possible.
+            # However, let's try fitContent first as it's simpler.
+            
+            print("Attempting to fit content to view...")
+            chart.fit() # Try this first
 
-        print("Attempting chart.fit() to fit content...")
-        chart.fit()
-
-        # Explicitly Set Visible Time Range
-        if start_time and end_time:
-            print(f"Setting visible range from {start_time} to {end_time}")
+            # If fit() doesn't work, try scrolling to the first bar index.
+            # The bar index for scrollToPosition is the logical index (0 for first bar, 1 for second, etc.)
+            # It seems scrollToPosition might be for a different purpose or API version.
+            # Let's focus on what the current Python wrapper definitely exposes.
+            # The `set_visible_range` expects timestamps.
+            
+            # Get actual start and end times from the DataFrame that was set
+            actual_start_time = d0_df['time'].iloc[0]
+            actual_end_time = d0_df['time'].iloc[-1]
+            print(f"Attempting chart.set_visible_range from {actual_start_time} to {actual_end_time}")
             try:
-        # Pass pandas Timestamps directly if possible, or convert to strings/seconds
-                chart.set_visible_range(start_time, end_time)
-            except Exception as e_range:
-                print(f"ERROR setting visible range: {e_range}")
-                print("Attempting chart.fit()")
-                chart.fit() # Fallback to fitContent if set_visible_range fails
+                chart.set_visible_range(actual_start_time, actual_end_time)
+                print("set_visible_range command sent.")
+            except Exception as e_svr:
+                print(f"Error calling set_visible_range: {e_svr}")
         else:
-            print("Fitting content to view (no start/end time found).")
-            chart.fit() # Use fitContent if start/end unavailable
+            print("d0_df is empty, cannot set visible range.")
 
-        print("Displaying lightweight chart with Top/Bottom subcharts...")
-        chart.show(block=True)
-        print("Lightweight chart closed.")
+
+        print("Waiting for chart window to be closed by user (script will keep running)...")
+        # Keep the script alive so the chart window doesn't close immediately
+        # This is a common pattern if `chart.show(block=False)` is used.
+        # The `chart.show_async()` with `asyncio.run()` is the more robust way.
+        # For now, a simple loop or long sleep can work for testing.
+        while chart.is_alive: # Check a flag that lightweight-charts sets
+            time.sleep(0.1)
+        print("Lightweight chart process seems to have ended or window closed.")
 
     except Exception as e:
         print(f"ERROR generating/displaying lightweight chart: {e}")
