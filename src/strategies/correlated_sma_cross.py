@@ -1,7 +1,7 @@
-# strategies/sma_crossover.py
+# strategies/correlated_sma_cross.py
 import backtrader as bt
 
-class SMACrossOverStrategy(bt.Strategy):
+class CorrelatedSMACrossStrategy(bt.Strategy):
     """
     Buys data0 when its Fast SMA crosses above its Slow SMA AND
     data1's Fast SMA crosses below its Slow SMA.
@@ -18,6 +18,16 @@ class SMACrossOverStrategy(bt.Strategy):
         ('run_name', 'corr_sma_run') # Default run name
     )
 
+    # Define with base display names or placeholders
+    _plottable_indicators_template = [
+        # (attr_name, line_name, base_display_name_format, target_pane, options_dict, param_key_for_display)
+        ('sma_fast_d0', 'sma', 'Fast SMA D0 ({})', 'main', {'color': 'yellow'}, 'p_fast_d0'),
+        ('sma_slow_d0', 'sma', 'Slow SMA D0 ({})', 'main', {'color': 'purple'}, 'p_slow_d0'),
+        ('d1_close_line', 'close', 'Data 1 Close', 'data1_pane', {'color': 'orange', 'lineWidth': 1.5}),
+        ('sma_fast_d1', 'sma', 'Fast SMA D1 ({})', 'data1_pane', {'color': '#FF8C00'}, 'p_fast_d1'),
+        ('sma_slow_d1', 'sma', 'Slow SMA D1 ({})', 'data1_pane', {'color': '#FF4500'}, 'p_slow_d1'),
+    ]
+
     def __init__(self):
         # Keep references to the data feeds generically
         self.d0 = self.data0
@@ -26,6 +36,8 @@ class SMACrossOverStrategy(bt.Strategy):
         # --- Get Data Feed Names ---
         self.d0_name = self.d0._name if hasattr(self.d0, '_name') else 'data0'
         self.d1_name = self.d1._name if hasattr(self.d1, '_name') else 'data1'
+        # Assign data1.close to an attribute
+        self.d1_close_line = self.d1.close
 
         # --- Indicators for data0 ---
         self.sma_fast_d0 = bt.indicators.SMA(self.d0.close, period=self.p.p_fast_d0)
@@ -42,6 +54,24 @@ class SMACrossOverStrategy(bt.Strategy):
 
         # For order tracking
         self.order = None
+
+        self._plottable_indicators = []
+        for item_tuple in self._plottable_indicators_template:
+            if len(item_tuple) == 6:
+                attr, line, fmt_str, pane, opts, param_key = item_tuple
+                param_value = getattr(self.p, param_key, '') # Get param value from self.p
+                display_name = fmt_str.format(param_value)
+            elif len(item_tuple) == 5: # Assumes no param_key for formatting
+                attr, line, display_name_direct, pane, opts = item_tuple
+                display_name = display_name_direct # Use display name directly
+            else:
+                print(f"Warning: Skipping misformatted item in _plottable_indicators_template: {item_tuple}")
+                continue
+
+            self._plottable_indicators.append(
+                (attr, line, display_name, pane, opts) # Final tuple has 5 elements
+            )
+
 
         print(f"Initialized CorrelatedSMACrossStrategy:")
         print(f"  - {self.d0_name}: Fast SMA({self.p.p_fast_d0}), Slow SMA({self.p.p_slow_d0})")

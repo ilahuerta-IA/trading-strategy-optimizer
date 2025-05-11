@@ -3,108 +3,306 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0" />
-    <title>Backtrader Custom JS Chart</title>
+    <title>Backtrader Advanced JS Chart</title>
+    <!-- TradingView Lightweight Charts Standalone JS Library -->
     <script type="text/javascript" src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { padding: 0; margin: 0; background-color: #131722; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        .chart-pane { width: 100%; position: relative; }
-        #mainChartContainer { flex: 0.6; }
-        #subChart1Container { flex: 0.2; }
-        #subChart2Container { flex: 0.2; }
-        #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 20px; z-index: 9999; display: block; }
+        body {
+            padding: 0;
+            margin: 0;
+            background-color: #131722; /* Dark background for the whole page */
+            display: flex;
+            flex-direction: column; /* Stack chart containers vertically */
+            height: 100vh; /* Full viewport height */
+            overflow: hidden; /* Prevent scrollbars on body if charts fit perfectly */
+            color: #D9D9D9; /* Default text color */
+            font-family: 'Trebuchet MS', sans-serif;
+        }
+
+        .chart-pane {
+            width: 100%;
+            position: relative; /* For potential absolutely positioned children */
+            border-top: 1px solid #2B2B43; /* Separator line */
+        }
+        #mainChartContainer {
+            flex: 0.8; /* Main chart takes 50% height initially, adjust as needed */
+            border-top: none; /* No border on the very top chart */
+        }
+        /* Subchart heights will be managed by flex property set in JS */
+
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            z-index: 9999;
+            display: block; /* Initially visible */
+        }
+        /* Simple legend style (can be enhanced) */
+        .lw-chart-legend {
+            position: absolute;
+            left: 12px;
+            top: 12px;
+            z-index: 1; /* Below crosshair/tooltips */
+            font-size: 11px;
+            line-height: 16px;
+            pointer-events: none; /* Allow clicks to pass through to chart */
+        }
     </style>
 </head>
 <body>
     <div id="loading">Loading chart data...</div>
+
+    <!-- Main Chart Container -->
     <div id="mainChartContainer" class="chart-pane"></div>
-    <div id="subChart1Container" class="chart-pane"></div>
-    <div id="subChart2Container" class="chart-pane"></div>
+
+    <!-- Area where subcharts will be dynamically added -->
+    <div id="subchartsArea" style="display: flex; flex-direction: column; flex-grow: 1;"></div>
 
     <script type="text/javascript">
         const mainChartDiv = document.getElementById('mainChartContainer');
-        const subChart1Div = document.getElementById('subChart1Container');
-        const subChart2Div = document.getElementById('subChart2Container');
+        const subchartsAreaDiv = document.getElementById('subchartsArea');
         const loadingDiv = document.getElementById('loading');
 
-        const commonChartOptions = { /* ... your common options ... */
-            layout: { background: { color: '#131722' }, textColor: '#D9D9D9', fontSize: 12 },
-            grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
-            timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#484848' },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        const commonChartOptions = {
+            layout: {
+                background: { color: '#131722' },
+                textColor: '#D9D9D9',
+                fontSize: 11, // Smaller font for scales
+                fontFamily: 'Trebuchet MS',
+            },
+            grid: {
+                vertLines: { color: '#2B2B43' },
+                horzLines: { color: '#2B2B43' },
+            },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+                borderColor: '#484848',
+                rightOffset: 5, // Add some space on the right
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+                vertLine: { style: LightweightCharts.LineStyle.Dashed, color: '#758696' },
+                horzLine: { style: LightweightCharts.LineStyle.Dashed, color: '#758696' },
+            },
+            rightPriceScale: { // Default for main chart
+                borderColor: '#484848',
+            }
+            // Handle localization if needed:
+            // localization: { locale: navigator.language }
         };
 
-        // --- Initialize Charts ---
-        const mainChart = LightweightCharts.createChart(mainChartDiv, { ...commonChartOptions, width: mainChartDiv.clientWidth, height: mainChartDiv.clientHeight });
-        const subChart1 = LightweightCharts.createChart(subChart1Div, { ...commonChartOptions, width: subChart1Div.clientWidth, height: subChart1Div.clientHeight, timeScale: { ...commonChartOptions.timeScale, visible: false } });
-        const subChart2 = LightweightCharts.createChart(subChart2Div, { ...commonChartOptions, width: subChart2Div.clientWidth, height: subChart2Div.clientHeight, timeScale: { ...commonChartOptions.timeScale, visible: false } });
+        // --- Initialize Main Chart ---
+        const mainChart = LightweightCharts.createChart(mainChartDiv, {
+            ...commonChartOptions,
+            width: mainChartDiv.clientWidth,
+            height: mainChartDiv.clientHeight, // Initial, will be adjusted by flex
+        });
+        const mainCandlestickSeries = mainChart.addSeries(LightweightCharts.CandlestickSeries, {
+            upColor: '#26A69A', downColor: '#EF5350',
+            wickUpColor: '#26A69A', wickDownColor: '#EF5350',
+            borderVisible: false,
+        });
 
-        // --- Sync Time Scales ---
-        mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => { if (range) { subChart1.timeScale().setVisibleLogicalRange(range); subChart2.timeScale().setVisibleLogicalRange(range); } });
-        subChart1.timeScale().subscribeVisibleLogicalRangeChange(range => { if (range) { mainChart.timeScale().setVisibleLogicalRange(range); subChart2.timeScale().setVisibleLogicalRange(range); } });
-        subChart2.timeScale().subscribeVisibleLogicalRangeChange(range => { if (range) { mainChart.timeScale().setVisibleLogicalRange(range); subChart1.timeScale().setVisibleLogicalRange(range); } });
+        // Store subchart instances and their series
+        let subchartInstances = {}; // key: pane_id, value: { chart: chartJsObject, seriesMap: {} }
+        let allChartObjectsForSync = [mainChart]; // For synchronizing time/crosshair
 
-        // --- Sync Crosshairs (Simplified, ensure LightweightCharts object is used) ---
-        function syncCrosshair(sourceChart, targetCharts, param) {
-            if (param.time) { // Check if time is available
-                targetCharts.forEach(targetChart => {
-                    if (targetChart) { // Check if targetChart is initialized
-                        targetChart.setCrosshairPosition?.(param.price, param.time, param.seriesData.get(sourceChart.series));
+        // --- Helper to create/get subchart ---
+        function getOrCreateSubchart(paneId, numSubchartsTotal) {
+            if (!subchartInstances[paneId]) {
+                const subDiv = document.createElement('div');
+                subDiv.id = `subchart_pane_${paneId}`;
+                subDiv.className = 'chart-pane';
+                // Distribute remaining space among subcharts
+                const remainingFlex = 1.0 - parseFloat(mainChartDiv.style.flex || 0.5);
+                const flexPerSub = numSubchartsTotal > 0 ? remainingFlex / numSubchartsTotal : 0.1; // Avoid 0
+                subDiv.style.flex = `${Math.max(0.1, flexPerSub)}`; // Min height for visibility
+                subchartsAreaDiv.appendChild(subDiv);
+
+                const newSubchart = LightweightCharts.createChart(subDiv, {
+                    ...commonChartOptions,
+                    width: subDiv.clientWidth,
+                    height: subDiv.clientHeight, // Initial, flex will adjust
+                    timeScale: { ...commonChartOptions.timeScale, visible: false }, // Hide subchart time axis
+                    rightPriceScale: { borderColor: '#484848' },
+                });
+                subchartInstances[paneId] = { chart: newSubchart, seriesMap: {} };
+                allChartObjectsForSync.push(newSubchart);
+                console.log(`Created subchart for pane: ${paneId}`);
+            }
+            return subchartInstances[paneId].chart;
+        }
+
+        // --- Sync Functions ---
+        function setupSync(chartsToSync) {
+            if (chartsToSync.length < 2) return;
+
+            chartsToSync.forEach(sourceChart => {
+                const otherCharts = chartsToSync.filter(c => c !== sourceChart);
+
+                sourceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                    if (range) {
+                        otherCharts.forEach(target => target.timeScale().setVisibleLogicalRange(range));
                     }
                 });
-            }
+
+                sourceChart.subscribeCrosshairMove(param => {
+                    if (param.time) {
+                        otherCharts.forEach(target => {
+                            // Find the series on the target chart to get price.
+                            // This is a simplified crosshair sync based on time.
+                            // It won't show the price on the crosshair of other charts unless
+                            // there's a series at that exact time to derive a price from.
+                            // For simple line series, it might find one.
+                            let priceOnTarget = 0; // Default price if not found
+                            if (param.seriesData) { // Check if seriesData exists on param
+                                 // This part is tricky because param.seriesData is a Map of series on the *source* chart.
+                                 // We need to find a corresponding point on the *target* chart series.
+                                 // For basic time sync, just move the crosshair time.
+                            }
+                            target.setCrosshairPosition?.(priceOnTarget, param.time, null); // The 'null' for series is important
+                        });
+                    } else { // Clear crosshairs on other charts if source is cleared
+                        otherCharts.forEach(target => target.clearCrosshairPosition?.());
+                    }
+                });
+            });
         }
-        // Note: param.seriesData.get(sourceChart.series) is problematic if series types differ or not on source
-        // A simpler time-based sync is more robust for different chart types:
-        mainChart.subscribeCrosshairMove(param => { if(param.time) { [subChart1, subChart2].forEach(sc => sc.setCrosshairPosition?.(0, param.time, null)); }});
-        subChart1.subscribeCrosshairMove(param => { if(param.time) { [mainChart, subChart2].forEach(sc => sc.setCrosshairPosition?.(0, param.time, null)); }});
-        subChart2.subscribeCrosshairMove(param => { if(param.time) { [mainChart, subChart1].forEach(sc => sc.setCrosshairPosition?.(0, param.time, null)); }});
 
-
-        // --- Data Series (Using new API) ---
-        const mainCandlestickSeries = mainChart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#26A69A', downColor: '#EF5350', borderVisible: false });
-        const data1LineSeries = subChart1.addSeries(LightweightCharts.LineSeries, { color: 'orange', lineWidth: 1.5 });
-        const portfolioValueLineSeries = subChart2.addSeries(LightweightCharts.LineSeries, { color: 'green', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 2 });
 
         // Fetch data and populate charts
         fetch('/api/chart_data')
             .then(response => response.json())
             .then(data => {
-                if (data.error) { /* ... error handling ... */ return; }
-                console.log("Data received. Populating charts...");
+                if (data.error) {
+                    loadingDiv.innerText = `API Error: ${data.error}`;
+                    console.error("Error fetching chart data:", data.error);
+                    return;
+                }
+                console.log("Data received for plotting:", data);
 
                 if (data.data0_ohlc && data.data0_ohlc.length > 0) {
                     mainCandlestickSeries.setData(data.data0_ohlc);
-                }
-                if (data.data1_line && data.data1_line.length > 0) {
-                    data1LineSeries.setData(data.data1_line);
-                }
-                if (data.portfolio_value_line && data.portfolio_value_line.length > 0) {
-                    portfolioValueLineSeries.setData(data.portfolio_value_line);
-                }
+                } else { console.warn("No Data0 OHLC to plot."); }
 
-                // --- KEY CHANGE: Explicitly set the visible range or fit content AFTER data is set ---
-                if (data.data0_ohlc && data.data0_ohlc.length > 0) {
-                    const firstDataPointTime = data.data0_ohlc[0].time;
-                    const lastDataPointTime = data.data0_ohlc[data.data0_ohlc.length - 1].time;
-
-                    console.log(`Attempting to set visible range: ${new Date(firstDataPointTime*1000)} to ${new Date(lastDataPointTime*1000)}`);
-                    mainChart.timeScale().setVisibleRange({
-                        from: firstDataPointTime,
-                        to: lastDataPointTime,
+                // Calculate number of unique subchart panes needed for dynamic height allocation
+                const subchartPaneIds = new Set();
+                if (data.indicator_configs) {
+                    data.indicator_configs.forEach(cfg => {
+                        if (cfg.target_pane !== 'main') subchartPaneIds.add(cfg.target_pane);
                     });
-                    // As an alternative or fallback, try fitContent:
-                    // mainChart.timeScale().fitContent();
-                    console.log("Visible range/fitContent command sent.");
                 }
-                // --- END KEY CHANGE ---
+                 // Also consider Data1 and PortfolioValue for subchart count if they are not in indicator_configs
+                if (data.data1_line && data.data1_line.length > 0 && !subchartPaneIds.has('data1_pane')) { // Assuming a fixed pane id
+                    subchartPaneIds.add('data1_pane');
+                }
+                if (data.portfolio_value_line && data.portfolio_value_line.length > 0 && !subchartPaneIds.has('value_pane')) {
+                    subchartPaneIds.add('value_pane');
+                }
+                const numUniqueSubcharts = subchartPaneIds.size;
 
+
+                // --- Plot Data1 Line (fixed subchart or from indicator_configs) ---
+                // if (data.data1_line && data.data1_line.length > 0) {
+                //     const data1PaneId = 'data1_pane'; // Or get from indicator_configs if it's there
+                //     const targetChartD1 = getOrCreateSubchart(data1PaneId, numUniqueSubcharts);
+                //     const d1Line = targetChartD1.addSeries(LightweightCharts.LineSeries, {
+                //         title: data.data1_line_name || "Data 1 Close", // Use name from data if provided
+                //         color: 'orange', lineWidth: 1.5, lastValueVisible: true
+                //     });
+                //     d1Line.setData(data.data1_line);
+                //     console.log("Plotted Data1 line.");
+                // } else { console.warn("No Data1 line data."); }
+
+                // --- Plot Portfolio Value Line (fixed subchart or from indicator_configs) ---
+                if (data.portfolio_value_line && data.portfolio_value_line.length > 0) {
+                    const valuePaneId = 'value_pane';
+                    const targetChartVal = getOrCreateSubchart(valuePaneId, numUniqueSubcharts);
+                    const valLine = targetChartVal.addSeries(LightweightCharts.LineSeries, {
+                        title: "Portfolio Value",
+                        color: 'green', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 2, lastValueVisible: true
+                    });
+                    valLine.setData(data.portfolio_value_line);
+                    console.log("Plotted Portfolio Value line.");
+                } else { console.warn("No Portfolio Value line data."); }
+
+
+                // --- Dynamically Plot Indicators ---
+                if (data.indicator_configs && data.indicator_series) {
+                    data.indicator_configs.forEach(config => {
+                        const seriesData = data.indicator_series[config.internal_id];
+                        if (!seriesData || seriesData.length === 0) {
+                            console.warn(`No data for indicator: ${config.display_name}`);
+                            return;
+                        }
+
+                        let targetChart;
+                        if (config.target_pane === 'main') {
+                            targetChart = mainChart;
+                        } else {
+                            targetChart = getOrCreateSubchart(config.target_pane, numUniqueSubcharts);
+                        }
+
+                        const indicatorLine = targetChart.addSeries(LightweightCharts.LineSeries, {
+                            title: config.display_name,
+                            color: config.color || getRandomColor(), // Add color to config or use random
+                            lineWidth: config.lineWidth || 1.5,
+                            lineStyle: config.lineStyle || LightweightCharts.LineStyle.Solid,
+                            priceLineVisible: false, // Usually false for indicators
+                            lastValueVisible: true
+                        });
+                        indicatorLine.setData(seriesData);
+                        console.log(`Plotted indicator: ${config.display_name} on pane: ${config.target_pane}`);
+                    });
+                }
+                // --- End Indicator Plotting ---
+
+                setupSync(allChartObjectsForSync); // Setup sync after all charts created
+
+                mainChart.timeScale().fitContent();
                 loadingDiv.style.display = 'none';
+                window.dispatchEvent(new Event('resize')); // Trigger resize to set chart dimensions
             })
-            .catch(error => { /* ... error handling ... */ });
+            .catch(error => {
+                loadingDiv.innerText = 'Failed to load chart data. Check console.';
+                console.error('Error fetching or processing chart data:', error);
+            });
 
-        function resizeCharts() { /* ... */ }
-        window.addEventListener('resize', resizeCharts);
-        resizeCharts();
+        function getRandomColor() { /* ... (same as before) ... */
+            const r = Math.floor(Math.random() * 200); const g = Math.floor(Math.random() * 200); const b = Math.floor(Math.random() * 200);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function resizeAllCharts() {
+            mainChart.resize(mainChartDiv.clientWidth, mainChartDiv.clientHeight);
+            Object.values(subchartInstances).forEach(subEntry => {
+                // Find the div for this subchart (key is paneId)
+                const paneId = Object.keys(subchartInstances).find(key => subchartInstances[key] === subEntry);
+                const subDiv = document.getElementById(`subchart_pane_${paneId}`);
+                if (subDiv) subEntry.chart.resize(subDiv.clientWidth, subDiv.clientHeight);
+            });
+        }
+        window.addEventListener('resize', resizeAllCharts);
+        // Initial resize might be needed after DOM manipulation, give flexbox time
+        setTimeout(() => {
+            mainChartDiv.style.flex = '0.5'; // Example fixed height for main
+            // Re-calculate subchart flex based on how many were actually created
+            const actualSubchartsCreated = Object.keys(subchartInstances).length;
+            if (actualSubchartsCreated > 0) {
+                const remainingFlexForSubs = 1.0 - parseFloat(mainChartDiv.style.flex);
+                const flexPerActualSub = remainingFlexForSubs / actualSubchartsCreated;
+                 Object.keys(subchartInstances).forEach(paneId => {
+                    const subDiv = document.getElementById(`subchart_pane_${paneId}`);
+                    if(subDiv) subDiv.style.flex = `${flexPerActualSub}`;
+                });
+            }
+            resizeAllCharts();
+        }, 100);
+
     </script>
 </body>
 </html>

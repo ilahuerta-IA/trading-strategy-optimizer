@@ -30,7 +30,7 @@ DEFAULT_TO_DATE = None
 
 # --- Default Strategy ---
 #DEFAULT_STRATEGY_NAME = 'MACrossOver'
-DEFAULT_STRATEGY_NAME = 'SMACrossOver' # Default to the new simple strategy
+DEFAULT_STRATEGY_NAME = 'CorrelatedSMACross' # Default to the new simple strategy
 #DEFAULT_STRATEGY_NAME = 'BBandPearsonDivergence'
 
 

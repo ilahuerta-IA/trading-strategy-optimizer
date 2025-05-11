@@ -2,6 +2,7 @@
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 import pandas as pd
+import numpy as np
 from pathlib import Path
 import sys
 import datetime
@@ -91,12 +92,15 @@ def get_chart_data():
 
     output_json = {
         "data0_ohlc": [],
-        "data1_line": [],
-        "portfolio_value_line": []
+        #"data1_line": [],
+        "portfolio_value_line": [],
+        "indicator_configs": [],
+        "indicator_series": {}
     }
     try:
         datetimes = CACHED_BACKTEST_DATA.get('datetimes', [])
         times_sec = [dt.timestamp() for dt in datetimes] # UNIX timestamp in seconds
+
 
         # Data0 OHLC
         d0_ohlc_data = CACHED_BACKTEST_DATA.get('d0_ohlc', {})
@@ -118,13 +122,13 @@ def get_chart_data():
 
 
         # Data1 Line
-        d1_ohlc_data = CACHED_BACKTEST_DATA.get('d1_ohlc', {})
-        d1_close_values = d1_ohlc_data.get('close', [])
-        if times_sec and d1_close_values and len(times_sec) == len(d1_close_values):
-            for i in range(len(times_sec)):
-                output_json["data1_line"].append({"time": times_sec[i], "value": d1_close_values[i]})
-        else:
-            print("API Warning: Insufficient or mismatched data for Data1 line.")
+        # d1_ohlc_data = CACHED_BACKTEST_DATA.get('d1_ohlc', {})
+        # d1_close_values = d1_ohlc_data.get('close', [])
+        # if times_sec and d1_close_values and len(times_sec) == len(d1_close_values):
+        #     for i in range(len(times_sec)):
+        #         output_json["data1_line"].append({"time": times_sec[i], "value": d1_close_values[i]})
+        # else:
+        #     print("API Warning: Insufficient or mismatched data for Data1 line.")
 
 
         # Portfolio Value Line
@@ -134,6 +138,23 @@ def get_chart_data():
                 output_json["portfolio_value_line"].append({"time": times_sec[i], "value": portfolio_values[i]})
         else:
             print("API Warning: Insufficient or mismatched data for Portfolio Value line.")
+
+         # Process and add indicator data
+        indicator_configs = CACHED_BACKTEST_DATA.get('indicator_configs', [])
+        indicator_series_data = CACHED_BACKTEST_DATA.get('indicators', {})
+
+        output_json['indicator_configs'] = indicator_configs # Pass configs directly
+
+        for internal_id, series_values in indicator_series_data.items():
+            if times_sec and series_values and len(times_sec) == len(series_values):
+                output_json['indicator_series'][internal_id] = [
+                    {"time": times_sec[i], "value": series_values[i]} 
+                    for i in range(len(times_sec))
+                    if not np.isnan(series_values[i]) # Filter out NaNs for plotting
+                ]
+            else:
+                print(f"API Warning: Mismatched lengths or no data for indicator {internal_id}")
+       
 
     except Exception as e:
         print(f"API Error formatting data: {e}")
