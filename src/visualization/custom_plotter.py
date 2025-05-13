@@ -52,9 +52,9 @@ def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name=
 
     # --- Create and Configure Chart ---
     try:
-        top_subchart_height = 0.25
-        main_chart_height = 0.50 # Give main chart more space
-        bottom_subchart_height = 0.25
+        top_subchart_height = 0.45
+        main_chart_height = 0.45 # Give main chart more space
+        bottom_subchart_height = 0.1
 
         chart = Chart(inner_width=1, inner_height=main_chart_height)
         chart.legend(visible=True)

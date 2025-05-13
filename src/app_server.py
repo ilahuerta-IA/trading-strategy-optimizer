@@ -92,7 +92,7 @@ def get_chart_data():
 
     output_json = {
         "data0_ohlc": [],
-        #"data1_line": [],
+        "data1_line": [],
         "portfolio_value_line": [],
         "indicator_configs": [],
         "indicator_series": {},
@@ -123,13 +123,13 @@ def get_chart_data():
 
 
         # Data1 Line
-        # d1_ohlc_data = CACHED_BACKTEST_DATA.get('d1_ohlc', {})
-        # d1_close_values = d1_ohlc_data.get('close', [])
-        # if times_sec and d1_close_values and len(times_sec) == len(d1_close_values):
-        #     for i in range(len(times_sec)):
-        #         output_json["data1_line"].append({"time": times_sec[i], "value": d1_close_values[i]})
-        # else:
-        #     print("API Warning: Insufficient or mismatched data for Data1 line.")
+        d1_ohlc_data = CACHED_BACKTEST_DATA.get('d1_ohlc', {})
+        d1_close_values = d1_ohlc_data.get('close', [])
+        if times_sec and d1_close_values and len(times_sec) == len(d1_close_values):
+            for i in range(len(times_sec)):
+                output_json["data1_line"].append({"time": times_sec[i], "value": d1_close_values[i]})
+        else:
+            print("API Warning: Insufficient or mismatched data for Data1 line.")
 
 
         # Portfolio Value Line

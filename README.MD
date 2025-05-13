@@ -1,3 +1,6 @@
+¡Excelente idea! Un buen `README.md` es fundamental. Basándome en la estructura que proporcionaste y adaptándola a tu proyecto actual, aquí tienes una propuesta:
+
+```markdown
 # Python Backtesting & Analysis Platform
 
 ## Overview
@@ -36,66 +39,32 @@ The system is designed to be modular, allowing users to easily integrate their o
 
 ## Project Structure (Key Components)
 
-├── main.py # CLI entry point for running backtests
+```
+├── main.py                     # CLI entry point for running backtests
 ├── src/
-│ ├── app_server.py # Flask web server
-│ ├── templates/
-│ │ └── index.html # HTML/JS for the web dashboard
-│ ├── analyzers/
-│ │ └── value_capture.py # Custom analyzer for detailed data capture
-│ ├── backtesting/
-│ │ └── runner.py # Core backtest setup and execution logic
-│ ├── config/
-│ │ └── settings.py # Project-wide default settings
-│ ├── indicators/
-│ │ └── correlation.py # Custom PearsonR indicator
-│ ├── strategies/ # Directory for trading strategy implementations
-│ │ ├── correlated_sma_cross.py
-│ │ ├── ma_cci_crossover.py
-│ │ └── bband_pearson_divergence.py
-│ ├── utils/
-│ │ └── parsing.py # Utility for parsing string arguments
-│ └── visualization/
-│ └── custom_plotter.py # Python utility for plotting with lightweight-charts-python
-├── data/ # Sample CSV data files (e.g., SPY_5m_1Yea.csv)
-├── requirements.txt # Python dependencies
-└── README.md # This file
-
-
-## Getting Started
-
-### Prerequisites
-
-*   Python (3.8 or higher recommended)
-*   Git
-
-### Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/YOUR_USERNAME/YOUR_REPOSITORY_NAME.git
-    cd YOUR_REPOSITORY_NAME
-    ```
-
-2.  **Set up a virtual environment (Recommended):**
-    ```bash
-    python -m venv venv
-    # Activate the environment
-    # Windows:
-    # venv\Scripts\activate
-    # macOS/Linux:
-    # source venv/bin/activate
-    ```
-
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-### Creating `requirements.txt`
-
-Create a file named `requirements.txt` in the project root with the following content (add or adjust versions as needed):
-
+│   ├── app_server.py           # Flask web server
+│   ├── templates/
+│   │   └── index.html          # HTML/JS for the web dashboard
+│   ├── analyzers/
+│   │   └── value_capture.py    # Custom analyzer for detailed data capture
+│   ├── backtesting/
+│   │   └── runner.py           # Core backtest setup and execution logic
+│   ├── config/
+│   │   └── settings.py         # Project-wide default settings
+│   ├── indicators/
+│   │   └── correlation.py      # Custom PearsonR indicator
+│   ├── strategies/             # Directory for trading strategy implementations
+│   │   ├── correlated_sma_cross.py
+│   │   ├── ma_cci_crossover.py
+│   │   └── bband_pearson_divergence.py
+│   ├── utils/
+│   │   └── parsing.py          # Utility for parsing string arguments
+│   └── visualization/
+│       └── custom_plotter.py   # Python utility for plotting with lightweight-charts-python
+├── data/                       # Sample CSV data files (e.g., SPY_5m_1Yea.csv)
+├── requirements.txt            # Python dependencies
+└── README.md                   # This file
+```
 
 ## Getting Started
 
@@ -131,16 +100,18 @@ Create a file named `requirements.txt` in the project root with the following co
 
 Create a file named `requirements.txt` in the project root with the following content (add or adjust versions as needed):
 
+```
 backtrader
 matplotlib
 pandas
 numpy
 Flask
 Flask-CORS
-lightweight-charts-python # For the CLI custom plotter
-scipy # For PearsonR indicator
+lightweight-charts-python  # For the CLI custom plotter
+scipy                      # For PearsonR indicator
+# Add other libraries if your custom strategies require them
+```
 
-Add other libraries if your custom strategies require them
 ### Data Setup
 
 1.  Place your CSV data files in the `data/` directory.
@@ -158,7 +129,11 @@ Navigate to the project root directory.
 
 ```bash
 python main.py
+```
 
+**Run with specific parameters:**
+
+```bash
 python main.py \
     --data-path-1 data/YOUR_DATA_1.csv \
     --data-path-2 data/YOUR_DATA_2.csv \
@@ -170,49 +145,80 @@ python main.py \
     --sizer "stake=5" \
     --plot \
     --run-name "MyTestRun_Jan2023"
+```
 
-Use python main.py --help to see all available options and their defaults.
-The --plot flag will attempt to generate both the lightweight-charts-python HTML plot and the default Backtrader Matplotlib plot.
-2. Web Application Dashboard
-Start the Flask server:
-Navigate to the src/ directory:
+*   Use `python main.py --help` to see all available options and their defaults.
+*   The `--plot` flag will attempt to generate both the `lightweight-charts-python` HTML plot and the default Backtrader Matplotlib plot.
 
-cd src
-python app_server.py
+### 2. Web Application Dashboard
 
-(Alternatively, from the project root: python src/app_server.py)
-Open your web browser and go to: http://127.0.0.1:5000/
-The server will run a default backtest upon startup (configured in app_server.py via ArgsMock and settings.py), and the dashboard will display its results.
-Development & Customization
-Adding a New Strategy
-Create a new Python file in the src/strategies/ directory (e.g., my_new_strategy.py).
-Define your strategy class, inheriting from bt.Strategy.
-Implement __init__, next, notify_order, log, etc.
-For Web Visualization:
-Add a class attribute _plottable_indicators_template (list of tuples) to specify which internal indicators should be captured by ValueCaptureAnalyzer. Each tuple should be: (attribute_name, line_name, display_name_format_or_direct, target_pane, options_dict, optional_param_key_for_display_name).
-Initialize self.signals = [] in __init__.
-In notify_order, append to self.signals upon trade execution: {'type': 'buy'/'sell', 'datetime': dt_object, 'price': exec_price}.
-Update the strategy mapping in src/backtesting/runner.py (in the setup_and_run_backtest function) to include your new strategy, or implement a more dynamic strategy loading mechanism.
-You can now select your strategy using the --strategy-name argument in the CLI or (eventually) through the web UI.
-Future Enhancements (Roadmap)
-Web UI Backtest Execution: Allow users to configure and launch backtests directly from the Flask web application.
-Trade Signal Visualization: Display buy/sell markers on the Lightweight Charts in the web dashboard.
-Results Persistence: Save backtest results (metrics and chart data) to files or a database for later review and comparison.
-Dynamic Strategy Loading: Improve runner.py to load strategies without manual if-elif mapping.
-Parameter Optimization UI: Integrate tools for running strategy parameter optimizations via the web interface.
-Enhanced Legend & Interactivity: Improve the web chart legend and add more interactive elements.
-(Potential) Live Execution Module: A separate component for connecting strategies to a live trading broker.
-Contributing
+1.  **Start the Flask server:**
+    Navigate to the `src/` directory:
+    ```bash
+    cd src
+    python app_server.py
+    ```
+    (Alternatively, from the project root: `python src/app_server.py`)
+
+2.  **Open your web browser** and go to: `http://127.0.0.1:5000/`
+
+    The server will run a default backtest upon startup (configured in `app_server.py` via `ArgsMock` and `settings.py`), and the dashboard will display its results.
+
+## Development & Customization
+
+### Adding a New Strategy
+
+1.  Create a new Python file in the `src/strategies/` directory (e.g., `my_new_strategy.py`).
+2.  Define your strategy class, inheriting from `bt.Strategy`.
+    *   Implement `__init__`, `next`, `notify_order`, `log`, etc.
+    *   **For Web Visualization:**
+        *   Add a class attribute `_plottable_indicators_template` (list of tuples) to specify which internal indicators should be captured by `ValueCaptureAnalyzer`. Each tuple should be: `(attribute_name, line_name, display_name_format_or_direct, target_pane, options_dict, optional_param_key_for_display_name)`.
+        *   Initialize `self.signals = []` in `__init__`.
+        *   In `notify_order`, append to `self.signals` upon trade execution: `{'type': 'buy'/'sell', 'datetime': dt_object, 'price': exec_price}`.
+3.  Update the strategy mapping in `src/backtesting/runner.py` (in the `setup_and_run_backtest` function) to include your new strategy, or implement a more dynamic strategy loading mechanism.
+4.  You can now select your strategy using the `--strategy-name` argument in the CLI or (eventually) through the web UI.
+
+## Future Enhancements (Roadmap)
+
+*   **Web UI Backtest Execution:** Allow users to configure and launch backtests directly from the Flask web application.
+*   **Trade Signal Visualization:** Display buy/sell markers on the Lightweight Charts in the web dashboard.
+*   **Results Persistence:** Save backtest results (metrics and chart data) to files or a database for later review and comparison.
+*   **Dynamic Strategy Loading:** Improve `runner.py` to load strategies without manual if-elif mapping.
+*   **Parameter Optimization UI:** Integrate tools for running strategy parameter optimizations via the web interface.
+*   **Enhanced Legend & Interactivity:** Improve the web chart legend and add more interactive elements.
+*   **(Potential) Live Execution Module:** A separate component for connecting strategies to a live trading broker.
+
+## Contributing
+
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs, feature requests, or improvements.
-Fork the Project.
-Create your Feature Branch (git checkout -b feature/AmazingFeature).
-Commit your Changes (git commit -m 'Add some AmazingFeature').
-Push to the Branch (git push origin feature/AmazingFeature).
-Open a Pull Request.
-License
-Distributed under the MIT License. See LICENSE for more information. (You'll need to add a LICENSE file if you choose one).
-Acknowledgements
-Backtrader
-Flask
-Lightweight Charts™ by TradingView
-lightweight-charts-python
+
+1.  Fork the Project.
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`).
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`).
+4.  Push to the Branch (`git push origin feature/AmazingFeature`).
+5.  Open a Pull Request.
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information. (You'll need to add a LICENSE file if you choose one).
+
+## Acknowledgements
+
+*   [Backtrader](https://www.backtrader.com/)
+*   [Flask](https://flask.palletsprojects.com/)
+*   [Lightweight Charts™ by TradingView](https://www.tradingview.com/lightweight-charts/)
+*   [lightweight-charts-python](https://github.com/louisnw01/lightweight-charts-python/)
+
+---
+```
+
+**Cosas a considerar para este README:**
+
+1.  **`YOUR_USERNAME/YOUR_REPOSITORY_NAME`**: Asegúrate de reemplazar esto con los valores correctos.
+2.  **`LICENSE`**: Si vas a usar una licencia como MIT, crea un archivo `LICENSE` (o `LICENSE.txt`) en la raíz del proyecto con el texto de la licencia.
+3.  **`requirements.txt`**: La sección `Creating requirements.txt` te da el contenido. Realmente crea este archivo en tu proyecto. Puedes generarlo automáticamente si tienes tu entorno virtual activado y todas las dependencias instaladas: `pip freeze > requirements.txt`.
+4.  **Estructura del Proyecto:** He intentado que la estructura del proyecto refleje tus archivos. Ajústala si es necesario.
+5.  **Roadmap:** La sección de "Future Enhancements" se basa en las discusiones previas. Modifícala según tus prioridades.
+6.  **Claridad en las Características:** He intentado ser específico sobre lo que cada componente hace y qué bibliotecas usa.
+
+Este README debería dar una excelente primera impresión y una buena guía para cualquiera que encuentre tu proyecto.

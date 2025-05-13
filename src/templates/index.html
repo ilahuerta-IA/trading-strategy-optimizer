@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0" />
     <title>Backtrader Advanced JS Chart</title>
     <!-- TradingView Lightweight Charts Standalone JS Library -->
-    <script type="text/javascript" src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body {
             padding: 0;
@@ -101,7 +101,8 @@
             width: mainChartDiv.clientWidth,
             height: mainChartDiv.clientHeight, // Initial, will be adjusted by flex
         });
-        const mainCandlestickSeries = mainChart.addSeries(LightweightCharts.CandlestickSeries, {
+        // Use addCandlestickSeries instead of the generic addSeries
+        const mainCandlestickSeries = mainChart.addCandlestickSeries({
             upColor: '#26A69A', downColor: '#EF5350',
             wickUpColor: '#26A69A', wickDownColor: '#EF5350',
             borderVisible: false,
@@ -187,6 +188,32 @@
 
                 if (data.data0_ohlc && data.data0_ohlc.length > 0) {
                     mainCandlestickSeries.setData(data.data0_ohlc);
+
+                    // Plot buy/sell signals as markers
+                    if (data.trade_signals && data.trade_signals.length > 0) {
+                        // Filter out signals with invalid timestamps
+                        const validTradeSignals = data.trade_signals.filter(signal => signal.time);
+
+                        const mappedTradeSignals = validTradeSignals.map(signal => ({
+                            time: signal.time, // Ensure this is a UNIX timestamp or 'YYYY-MM-DD'
+                            position: signal.type === 'buy' ? 'belowBar' : 'aboveBar',
+                            color: signal.type === 'buy' ? '#2196F3' : '#e91e63', // Blue for buy, Red for sell
+                            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+                            text: signal.type === 'buy' ? 'Buy' : 'Sell' // Optional: add text
+                        }));
+                        // console.log("Mapped trade signals for markers:", mappedTradeSignals);
+                        if (mainCandlestickSeries && mappedTradeSignals.length > 0) {
+                            // Set markers directly on the candlestick series
+                            mainCandlestickSeries.setMarkers(mappedTradeSignals);
+                            console.log("Trade signal markers set on mainCandlestickSeries.");
+                        } else {
+                            if (!mainCandlestickSeries) console.error("mainCandlestickSeries is not defined when trying to set markers.");
+                            if (mappedTradeSignals.length === 0) console.log("No valid trade signals to map to markers.");
+                        }
+                    } else {
+                        console.log("No trade signals data found or it is empty.");
+                    }
+
                 } else { console.warn("No Data0 OHLC to plot."); }
 
                 // Calculate number of unique subchart panes needed for dynamic height allocation
@@ -207,22 +234,24 @@
 
 
                 // --- Plot Data1 Line (fixed subchart or from indicator_configs) ---
-                // if (data.data1_line && data.data1_line.length > 0) {
-                //     const data1PaneId = 'data1_pane'; // Or get from indicator_configs if it's there
-                //     const targetChartD1 = getOrCreateSubchart(data1PaneId, numUniqueSubcharts);
-                //     const d1Line = targetChartD1.addSeries(LightweightCharts.LineSeries, {
-                //         title: data.data1_line_name || "Data 1 Close", // Use name from data if provided
-                //         color: 'orange', lineWidth: 1.5, lastValueVisible: true
-                //     });
-                //     d1Line.setData(data.data1_line);
-                //     console.log("Plotted Data1 line.");
-                // } else { console.warn("No Data1 line data."); }
+                if (data.data1_line && data.data1_line.length > 0) {
+                    const data1PaneId = 'data1_pane'; // Or get from indicator_configs if it's there
+                    const targetChartD1 = getOrCreateSubchart(data1PaneId, numUniqueSubcharts);
+                    // Use addLineSeries instead of the generic addSeries
+                    const d1Line = targetChartD1.addLineSeries({
+                        title: data.data1_line_name || "Data 1 Close", // Use name from data if provided
+                        color: 'orange', lineWidth: 1.5, lastValueVisible: true
+                    });
+                    d1Line.setData(data.data1_line);
+                    console.log("Plotted Data1 line.");
+                } else { console.warn("No Data1 line data."); }
 
                 // --- Plot Portfolio Value Line (fixed subchart or from indicator_configs) ---
                 if (data.portfolio_value_line && data.portfolio_value_line.length > 0) {
                     const valuePaneId = 'value_pane';
                     const targetChartVal = getOrCreateSubchart(valuePaneId, numUniqueSubcharts);
-                    const valLine = targetChartVal.addSeries(LightweightCharts.LineSeries, {
+                    // Use addLineSeries instead of the generic addSeries
+                    const valLine = targetChartVal.addLineSeries({
                         title: "Portfolio Value",
                         color: 'green', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 2, lastValueVisible: true
                     });
@@ -247,7 +276,8 @@
                             targetChart = getOrCreateSubchart(config.target_pane, numUniqueSubcharts);
                         }
 
-                        const indicatorLine = targetChart.addSeries(LightweightCharts.LineSeries, {
+                        // Use addLineSeries instead of the generic addSeries
+                        const indicatorLine = targetChart.addLineSeries({
                             title: config.display_name,
                             color: config.color || getRandomColor(), // Add color to config or use random
                             lineWidth: config.lineWidth || 1.5,
