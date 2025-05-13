@@ -78,6 +78,17 @@ class ValueCaptureAnalyzer(bt.Analyzer):
                 self.indicator_data[config['internal_id']].append(np.nan) # Append NaN on error
 
     def get_analysis(self):
+        # Captura señales si existen en la estrategia
+        signals = []
+        if hasattr(self.strategy, 'signals'):
+            for sig in self.strategy.signals:
+                # Convertir datetime a string ISO para JSON
+                sig_copy = sig.copy()
+                if isinstance(sig_copy.get('datetime'), (str, type(None))):
+                    pass
+                else:
+                    sig_copy['datetime'] = sig_copy['datetime'].isoformat()
+                signals.append(sig_copy)
         return collections.OrderedDict(
             datetimes=self.datetimes,
             values=self.values,
@@ -85,5 +96,6 @@ class ValueCaptureAnalyzer(bt.Analyzer):
             d1_ohlc=self.d1_ohlc,
             # Add indicator data and configs to output ---
             indicator_configs=self.indicator_configs, # How to plot them
-            indicators=dict(self.indicator_data)       # The actual data series
+            indicators=dict(self.indicator_data),      # The actual data series
+            signals=signals                           # NUEVO: señales buy/sell
         )

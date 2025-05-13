@@ -95,7 +95,8 @@ def get_chart_data():
         #"data1_line": [],
         "portfolio_value_line": [],
         "indicator_configs": [],
-        "indicator_series": {}
+        "indicator_series": {},
+        "trade_signals": []  # NUEVO: lista de señales buy/sell
     }
     try:
         datetimes = CACHED_BACKTEST_DATA.get('datetimes', [])
@@ -154,7 +155,20 @@ def get_chart_data():
                 ]
             else:
                 print(f"API Warning: Mismatched lengths or no data for indicator {internal_id}")
-       
+        
+        # --- NUEVO: Agregar señales buy/sell ---
+        signals = CACHED_BACKTEST_DATA.get('signals', [])
+        for sig in signals:
+            # Convertir datetime ISO a timestamp para el plot
+            try:
+                ts = datetime.datetime.fromisoformat(sig['datetime']).timestamp()
+            except Exception:
+                ts = None
+            output_json['trade_signals'].append({
+                'type': sig.get('type'),
+                'time': ts,
+                'price': sig.get('price')
+            })
 
     except Exception as e:
         print(f"API Error formatting data: {e}")

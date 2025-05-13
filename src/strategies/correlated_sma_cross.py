@@ -55,6 +55,9 @@ class CorrelatedSMACrossStrategy(bt.Strategy):
         # For order tracking
         self.order = None
 
+        # List to store entry/exit signals
+        self.signals = []
+
         self._plottable_indicators = []
         for item_tuple in self._plottable_indicators_template:
             if len(item_tuple) == 6:
@@ -88,10 +91,13 @@ class CorrelatedSMACrossStrategy(bt.Strategy):
 
         if order.status in [order.Completed]:
             asset_name = self.d0_name # Trades are only on data0
+            dt = self.datas[0].datetime.datetime(0)
             if order.isbuy():
                 self.log(f'BUY EXECUTED [{asset_name}], Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
+                self.signals.append({'type': 'buy', 'datetime': dt, 'price': order.executed.price})
             elif order.issell():
                 self.log(f'SELL EXECUTED [{asset_name}], Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}')
+                self.signals.append({'type': 'sell', 'datetime': dt, 'price': order.executed.price})
             self.bar_executed = len(self)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
