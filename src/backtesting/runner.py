@@ -25,6 +25,7 @@ class BacktestResult:
         self.parameters = parameters
         self.metrics = {} # For standard analyzers like Drawdown, TradeAnalyzer
         self.value_analysis = None # Keep placeholder if needed later
+        self.run_config_summary = {} # Will store summary of run configuration
 
 def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, Any]]):
     """Sets up and runs the Backtrader Cerebro engine."""
@@ -238,6 +239,21 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
     # Store metrics dict in the final result object
     output_result.metrics = analysis_results
     output_result.value_analysis = analysis_results.get('valuecapture')
+
+    # --- Populate Run Configuration Summary ---
+    run_config_data = {
+        "run_name": args.run_name,
+        "strategy_name": strategy_name, # This is args.strategy_name
+        "parameters": strat_kwargs, # Strategy-specific parameters
+        "data_path_1": args.data_path_1,
+        "data_path_2": getattr(args, 'data_path_2', 'N/A'),
+        "fromdate": str(data_kwargs.get('fromdate')) if data_kwargs.get('fromdate') else getattr(args, 'fromdate', 'Start of Data'),
+        "todate": str(data_kwargs.get('todate')) if data_kwargs.get('todate') else getattr(args, 'todate', 'End of Data'),
+        "broker_config_str": args.broker,
+        "sizer_config_str": args.sizer,
+        "cerebro_config_str": args.cerebro
+    }
+    output_result.run_config_summary = run_config_data
 
     # --- Detailed Terminal Printing ---
     print("\n\n" + "="*80)

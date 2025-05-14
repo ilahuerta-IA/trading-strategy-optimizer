@@ -1,4 +1,3 @@
-¡Excelente idea! Un buen `README.md` es fundamental. Basándome en la estructura que proporcionaste y adaptándola a tu proyecto actual, aquí tienes una propuesta:
 
 ```markdown
 # Python Backtesting & Analysis Platform
@@ -37,34 +36,6 @@ The system is designed to be modular, allowing users to easily integrate their o
     *   (Future) Allows users to configure and run new backtests directly from the web interface.
 *   **Centralized Configuration:** `config/settings.py` for default paths, strategy parameters, and CSV parsing rules.
 
-## Project Structure (Key Components)
-
-```
-├── main.py                     # CLI entry point for running backtests
-├── src/
-│   ├── app_server.py           # Flask web server
-│   ├── templates/
-│   │   └── index.html          # HTML/JS for the web dashboard
-│   ├── analyzers/
-│   │   └── value_capture.py    # Custom analyzer for detailed data capture
-│   ├── backtesting/
-│   │   └── runner.py           # Core backtest setup and execution logic
-│   ├── config/
-│   │   └── settings.py         # Project-wide default settings
-│   ├── indicators/
-│   │   └── correlation.py      # Custom PearsonR indicator
-│   ├── strategies/             # Directory for trading strategy implementations
-│   │   ├── correlated_sma_cross.py
-│   │   ├── ma_cci_crossover.py
-│   │   └── bband_pearson_divergence.py
-│   ├── utils/
-│   │   └── parsing.py          # Utility for parsing string arguments
-│   └── visualization/
-│       └── custom_plotter.py   # Python utility for plotting with lightweight-charts-python
-├── data/                       # Sample CSV data files (e.g., SPY_5m_1Yea.csv)
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
-```
 
 ## Getting Started
 
@@ -212,13 +183,5 @@ Distributed under the MIT License. See `LICENSE` for more information. (You'll n
 ---
 ```
 
-**Cosas a considerar para este README:**
 
-1.  **`YOUR_USERNAME/YOUR_REPOSITORY_NAME`**: Asegúrate de reemplazar esto con los valores correctos.
-2.  **`LICENSE`**: Si vas a usar una licencia como MIT, crea un archivo `LICENSE` (o `LICENSE.txt`) en la raíz del proyecto con el texto de la licencia.
-3.  **`requirements.txt`**: La sección `Creating requirements.txt` te da el contenido. Realmente crea este archivo en tu proyecto. Puedes generarlo automáticamente si tienes tu entorno virtual activado y todas las dependencias instaladas: `pip freeze > requirements.txt`.
-4.  **Estructura del Proyecto:** He intentado que la estructura del proyecto refleje tus archivos. Ajústala si es necesario.
-5.  **Roadmap:** La sección de "Future Enhancements" se basa en las discusiones previas. Modifícala según tus prioridades.
-6.  **Claridad en las Características:** He intentado ser específico sobre lo que cada componente hace y qué bibliotecas usa.
 
-Este README debería dar una excelente primera impresión y una buena guía para cualquiera que encuentre tu proyecto.

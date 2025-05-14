@@ -31,7 +31,7 @@ except ImportError as e:
     sys.exit(1)
 
 # --- Global variable to store backtest results ---
-CACHED_BACKTEST_DATA = None # This will store the value_analysis dictionary
+CACHED_BACKTEST_DATA = None # This will store a dictionary with value_analysis, metrics_report, and run_config
 
 # --- Initialize Flask App ---
 # Flask automatically looks for 'templates' folder in the same dir as the app file.
@@ -64,18 +64,28 @@ def run_simulation_and_cache():
 
     args = ArgsMock()
 
-    # Ensure ValueCaptureAnalyzer is active and working in runner.py
     results_data_object = setup_and_run_backtest(args, parse_kwargs_func=parse_kwargs_str)
 
-    if results_data_object and hasattr(results_data_object, 'value_analysis') and results_data_object.value_analysis:
-        print("Flask Server: Simulation complete. Caching value_analysis data.")
-        CACHED_BACKTEST_DATA = results_data_object.value_analysis
+    if results_data_object:
+        print("Flask Server: Simulation complete. Caching data.")
+        CACHED_BACKTEST_DATA = {
+            "value_analysis": getattr(results_data_object, 'value_analysis', None),
+            "metrics_report": getattr(results_data_object, 'metrics', {}),
+            "run_config": getattr(results_data_object, 'run_config_summary', {})
+        }
+        if not CACHED_BACKTEST_DATA["value_analysis"]:
+            print("Flask Server: Warning - 'value_analysis' is missing from results_data_object.")
+        if not CACHED_BACKTEST_DATA["metrics_report"]:
+            print("Flask Server: Warning - 'metrics' is missing from results_data_object.")
+        if not CACHED_BACKTEST_DATA["run_config"]:
+            print("Flask Server: Warning - 'run_config_summary' is missing from results_data_object.")
     else:
-        print("Flask Server: Simulation failed or no 'value_analysis' data found in results.")
-        print(f"Type of results_data_object: {type(results_data_object)}")
-        if results_data_object:
-            print(f"Has 'value_analysis' attr: {hasattr(results_data_object, 'value_analysis')}")
-        CACHED_BACKTEST_DATA = None
+        print("Flask Server: Simulation failed or no results_data_object returned.")
+        CACHED_BACKTEST_DATA = { # Ensure it's a dict even on failure for consistent API response
+            "value_analysis": None,
+            "metrics_report": {},
+            "run_config": {}
+        }
 
 @app.route('/')
 def index():
@@ -84,11 +94,11 @@ def index():
 
 @app.route('/api/chart_data', methods=['GET'])
 def get_chart_data():
-    """API endpoint to provide chart data in JSON format."""
+    """API endpoint to provide chart data and backtest report in JSON format."""
     global CACHED_BACKTEST_DATA
-    if CACHED_BACKTEST_DATA is None:
-        print("API Error: Backtest data not cached.")
-        return jsonify({"error": "Backtest data not available. Simulation might have failed or not run."}), 404
+    if CACHED_BACKTEST_DATA is None or CACHED_BACKTEST_DATA.get("value_analysis") is None: # Check specifically for value_analysis for charts
+        print("API Error: Backtest data (value_analysis) not cached or simulation failed.")
+        return jsonify({"error": "Backtest chart data not available. Simulation might have failed or not run."}), 404
 
     output_json = {
         "data0_ohlc": [],
@@ -96,17 +106,21 @@ def get_chart_data():
         "portfolio_value_line": [],
         "indicator_configs": [],
         "indicator_series": {},
-        "trade_signals": []  # NUEVO: lista de señales buy/sell
+        "trade_signals": [],
+        "report_data": {} # For backtest report summary
     }
-    try:
-        datetimes = CACHED_BACKTEST_DATA.get('datetimes', [])
-        times_sec = [dt.timestamp() for dt in datetimes] # UNIX timestamp in seconds
+    
+    value_analysis_data = CACHED_BACKTEST_DATA.get("value_analysis", {}) # Use the value_analysis part for charts
+    metrics_report = CACHED_BACKTEST_DATA.get("metrics_report", {})
+    run_config_summary = CACHED_BACKTEST_DATA.get("run_config", {})
 
+    try:
+        datetimes = value_analysis_data.get('datetimes', [])
+        times_sec = [dt.timestamp() for dt in datetimes]
 
         # Data0 OHLC
-        d0_ohlc_data = CACHED_BACKTEST_DATA.get('d0_ohlc', {})
+        d0_ohlc_data = value_analysis_data.get('d0_ohlc', {})
         if times_sec and d0_ohlc_data.get('close'):
-            # Ensure all OHLC lists have the same length as datetimes
             if all(len(d0_ohlc_data.get(k, [])) == len(datetimes) for k in ['open', 'high', 'low', 'close']):
                 for i in range(len(times_sec)):
                     output_json["data0_ohlc"].append({
@@ -121,9 +135,8 @@ def get_chart_data():
         else:
             print("API Warning: Insufficient data for Data0 OHLC.")
 
-
         # Data1 Line
-        d1_ohlc_data = CACHED_BACKTEST_DATA.get('d1_ohlc', {})
+        d1_ohlc_data = value_analysis_data.get('d1_ohlc', {})
         d1_close_values = d1_ohlc_data.get('close', [])
         if times_sec and d1_close_values and len(times_sec) == len(d1_close_values):
             for i in range(len(times_sec)):
@@ -131,35 +144,31 @@ def get_chart_data():
         else:
             print("API Warning: Insufficient or mismatched data for Data1 line.")
 
-
         # Portfolio Value Line
-        portfolio_values = CACHED_BACKTEST_DATA.get('values', [])
+        portfolio_values = value_analysis_data.get('values', [])
         if times_sec and portfolio_values and len(times_sec) == len(portfolio_values):
             for i in range(len(times_sec)):
                 output_json["portfolio_value_line"].append({"time": times_sec[i], "value": portfolio_values[i]})
         else:
             print("API Warning: Insufficient or mismatched data for Portfolio Value line.")
 
-         # Process and add indicator data
-        indicator_configs = CACHED_BACKTEST_DATA.get('indicator_configs', [])
-        indicator_series_data = CACHED_BACKTEST_DATA.get('indicators', {})
-
-        output_json['indicator_configs'] = indicator_configs # Pass configs directly
-
+        # Process and add indicator data
+        indicator_configs = value_analysis_data.get('indicator_configs', [])
+        indicator_series_data = value_analysis_data.get('indicators', {})
+        output_json['indicator_configs'] = indicator_configs
         for internal_id, series_values in indicator_series_data.items():
             if times_sec and series_values and len(times_sec) == len(series_values):
                 output_json['indicator_series'][internal_id] = [
                     {"time": times_sec[i], "value": series_values[i]} 
                     for i in range(len(times_sec))
-                    if not np.isnan(series_values[i]) # Filter out NaNs for plotting
+                    if not np.isnan(series_values[i])
                 ]
             else:
                 print(f"API Warning: Mismatched lengths or no data for indicator {internal_id}")
         
-        # --- NUEVO: Agregar señales buy/sell ---
-        signals = CACHED_BACKTEST_DATA.get('signals', [])
+        # Process trade signals
+        signals = value_analysis_data.get('signals', [])
         for sig in signals:
-            # Convertir datetime ISO a timestamp para el plot
             try:
                 ts = datetime.datetime.fromisoformat(sig['datetime']).timestamp()
             except Exception:
@@ -170,12 +179,72 @@ def get_chart_data():
                 'price': sig.get('price')
             })
 
+        # --- Populate Backtest Report Data ---
+        report_data = {
+            "run_config": {
+                "strategy_name": run_config_summary.get('strategy_name', 'N/A'),
+                "parameters": run_config_summary.get('parameters', {}),
+                "data_path_1": run_config_summary.get('data_path_1', 'N/A'),
+                "fromdate": run_config_summary.get('fromdate', 'N/A'),
+                "todate": run_config_summary.get('todate', 'N/A'),
+            },
+            "performance_summary": {},
+            "trade_stats": {}
+        }
+
+        # Helper to safely get nested dictionary values
+        def get_nested_value(data_dict, keys, default_val=None):
+            current = data_dict
+            for key in keys:
+                if isinstance(current, dict) and key in current and current[key] is not None:
+                    current = current[key]
+                else:
+                    return default_val
+            return current
+
+        ta = metrics_report.get('tradeanalyzer', {})
+        dd = metrics_report.get('drawdown', {})
+        sh = metrics_report.get('sharpe', {})
+        sq = metrics_report.get('sqn', {})
+
+        # Performance Summary
+        report_data["performance_summary"]["total_net_pnl"] = get_nested_value(ta, ['pnl', 'net', 'total'], 0.0)
+        report_data["performance_summary"]["max_drawdown_pct"] = get_nested_value(dd, ['max', 'drawdown'], 0.0) 
+        report_data["performance_summary"]["sharpe_ratio"] = get_nested_value(sh, ['sharperatio'], "N/A")
+        report_data["performance_summary"]["sqn"] = get_nested_value(sq, ['sqn'], "N/A")
+
+        # Trade Stats
+        total_closed_trades = get_nested_value(ta, ['total', 'closed'], 0)
+        won_total = get_nested_value(ta, ['won', 'total'], 0)
+        lost_total = get_nested_value(ta, ['lost', 'total'], 0)
+        
+        pnl_gross_total = get_nested_value(ta, ['pnl', 'gross', 'total'], 0.0)
+        lost_pnl_total_val = get_nested_value(ta, ['lost', 'pnl', 'total'], 0.0)
+
+        report_data["trade_stats"]["total_closed_trades"] = total_closed_trades
+        report_data["trade_stats"]["win_rate_pct"] = (won_total / total_closed_trades * 100) if total_closed_trades > 0 else 0.0
+        
+        if lost_pnl_total_val == 0:
+            profit_factor = "N/A" if pnl_gross_total == 0 else float('inf')
+        else:
+            profit_factor = pnl_gross_total / abs(lost_pnl_total_val)
+        report_data["trade_stats"]["profit_factor"] = profit_factor
+        
+        report_data["trade_stats"]["avg_pnl_per_trade"] = get_nested_value(ta, ['pnl', 'net', 'average'], 0.0)
+        report_data["trade_stats"]["total_winning_trades"] = won_total
+        report_data["trade_stats"]["total_losing_trades"] = lost_total
+        report_data["trade_stats"]["avg_win_pnl"] = get_nested_value(ta, ['won', 'pnl', 'average'], 0.0)
+        report_data["trade_stats"]["avg_loss_pnl"] = get_nested_value(ta, ['lost', 'pnl', 'average'], 0.0)
+        report_data["trade_stats"]["max_win_pnl"] = get_nested_value(ta, ['won', 'pnl', 'max'], 0.0)
+        report_data["trade_stats"]["max_loss_pnl"] = get_nested_value(ta, ['lost', 'pnl', 'max'], 0.0)
+
+        output_json['report_data'] = report_data
+
     except Exception as e:
         print(f"API Error formatting data: {e}")
         traceback.print_exc()
         return jsonify({"error": "Error formatting data on server."}), 500
 
-    # print(f"API: Sending {len(output_json['data0_ohlc'])} OHLC points, {len(output_json['data1_line'])} D1 points, {len(output_json['portfolio_value_line'])} Value points.")
     return jsonify(output_json)
 
 if __name__ == '__main__':
@@ -183,5 +252,4 @@ if __name__ == '__main__':
     print("Starting Flask server and initial backtest simulation...")
     run_simulation_and_cache() # Run the backtest once when the server starts
     print("Initial simulation complete. Starting Flask development server...")
-    # host='0.0.0.0' makes it accessible on your network (use 127.0.0.1 for local only)
     app.run(host='127.0.0.1', port=5000, debug=True)

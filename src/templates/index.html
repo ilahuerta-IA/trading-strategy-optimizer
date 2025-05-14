@@ -13,8 +13,8 @@
             background-color: #131722; /* Dark background for the whole page */
             display: flex;
             flex-direction: column; /* Stack chart containers vertically */
-            height: 100vh; /* Full viewport height */
-            overflow: hidden; /* Prevent scrollbars on body if charts fit perfectly */
+            min-height: 100vh; /* Ensure body takes at least full viewport height */
+            overflow-y: auto; /* Allow vertical scrollbars if content overflows */
             color: #D9D9D9; /* Default text color */
             font-family: 'Trebuchet MS', sans-serif;
         }
@@ -50,6 +50,56 @@
             line-height: 16px;
             pointer-events: none; /* Allow clicks to pass through to chart */
         }
+
+        /* Styles for Backtest Report Area */
+        #backtestReportArea {
+            padding: 15px; /* Reduced padding */
+            color: #D9D9D9;
+            background-color: #181A20; /* Slightly different background */
+            font-size: 0.9em; /* Slightly smaller font for the report */
+            border-top: 1px solid #2B2B43; /* Separator from charts */
+        }
+        .report-section {
+            margin-bottom: 15px; /* Reduced margin */
+        }
+        .report-section h3 {
+            color: #4e8df5; /* Accent color for headers */
+            margin-top: 0;
+            margin-bottom: 8px; /* Reduced margin */
+            font-size: 1.1em;
+        }
+        .report-section dl {
+            margin-left: 0;
+            padding-left: 0;
+        }
+        .report-section dt {
+            font-weight: bold;
+            color: #b0b8c2; /* Lighter color for terms */
+            width: 200px; /* Fixed width for terms */
+            float: left;
+            clear: left;
+            margin-bottom: 4px; /* Reduced margin */
+        }
+        .report-section dd {
+            margin-left: 210px; /* Align definitions */
+            margin-bottom: 4px; /* Reduced margin */
+            color: #D9D9D9;
+        }
+        .report-section table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px; /* Reduced margin */
+        }
+        .report-section th, .report-section td {
+            border: 1px solid #2B2B43; /* Match chart grid color */
+            padding: 6px; /* Reduced padding */
+            text-align: left;
+        }
+        .report-section td:first-child {
+            font-weight: bold;
+            color: #b0b8c2; /* Lighter color for table labels */
+            width: 40%; /* Adjust width for label column */
+        }
     </style>
 </head>
 <body>
@@ -60,6 +110,13 @@
 
     <!-- Area where subcharts will be dynamically added -->
     <div id="subchartsArea" style="display: flex; flex-direction: column; flex-grow: 1;"></div>
+
+    <!-- Backtest Report Area -->
+    <div id="backtestReportArea" style="padding: 10px; color: #D9D9D9;">
+        <div id="reportRunConfig"></div>
+        <div id="reportPerformanceSummary"></div>
+        <div id="reportTradeStats"></div>
+    </div>
 
     <script type="text/javascript">
         const mainChartDiv = document.getElementById('mainChartContainer');
@@ -234,17 +291,39 @@
 
 
                 // --- Plot Data1 Line (fixed subchart or from indicator_configs) ---
+                // Only attempt to plot if data1_line has data
                 if (data.data1_line && data.data1_line.length > 0) {
                     const data1PaneId = 'data1_pane'; // Or get from indicator_configs if it's there
+                    
+                    // Ensure this paneId was added to subchartPaneIds if it wasn't already by an indicator
+                    // This is important for the getOrCreateSubchart height calculation
+                    if (!subchartPaneIds.has(data1PaneId)) {
+                        // This case should ideally be handled when subchartPaneIds is initially populated
+                        // For robustness, we could add it here, but it might slightly mess with height
+                        // if numUniqueSubcharts was already used.
+                        // Best practice: ensure data1_pane is added to subchartPaneIds earlier if data1_line exists.
+                        // The existing logic for subchartPaneIds already does this:
+                        // if (data.data1_line && data.data1_line.length > 0 && !subchartPaneIds.has('data1_pane')) {
+                        //     subchartPaneIds.add('data1_pane');
+                        // }
+                        // So, numUniqueSubcharts should be correct.
+                    }
+
                     const targetChartD1 = getOrCreateSubchart(data1PaneId, numUniqueSubcharts);
-                    // Use addLineSeries instead of the generic addSeries
-                    const d1Line = targetChartD1.addLineSeries({
-                        title: data.data1_line_name || "Data 1 Close", // Use name from data if provided
-                        color: 'orange', lineWidth: 1.5, lastValueVisible: true
-                    });
-                    d1Line.setData(data.data1_line);
-                    console.log("Plotted Data1 line.");
-                } else { console.warn("No Data1 line data."); }
+                    if (targetChartD1) { // Check if subchart was successfully created
+                        const d1Line = targetChartD1.addLineSeries({
+                            title: data.data1_line_name || "Data 1 Close", // Use name from data if provided
+                            color: 'orange', lineWidth: 1.5, lastValueVisible: true
+                        });
+                        d1Line.setData(data.data1_line);
+                        console.log("Plotted Data1 line.");
+                    } else {
+                        // This case should not happen if getOrCreateSubchart is robust
+                        console.error("Failed to create or get subchart for Data1 line.");
+                    }
+                } else { 
+                    console.log("No Data1 line data provided or data is empty.");
+                }
 
                 // --- Plot Portfolio Value Line (fixed subchart or from indicator_configs) ---
                 if (data.portfolio_value_line && data.portfolio_value_line.length > 0) {
@@ -296,6 +375,12 @@
                 mainChart.timeScale().fitContent();
                 loadingDiv.style.display = 'none';
                 window.dispatchEvent(new Event('resize')); // Trigger resize to set chart dimensions
+
+                // --- Populate Backtest Report Summary ---
+                if (data.report_data) {
+                    populateReportData(data.report_data);
+                }
+
             })
             .catch(error => {
                 loadingDiv.innerText = 'Failed to load chart data. Check console.';
@@ -332,6 +417,142 @@
             }
             resizeAllCharts();
         }, 100);
+
+        // --- Helper functions for populating report data ---
+        function formatValue(value, type = 'number', decimalPlaces = 2) {
+            if (value === null || value === undefined || value === "N/A") return 'N/A';
+            if (typeof value === 'string' && (value.toLowerCase() === 'inf' || value.toLowerCase() === 'infinity')) return 'Infinity';
+            
+            if (typeof value !== 'number' && type !== 'string') return 'N/A'; // Ensure value is a number for numeric types
+
+            switch (type) {
+                case 'currency':
+                    return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // Basic currency, adapt as needed
+                case 'percentage':
+                    return value.toFixed(decimalPlaces) + '%';
+                case 'number':
+                    return value.toFixed(decimalPlaces);
+                case 'integer':
+                    return parseInt(value, 10).toString();
+                case 'string':
+                    return String(value);
+                default:
+                    return String(value);
+            }
+        }
+
+        function appendDlItem(dlElement, term, definition, valueType = 'string', decimalPlaces) {
+            const dt = document.createElement('dt');
+            dt.textContent = term;
+            const dd = document.createElement('dd');
+            dd.textContent = formatValue(definition, valueType, decimalPlaces);
+            dlElement.appendChild(dt);
+            dlElement.appendChild(dd);
+        }
+
+        function appendTableRow(tbodyElement, label, value, valueType = 'string', decimalPlaces) {
+            const tr = document.createElement('tr');
+            const tdLabel = document.createElement('td');
+            tdLabel.textContent = label;
+            const tdValue = document.createElement('td');
+            tdValue.textContent = formatValue(value, valueType, decimalPlaces);
+            tr.appendChild(tdLabel);
+            tr.appendChild(tdValue);
+            tbodyElement.appendChild(tr);
+        }
+
+        function populateReportData(reportData) {
+            const configDiv = document.getElementById('reportRunConfig');
+            const performanceDiv = document.getElementById('reportPerformanceSummary');
+            const statsDiv = document.getElementById('reportTradeStats');
+
+            // Clear previous content and add headers
+            configDiv.innerHTML = '<h3>Run Configuration</h3>';
+            performanceDiv.innerHTML = '<h3>Performance Summary</h3>';
+            statsDiv.innerHTML = '<h3>Trade Statistics</h3>';
+
+            if (!reportData || Object.keys(reportData).length === 0) {
+                const p = document.createElement('p');
+                p.textContent = 'No report data available.';
+                // Append to one of the divs, or a general report area
+                document.getElementById('backtestReportArea').appendChild(p);
+                return;
+            }
+
+            // Populate Run Configuration
+            if (reportData.run_config) {
+                const rc = reportData.run_config;
+                const dlConfig = document.createElement('dl');
+                appendDlItem(dlConfig, 'Strategy:', rc.strategy_name);
+                
+                // Improved parameter display
+                if (rc.parameters && typeof rc.parameters === 'object' && Object.keys(rc.parameters).length > 0) {
+                    const paramsDt = document.createElement('dt');
+                    paramsDt.textContent = 'Parameters:';
+                    const paramsDd = document.createElement('dd');
+                    
+                    const paramsUl = document.createElement('ul');
+                    paramsUl.style.listStyleType = 'none'; // Optional: remove bullets
+                    paramsUl.style.paddingLeft = '0'; // Optional: remove default padding
+                    paramsUl.style.marginLeft = '0'; // Align with other dd items if dt is floated
+
+                    for (const key in rc.parameters) {
+                        if (Object.prototype.hasOwnProperty.call(rc.parameters, key)) {
+                            const li = document.createElement('li');
+                            li.innerHTML = `<span style="font-weight:normal; color:#9db2bd;">&nbsp;&nbsp;&nbsp;&nbsp;${key}:</span> ${formatValue(rc.parameters[key], typeof rc.parameters[key] === 'number' ? 'number' : 'string', 2)}`;
+                            paramsUl.appendChild(li);
+                        }
+                    }
+                    paramsDd.appendChild(paramsUl);
+                    dlConfig.appendChild(paramsDt);
+                    dlConfig.appendChild(paramsDd);
+
+                } else {
+                    appendDlItem(dlConfig, 'Parameters:', 'N/A');
+                }
+                
+                appendDlItem(dlConfig, 'Data File 1:', rc.data_path_1);
+                appendDlItem(dlConfig, 'From Date:', rc.fromdate);
+                appendDlItem(dlConfig, 'To Date:', rc.todate);
+                configDiv.appendChild(dlConfig);
+            }
+
+            // Populate Performance Summary
+            if (reportData.performance_summary) {
+                const ps = reportData.performance_summary;
+                const tablePs = document.createElement('table');
+                const tbodyPs = document.createElement('tbody');
+                
+                appendTableRow(tbodyPs, 'Total Net P&L:', ps.total_net_pnl, 'currency');
+                appendTableRow(tbodyPs, 'Max Drawdown:', ps.max_drawdown_pct, 'percentage');
+                appendTableRow(tbodyPs, 'Sharpe Ratio:', ps.sharpe_ratio, 'number', 2);
+                appendTableRow(tbodyPs, 'SQN:', ps.sqn, 'number', 2);
+                
+                tablePs.appendChild(tbodyPs);
+                performanceDiv.appendChild(tablePs);
+            }
+
+            // Populate Trade Statistics
+            if (reportData.trade_stats) {
+                const ts = reportData.trade_stats;
+                const tableTs = document.createElement('table');
+                const tbodyTs = document.createElement('tbody');
+
+                appendTableRow(tbodyTs, 'Total Closed Trades:', ts.total_closed_trades, 'integer');
+                appendTableRow(tbodyTs, 'Win Rate:', ts.win_rate_pct, 'percentage');
+                appendTableRow(tbodyTs, 'Profit Factor:', ts.profit_factor, 'number', 2); // Can be 'Infinity' or 'N/A'
+                appendTableRow(tbodyTs, 'Average P&L per Trade:', ts.avg_pnl_per_trade, 'currency');
+                appendTableRow(tbodyTs, 'Total Winning Trades:', ts.total_winning_trades, 'integer');
+                appendTableRow(tbodyTs, 'Total Losing Trades:', ts.total_losing_trades, 'integer');
+                appendTableRow(tbodyTs, 'Average Win P&L:', ts.avg_win_pnl, 'currency');
+                appendTableRow(tbodyTs, 'Average Loss P&L:', ts.avg_loss_pnl, 'currency');
+                appendTableRow(tbodyTs, 'Max Win P&L (Single Trade):', ts.max_win_pnl, 'currency');
+                appendTableRow(tbodyTs, 'Max Loss P&L (Single Trade):', ts.max_loss_pnl, 'currency');
+                
+                tableTs.appendChild(tbodyTs);
+                statsDiv.appendChild(tableTs);
+            }
+        }
 
     </script>
 </body>
