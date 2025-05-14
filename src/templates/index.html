@@ -25,11 +25,20 @@
             border-top: 1px solid #2B2B43; /* Separator line */
         }
         #mainChartContainer {
-            flex: 0.8; /* Main chart takes 50% height initially, adjust as needed */
-            border-top: none; /* No border on the very top chart */
+            width: 100%;
+            height: 40vh; /* Adjusted height */
+            margin-bottom: 10px;
         }
-        /* Subchart heights will be managed by flex property set in JS */
-
+        #data1ChartContainer { /* New chart container for data1 */
+            width: 100%;
+            height: 40vh; /* Similar height to main chart */
+            margin-bottom: 10px;
+        }
+        #subchartsArea {
+            width: 100%;
+            /* Height will be dynamic based on content or could be set */
+            margin-bottom: 10px;
+        }
         #loading {
             position: fixed;
             top: 50%;
@@ -106,7 +115,8 @@
     <div id="loading">Loading chart data...</div>
 
     <!-- Main Chart Container -->
-    <div id="mainChartContainer" class="chart-pane"></div>
+    <div id="mainChartContainer"></div>
+    <div id="data1ChartContainer"></div> <!-- New container for data1 chart -->
 
     <!-- Area where subcharts will be dynamically added -->
     <div id="subchartsArea" style="display: flex; flex-direction: column; flex-grow: 1;"></div>
@@ -119,266 +129,516 @@
     </div>
 
     <script type="text/javascript">
-        const mainChartDiv = document.getElementById('mainChartContainer');
+        let mainChart;
+        let data0CandlestickSeries;
+        let data1Chart; // Declare data1Chart
+        let data1CandlestickSeries; // Declare series for data1 OHLC
+
+        const mainChartContainer = document.getElementById('mainChartContainer');
+        const data1ChartContainer = document.getElementById('data1ChartContainer'); // Get new container
         const subchartsAreaDiv = document.getElementById('subchartsArea');
-        const loadingDiv = document.getElementById('loading');
+        const reportContainer = document.getElementById('reportContainer');
+        const allChartObjectsForSync = []; // To keep track of all chart objects for sync
+        let subchartInstances = {}; 
+        const loadingDiv = document.getElementById('loading'); // Defined globally
 
-        const commonChartOptions = {
-            layout: {
-                background: { color: '#131722' },
-                textColor: '#D9D9D9',
-                fontSize: 11, // Smaller font for scales
-                fontFamily: 'Trebuchet MS',
-            },
-            grid: {
-                vertLines: { color: '#2B2B43' },
-                horzLines: { color: '#2B2B43' },
-            },
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-                borderColor: '#484848',
-                rightOffset: 5, // Add some space on the right
-            },
-            crosshair: {
-                mode: LightweightCharts.CrosshairMode.Normal,
-                vertLine: { style: LightweightCharts.LineStyle.Dashed, color: '#758696' },
-                horzLine: { style: LightweightCharts.LineStyle.Dashed, color: '#758696' },
-            },
-            rightPriceScale: { // Default for main chart
-                borderColor: '#484848',
+        // Function to display the report data
+        function populateReportData(reportData) {
+            const reportRunConfigDiv = document.getElementById('reportRunConfig');
+            const reportPerformanceSummaryDiv = document.getElementById('reportPerformanceSummary');
+            const reportTradeStatsDiv = document.getElementById('reportTradeStats');
+
+            if (!reportRunConfigDiv || !reportPerformanceSummaryDiv || !reportTradeStatsDiv) {
+                console.error("Report divs not found!");
+                return;
             }
-            // Handle localization if needed:
-            // localization: { locale: navigator.language }
-        };
+            
+            console.log("Populating report data with structure:", Object.keys(reportData));
+            
+            // Clear previous report data
+            reportRunConfigDiv.innerHTML = '';
+            reportPerformanceSummaryDiv.innerHTML = '';
+            reportTradeStatsDiv.innerHTML = '';
 
-        // --- Initialize Main Chart ---
-        const mainChart = LightweightCharts.createChart(mainChartDiv, {
-            ...commonChartOptions,
-            width: mainChartDiv.clientWidth,
-            height: mainChartDiv.clientHeight, // Initial, will be adjusted by flex
-        });
-        // Use addCandlestickSeries instead of the generic addSeries
-        const mainCandlestickSeries = mainChart.addCandlestickSeries({
-            upColor: '#26A69A', downColor: '#EF5350',
-            wickUpColor: '#26A69A', wickDownColor: '#EF5350',
-            borderVisible: false,
-        });
-
-        // Store subchart instances and their series
-        let subchartInstances = {}; // key: pane_id, value: { chart: chartJsObject, seriesMap: {} }
-        let allChartObjectsForSync = [mainChart]; // For synchronizing time/crosshair
-
-        // --- Helper to create/get subchart ---
-        function getOrCreateSubchart(paneId, numSubchartsTotal) {
-            if (!subchartInstances[paneId]) {
-                const subDiv = document.createElement('div');
-                subDiv.id = `subchart_pane_${paneId}`;
-                subDiv.className = 'chart-pane';
-                // Distribute remaining space among subcharts
-                const remainingFlex = 1.0 - parseFloat(mainChartDiv.style.flex || 0.5);
-                const flexPerSub = numSubchartsTotal > 0 ? remainingFlex / numSubchartsTotal : 0.1; // Avoid 0
-                subDiv.style.flex = `${Math.max(0.1, flexPerSub)}`; // Min height for visibility
-                subchartsAreaDiv.appendChild(subDiv);
-
-                const newSubchart = LightweightCharts.createChart(subDiv, {
-                    ...commonChartOptions,
-                    width: subDiv.clientWidth,
-                    height: subDiv.clientHeight, // Initial, flex will adjust
-                    timeScale: { ...commonChartOptions.timeScale, visible: false }, // Hide subchart time axis
-                    rightPriceScale: { borderColor: '#484848' },
-                });
-                subchartInstances[paneId] = { chart: newSubchart, seriesMap: {} };
-                allChartObjectsForSync.push(newSubchart);
-                console.log(`Created subchart for pane: ${paneId}`);
+            // Populate Strategy Parameters
+            if (reportData.run_config) {
+                let configHtml = '<h3>Strategy Parameters</h3><dl>';
+                for (const [key, value] of Object.entries(reportData.run_config)) {
+                    configHtml += `<dt>${key}</dt><dd>${typeof value === 'object' ? JSON.stringify(value, null, 2) : value}</dd>`;
+                }
+                configHtml += '</dl>';
+                reportRunConfigDiv.innerHTML = configHtml;
             }
-            return subchartInstances[paneId].chart;
+
+            // Populate Performance Summary
+            // Check for either value_analysis (original name) or performance_summary (new name)
+            const perfData = reportData.value_analysis || reportData.performance_summary;
+            if (perfData) {
+                let summaryHtml = '<h3>Performance Summary</h3><table>';
+                for (const [key, value] of Object.entries(perfData)) {
+                    summaryHtml += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${typeof value === 'number' ? value.toFixed(2) : value}</td></tr>`;
+                }
+                summaryHtml += '</table>';
+                reportPerformanceSummaryDiv.innerHTML = summaryHtml;
+            }
+
+            // Populate Trade Stats
+            // Check for either metrics_report (original name) or trade_stats (new name)
+            const tradeData = reportData.metrics_report || reportData.trade_stats;
+            if (tradeData) {
+                let statsHtml = '<h3>Trade Statistics</h3><table>';
+                for (const [key, value] of Object.entries(tradeData)) {
+                    statsHtml += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${typeof value === 'number' ? value.toFixed(2) : value}</td></tr>`;
+                }
+                statsHtml += '</table>';
+                reportTradeStatsDiv.innerHTML = statsHtml;
+            }
         }
 
-        // --- Sync Functions ---
-        function setupSync(chartsToSync) {
-            if (chartsToSync.length < 2) return;
+        function getRandomColor() {
+            const r = Math.floor(Math.random() * 155) + 100; // Brighter colors
+            const g = Math.floor(Math.random() * 155) + 100;
+            const b = Math.floor(Math.random() * 155) + 100;
+            return `rgb(${r}, ${g}, ${b})`;
+        }
 
-            chartsToSync.forEach(sourceChart => {
-                const otherCharts = chartsToSync.filter(c => c !== sourceChart);
+        function getOrCreateSubchart(paneId, paneTitle, dataForSync) {
+            if (!subchartInstances[paneId]) {
+                const subchartDiv = document.createElement('div');
+                subchartDiv.id = `subchart_pane_${paneId}`;
+                subchartDiv.className = 'chart-pane'; // Apply common styling
+                subchartDiv.style.height = '25vh'; // Default height for subcharts
+                subchartDiv.style.marginBottom = '10px';
+                subchartDiv.style.display = 'flex'; // Use flexbox for internal layout
+                subchartDiv.style.flexDirection = 'column';
 
-                sourceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                    if (range) {
-                        otherCharts.forEach(target => target.timeScale().setVisibleLogicalRange(range));
-                    }
+                const titleElement = document.createElement('h4');
+                titleElement.textContent = paneTitle;
+                titleElement.style.color = '#D9D9D9';
+                titleElement.style.margin = '5px 0 5px 10px';
+                titleElement.style.fontSize = '0.9em';
+                titleElement.style.flexShrink = '0'; // Title should not shrink
+                subchartDiv.appendChild(titleElement);
+
+                const chartContainer = document.createElement('div');
+                chartContainer.style.width = '100%';
+                chartContainer.style.flexGrow = '1'; // Chart container takes remaining space
+                subchartDiv.appendChild(chartContainer);
+                
+                subchartsAreaDiv.appendChild(subchartDiv);
+                console.log(`Subchart div ${paneId} created and appended.`);
+
+                const chart = LightweightCharts.createChart(chartContainer, {
+                    width: chartContainer.offsetWidth,
+                    height: chartContainer.offsetHeight, // Will be set by flex, then resize
+                    layout: { background: { color: '#131722' }, textColor: '#D9D9D9', fontSize: 11, fontFamily: 'Trebuchet MS' },
+                    grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+                    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#484848' },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                    rightPriceScale: { borderColor: '#484848' },
                 });
+                dataForSync.push(chart);
+                subchartInstances[paneId] = { chart: chart, div: subchartDiv, titleElement: titleElement, chartContainer: chartContainer };
+            }
+            return subchartInstances[paneId];
+        }
 
-                sourceChart.subscribeCrosshairMove(param => {
-                    if (param.time) {
-                        otherCharts.forEach(target => {
-                            // Find the series on the target chart to get price.
-                            // This is a simplified crosshair sync based on time.
-                            // It won't show the price on the crosshair of other charts unless
-                            // there's a series at that exact time to derive a price from.
-                            // For simple line series, it might find one.
-                            let priceOnTarget = 0; // Default price if not found
-                            if (param.seriesData) { // Check if seriesData exists on param
-                                 // This part is tricky because param.seriesData is a Map of series on the *source* chart.
-                                 // We need to find a corresponding point on the *target* chart series.
-                                 // For basic time sync, just move the crosshair time.
-                            }
-                            target.setCrosshairPosition?.(priceOnTarget, param.time, null); // The 'null' for series is important
-                        });
-                    } else { // Clear crosshairs on other charts if source is cleared
-                        otherCharts.forEach(target => target.clearCrosshairPosition?.());
-                    }
-                });
+        function resizeAllCharts() {
+            if (mainChart) {
+                mainChart.resize(mainChartContainer.offsetWidth, mainChartContainer.offsetHeight);
+            }
+            if (data1Chart) { // Resize data1Chart if it exists
+                data1Chart.resize(data1ChartContainer.offsetWidth, data1ChartContainer.offsetHeight);
+            }
+            Object.values(subchartInstances).forEach(subEntry => {
+                if (subEntry && subEntry.chart && subEntry.chartContainer) {
+                    subEntry.chart.resize(subEntry.chartContainer.offsetWidth, subEntry.chartContainer.offsetHeight);
+                }
             });
         }
 
+        window.addEventListener('resize', resizeAllCharts);
 
-        // Fetch data and populate charts
         fetch('/api/chart_data')
             .then(response => response.json())
             .then(data => {
-                if (data.error) {
-                    loadingDiv.innerText = `API Error: ${data.error}`;
-                    console.error("Error fetching chart data:", data.error);
-                    return;
-                }
-                console.log("Data received for plotting:", data);
-
+                console.log('Raw data from /api/chart_data:', data); // Log the entire data object
+                // Main chart (data0)
                 if (data.data0_ohlc && data.data0_ohlc.length > 0) {
-                    mainCandlestickSeries.setData(data.data0_ohlc);
-
-                    // Plot buy/sell signals as markers
-                    if (data.trade_signals && data.trade_signals.length > 0) {
-                        // Filter out signals with invalid timestamps
-                        const validTradeSignals = data.trade_signals.filter(signal => signal.time);
-
-                        const mappedTradeSignals = validTradeSignals.map(signal => ({
-                            time: signal.time, // Ensure this is a UNIX timestamp or 'YYYY-MM-DD'
-                            position: signal.type === 'buy' ? 'belowBar' : 'aboveBar',
-                            color: signal.type === 'buy' ? '#2196F3' : '#e91e63', // Blue for buy, Red for sell
-                            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
-                            text: signal.type === 'buy' ? 'Buy' : 'Sell' // Optional: add text
-                        }));
-                        // console.log("Mapped trade signals for markers:", mappedTradeSignals);
-                        if (mainCandlestickSeries && mappedTradeSignals.length > 0) {
-                            // Set markers directly on the candlestick series
-                            mainCandlestickSeries.setMarkers(mappedTradeSignals);
-                            console.log("Trade signal markers set on mainCandlestickSeries.");
-                        } else {
-                            if (!mainCandlestickSeries) console.error("mainCandlestickSeries is not defined when trying to set markers.");
-                            if (mappedTradeSignals.length === 0) console.log("No valid trade signals to map to markers.");
-                        }
-                    } else {
-                        console.log("No trade signals data found or it is empty.");
-                    }
-
-                } else { console.warn("No Data0 OHLC to plot."); }
-
-                // Calculate number of unique subchart panes needed for dynamic height allocation
-                const subchartPaneIds = new Set();
-                if (data.indicator_configs) {
-                    data.indicator_configs.forEach(cfg => {
-                        if (cfg.target_pane !== 'main') subchartPaneIds.add(cfg.target_pane);
+                    mainChart = LightweightCharts.createChart(mainChartContainer, {
+                        width: mainChartContainer.offsetWidth,
+                        height: mainChartContainer.offsetHeight,
+                        layout: {
+                            background: { color: '#131722' },
+                            textColor: '#D9D9D9',
+                            fontSize: 11,
+                            fontFamily: 'Trebuchet MS',
+                        },
+                        grid: {
+                            vertLines: { color: '#2B2B43' },
+                            horzLines: { color: '#2B2B43' },
+                        },
+                        timeScale: {
+                            timeVisible: true,
+                            secondsVisible: false,
+                            borderColor: '#484848',
+                        },
+                        crosshair: {
+                            mode: LightweightCharts.CrosshairMode.Normal,
+                        },
+                        rightPriceScale: {
+                            borderColor: '#484848',
+                        },
                     });
-                }
-                 // Also consider Data1 and PortfolioValue for subchart count if they are not in indicator_configs
-                if (data.data1_line && data.data1_line.length > 0 && !subchartPaneIds.has('data1_pane')) { // Assuming a fixed pane id
-                    subchartPaneIds.add('data1_pane');
-                }
-                if (data.portfolio_value_line && data.portfolio_value_line.length > 0 && !subchartPaneIds.has('value_pane')) {
-                    subchartPaneIds.add('value_pane');
-                }
-                const numUniqueSubcharts = subchartPaneIds.size;
-
-
-                // --- Plot Data1 Line (fixed subchart or from indicator_configs) ---
-                // Only attempt to plot if data1_line has data
-                if (data.data1_line && data.data1_line.length > 0) {
-                    const data1PaneId = 'data1_pane'; // Or get from indicator_configs if it's there
-                    
-                    // Ensure this paneId was added to subchartPaneIds if it wasn't already by an indicator
-                    // This is important for the getOrCreateSubchart height calculation
-                    if (!subchartPaneIds.has(data1PaneId)) {
-                        // This case should ideally be handled when subchartPaneIds is initially populated
-                        // For robustness, we could add it here, but it might slightly mess with height
-                        // if numUniqueSubcharts was already used.
-                        // Best practice: ensure data1_pane is added to subchartPaneIds earlier if data1_line exists.
-                        // The existing logic for subchartPaneIds already does this:
-                        // if (data.data1_line && data.data1_line.length > 0 && !subchartPaneIds.has('data1_pane')) {
-                        //     subchartPaneIds.add('data1_pane');
-                        // }
-                        // So, numUniqueSubcharts should be correct.
-                    }
-
-                    const targetChartD1 = getOrCreateSubchart(data1PaneId, numUniqueSubcharts);
-                    if (targetChartD1) { // Check if subchart was successfully created
-                        const d1Line = targetChartD1.addLineSeries({
-                            title: data.data1_line_name || "Data 1 Close", // Use name from data if provided
-                            color: 'orange', lineWidth: 1.5, lastValueVisible: true
-                        });
-                        d1Line.setData(data.data1_line);
-                        console.log("Plotted Data1 line.");
-                    } else {
-                        // This case should not happen if getOrCreateSubchart is robust
-                        console.error("Failed to create or get subchart for Data1 line.");
-                    }
-                } else { 
-                    console.log("No Data1 line data provided or data is empty.");
-                }
-
-                // --- Plot Portfolio Value Line (fixed subchart or from indicator_configs) ---
-                if (data.portfolio_value_line && data.portfolio_value_line.length > 0) {
-                    const valuePaneId = 'value_pane';
-                    const targetChartVal = getOrCreateSubchart(valuePaneId, numUniqueSubcharts);
-                    // Use addLineSeries instead of the generic addSeries
-                    const valLine = targetChartVal.addLineSeries({
-                        title: "Portfolio Value",
-                        color: 'green', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 2, lastValueVisible: true
+                    allChartObjectsForSync.push(mainChart);
+                    data0CandlestickSeries = mainChart.addCandlestickSeries({
+                        upColor: '#26A69A', downColor: '#EF5350',
+                        wickUpColor: '#26A69A', wickDownColor: '#EF5350',
+                        borderVisible: false,
                     });
-                    valLine.setData(data.portfolio_value_line);
-                    console.log("Plotted Portfolio Value line.");
-                } else { console.warn("No Portfolio Value line data."); }
+                    data0CandlestickSeries.setData(data.data0_ohlc);
+                }
 
-
-                // --- Dynamically Plot Indicators ---
+                // Data1 chart (new primary chart)
+                if (data.data1_ohlc && data.data1_ohlc.length > 0 && data1ChartContainer) {
+                    data1Chart = LightweightCharts.createChart(data1ChartContainer, { // Create chart in new container
+                        width: data1ChartContainer.offsetWidth,
+                        height: data1ChartContainer.offsetHeight,
+                        layout: {
+                            background: { color: '#131722' },
+                            textColor: '#D9D9D9',
+                            fontSize: 11,
+                            fontFamily: 'Trebuchet MS',
+                        },
+                        grid: {
+                            vertLines: { color: '#2B2B43' },
+                            horzLines: { color: '#2B2B43' },
+                        },
+                        timeScale: {
+                            timeVisible: true,
+                            secondsVisible: false,
+                            borderColor: '#484848',
+                        },
+                        crosshair: {
+                            mode: LightweightCharts.CrosshairMode.Normal,
+                        },
+                        rightPriceScale: {
+                            borderColor: '#484848',
+                        },
+                    });
+                    allChartObjectsForSync.push(data1Chart); // Add to sync array
+                    data1CandlestickSeries = data1Chart.addCandlestickSeries({
+                        upColor: '#26A69A', downColor: '#EF5350',
+                        wickUpColor: '#26A69A', wickDownColor: '#EF5350',
+                        borderVisible: false,
+                    });
+                    data1CandlestickSeries.setData(data.data1_ohlc);
+                }                // Plot indicators and other series
                 if (data.indicator_configs && data.indicator_series) {
-                    data.indicator_configs.forEach(config => {
-                        const seriesData = data.indicator_series[config.internal_id];
-                        if (!seriesData || seriesData.length === 0) {
-                            console.warn(`No data for indicator: ${config.display_name}`);
+                    console.log('Processing indicators with configs:', data.indicator_configs);
+                    console.log('Raw indicator_series structure:');
+                    const seriesKeys = Object.keys(data.indicator_series);
+                    console.log(JSON.stringify(seriesKeys));
+                    
+                    // Debug each indicator object's full structure
+                    data.indicator_configs.forEach((config, index) => {
+                        console.log(`Full config object ${index}:`, JSON.stringify(config));
+                    });
+                    
+                    Object.keys(data.indicator_series).forEach(key => {
+                        if (Array.isArray(data.indicator_series[key]) && data.indicator_series[key].length > 0) {
+                            console.log(`Key: ${key}, Sample data item:`, data.indicator_series[key][0]);
+                        }
+                    });
+                      // Match configs with series data by position if keys are missing
+                    data.indicator_configs.forEach((config, index) => {
+                        console.log('Processing indicator config:', config);
+                        
+                        // First try to get a key from the config's internal_id (most reliable)
+                        let seriesKey = config.internal_id || config.plot_key || config.name;
+                        
+                        // If no key in config, use the corresponding key from indicator_series by index
+                        if (!seriesKey && index < seriesKeys.length) {
+                            seriesKey = seriesKeys[index];
+                            console.log(`No key in config, using series key by index: ${seriesKey}`);
+                        }
+                        
+                        console.log(`Looking for series data with key: ${seriesKey}`);
+                          
+                        // Skip d1_close_line_close as it's not needed
+                        if (seriesKey === 'd1_close_line_close' || config.internal_id === 'd1_close_line_close') {
+                            console.log(`Skipping ${seriesKey} as it's not a useful indicator`);
                             return;
                         }
+                          
+                        // Get the series data - first try direct match
+                        let seriesData = data.indicator_series[seriesKey];
+                        
+                        console.log(`Config internal_id: ${config.internal_id}, attr_name: ${config.attr_name}, target_pane: ${config.target_pane}`);
+                        
+                        // If still no data, try with the full indicator_series object
+                        if (!seriesData && config.name && data.indicator_series[config.name]) {
+                            seriesData = data.indicator_series[config.name];
+                            console.log(`Found series data under config.name: ${config.name}`);
+                        }
+                        
+                        // If still no data, look for partial matches
+                        if (!seriesData) {
+                            Object.keys(data.indicator_series).forEach(key => {
+                                if (seriesKey && (key.includes(seriesKey) || (config.name && key.includes(config.name)))) {
+                                    seriesData = data.indicator_series[key];
+                                    console.log(`Found series data under related key: ${key}`);
+                                    seriesKey = key; // Update seriesKey to the matched key
+                                }
+                            });
+                        }
+                          if (!seriesData || !Array.isArray(seriesData) || seriesData.length === 0) {
+                            console.log(`No valid data found for indicator ${seriesKey || config.name}`);
+                            return;
+                        }
+                        
+                        const seriesOptions = config.options || {};                          // Infer target pane from seriesKey and other properties
+                        let targetPane = config.target_pane;                          // Special case handling for known indicators
+                        if (config.internal_id === 'sma_slow_d0_sma' || config.internal_id === 'sma_fast_d0_sma' ||
+                            (config.attr_name && config.attr_name.includes('d0'))) {
+                            // All d0 indicators go to data0_pane
+                            targetPane = 'data0_pane';
+                        } else if (config.internal_id === 'sma_fast_d1_sma' || 
+                                  config.internal_id === 'sma_slow_d1_sma' ||
+                                  (config.attr_name && config.attr_name.includes('d1') && config.internal_id !== 'd1_close_line_close')) {
+                            // All d1 indicators go to data1_pane, except d1_close_line_close
+                            targetPane = 'data1_pane';
+                        } else if (!targetPane && seriesKey) {
+                            // Fallback to checking the seriesKey
+                            if (seriesKey.includes('d0_') || seriesKey.includes('data0') || seriesKey.includes('_d0_')) {
+                                targetPane = 'data0_pane';
+                            } else if (seriesKey.includes('d1_') || seriesKey.includes('data1') || seriesKey.includes('_d1_')) {
+                                targetPane = 'data1_pane';
+                            } else {
+                                targetPane = 'subchart';
+                            }
+                        } else if (!targetPane) {
+                            targetPane = 'subchart';
+                        }
+                        
+                        // Map "main" target_pane to data0_pane
+                        if (targetPane === 'main') {
+                            targetPane = 'data0_pane';
+                        }
+                        
+                        const seriesType = config.type || 'line';
+                        
+                        // Use seriesKey as name if config.name is missing
+                        const seriesName = config.name || seriesKey;
+                          console.log(`Indicator ${seriesName} will be placed on ${targetPane}`);
 
                         let targetChart;
-                        if (config.target_pane === 'main') {
+
+                        if (targetPane === 'data0_pane' && mainChart) {
                             targetChart = mainChart;
+                            console.log(`Placing ${seriesName} on main chart (data0)`);
+                        } else if (targetPane === 'data1_pane' && data1Chart) {
+                            targetChart = data1Chart;
+                            console.log(`Placing ${seriesName} on data1 chart`);
                         } else {
-                            targetChart = getOrCreateSubchart(config.target_pane, numUniqueSubcharts);
+                            // Only create a subchart if not targeting data0 or data1
+                            const paneId = `indicator_${seriesName.replace(/\s+/g, '_').toLowerCase()}`;
+                            const subchartEntry = getOrCreateSubchart(paneId, seriesName, allChartObjectsForSync);
+                            targetChart = subchartEntry.chart;
+                            console.log(`Created separate subchart for ${seriesName} with ID ${paneId}`);
                         }
 
-                        // Use addLineSeries instead of the generic addSeries
-                        const indicatorLine = targetChart.addLineSeries({
-                            title: config.display_name,
-                            color: config.color || getRandomColor(), // Add color to config or use random
-                            lineWidth: config.lineWidth || 1.5,
-                            lineStyle: config.lineStyle || LightweightCharts.LineStyle.Solid,
-                            priceLineVisible: false, // Usually false for indicators
-                            lastValueVisible: true
-                        });
-                        indicatorLine.setData(seriesData);
-                        console.log(`Plotted indicator: ${config.display_name} on pane: ${config.target_pane}`);
+                        if (targetChart && seriesData && seriesData.length > 0) {
+                            const color = seriesOptions.color || getRandomColor();
+                            if (seriesType === 'line') {                                const lineSeries = targetChart.addLineSeries({
+                                    color: color,
+                                    lineWidth: seriesOptions.lineWidth || 2,
+                                    title: seriesName,
+                                });
+                                lineSeries.setData(seriesData);
+                                console.log(`Added ${seriesType} series "${seriesName}" with ${seriesData.length} points`);
+                            } else if (seriesType === 'histogram') {                                const histogramSeries = targetChart.addHistogramSeries({
+                                    color: color,
+                                    title: seriesName,
+                                });
+                                histogramSeries.setData(seriesData);
+                                console.log(`Added ${seriesType} series "${seriesName}" with ${seriesData.length} points`);
+                            }
+                        } else {
+                            console.log(`Could not add indicator ${seriesName} - missing chart or data`);
+                        }
                     });
+                } else if (data.indicator_series) {
+                    // Use the indicator_series directly when configs are not available
+                    console.log('Processing indicators directly from indicator_series object keys');
+                    
+                    // Debug the full indicator_series structure
+                    console.log('Available indicator_series keys:', JSON.stringify(Object.keys(data.indicator_series)));
+                      // Process each key in the indicator_series object
+                    Object.keys(data.indicator_series).forEach(seriesKey => {
+                        console.log(`Processing indicator from key: ${seriesKey}`);
+                        
+                        // Skip d1_close_line_close indicator
+                        if (seriesKey === 'd1_close_line_close') {
+                            console.log(`Skipping ${seriesKey} as it's not a useful indicator`);
+                            return;
+                        }
+                        
+                        const seriesData = data.indicator_series[seriesKey];
+                        
+                        // Check for valid data
+                        if (!seriesData || !Array.isArray(seriesData) || seriesData.length === 0) {
+                            console.log(`Skipping indicator ${seriesKey} - invalid or empty data`);
+                            return;
+                        }
+                        
+                        console.log(`Found valid data for ${seriesKey}, first point:`, seriesData[0]);                        // Determine where to plot this indicator based on its key name
+                        let targetPane, targetChart;                        if (seriesKey === 'sma_slow_d0_sma' || seriesKey === 'sma_fast_d0_sma' || 
+                            seriesKey.includes('d0_') || seriesKey.includes('data0')) {
+                            targetPane = 'data0_pane';
+                            targetChart = mainChart;
+                            console.log(`Placing ${seriesKey} on main chart (data0) based on key name`);
+                        } else if (seriesKey === 'sma_fast_d1_sma' || seriesKey === 'sma_slow_d1_sma' || 
+                                 (seriesKey.includes('d1_') && seriesKey !== 'd1_close_line_close') || 
+                                 seriesKey.includes('data1')) {
+                            targetPane = 'data1_pane';
+                            targetChart = data1Chart;
+                            console.log(`Placing ${seriesKey} on data1 chart based on key name`);
+                        } else {
+                            // Create a separate subchart for this indicator
+                            const paneId = `indicator_${seriesKey.replace(/\s+/g, '_').toLowerCase()}`;
+                            const displayName = seriesKey.replace(/_/g, ' '); // More readable display name
+                            const subchartEntry = getOrCreateSubchart(paneId, displayName, allChartObjectsForSync);
+                            targetChart = subchartEntry.chart;
+                            console.log(`Created separate subchart for ${seriesKey} with ID ${paneId}`);
+                        }
+                        
+                        if (!targetChart) {
+                            console.log(`Skipping indicator ${seriesKey} - target chart not available`);
+                            return;
+                        }
+                        
+                        // Create a line series with a nice color
+                        const color = getRandomColor();
+                        const lineSeries = targetChart.addLineSeries({
+                            color: color,
+                            lineWidth: 2,
+                            title: seriesKey.replace(/_/g, ' ') // More user-friendly display name
+                        });
+                        console.log(`Adding indicator ${seriesKey} to ${targetPane || 'its own'} pane with ${seriesData.length} data points`);
+                        lineSeries.setData(seriesData);
+                    });
+                } else {
+                    console.log('No indicator data found. indicator_series is missing or empty.');
                 }
-                // --- End Indicator Plotting ---
+                
+                // Portfolio Value - ensure it's treated as a subchart if data exists
+                const portfolioData = data.portfolio_value_line || data.portfolio_value;
+                if (portfolioData && portfolioData.length > 0) {
+                    console.log('Processing portfolio value data:', 
+                        Array.isArray(portfolioData) ? portfolioData.slice(0, 5) : 'Not an array', 
+                        '... (total length:', Array.isArray(portfolioData) ? portfolioData.length : 'N/A', ')');
+                    
+                    const portfolioPaneId = 'portfolio_value_pane';
+                    const subchartEntry = getOrCreateSubchart(portfolioPaneId, 'Portfolio Value', allChartObjectsForSync);
+                    const portfolioSeries = subchartEntry.chart.addLineSeries({
+                        color: '#FFD700', // Gold
+                        lineWidth: 2,
+                        title: 'Portfolio Value'
+                    });
+                    portfolioSeries.setData(portfolioData);
+                } else {
+                    console.log('No portfolio value data found. portfolio_value_line:', data.portfolio_value_line, 
+                        'portfolio_value:', data.portfolio_value);
+                }
 
-                setupSync(allChartObjectsForSync); // Setup sync after all charts created
+                // Add trade markers to data0CandlestickSeries
+                if (data.trade_signals && data0CandlestickSeries) {
+                    console.log('Processing trade signals:', data.trade_signals);
+                    // Try to determine which signals apply to data0 vs data1
+                    // Check first signal to see what properties exist
+                    if (data.trade_signals.length > 0) {
+                        console.log('Sample trade signal structure:', data.trade_signals[0]);
+                        
+                        // Filter signals for data0 - adjust filtering logic based on actual structure
+                        const data0Markers = data.trade_signals
+                            // If data_feed exists, use it, otherwise assume all signals are for data0
+                            .filter(signal => !signal.data_feed || signal.data_feed === 'data0')
+                            .map(signal => ({
+                                time: signal.time,
+                                position: signal.type === 'buy' ? 'belowBar' : 'aboveBar',
+                                color: signal.type === 'buy' ? '#26A69A' : '#EF5350',
+                                shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+                                text: signal.type === 'buy' ? 'B' : 'S'
+                            }));
 
-                mainChart.timeScale().fitContent();
+                        if (data0Markers.length > 0) {
+                            console.log(`Adding ${data0Markers.length} markers to data0 chart`);
+                            data0CandlestickSeries.setMarkers(data0Markers);
+                        } else {
+                            console.log('No markers identified for data0 chart.');
+                        }
+                    }
+                } else {
+                    console.log('No trade signals found or candlestick series not initialized. trade_signals:', data.trade_signals);
+                }
+
+                // Add trade markers to data1CandlestickSeries (if it exists)
+                if (data.trade_signals && data1CandlestickSeries) {
+                    const data1Markers = data.trade_signals
+                        .filter(signal => signal.data_feed === 'data1') // Filter for data1
+                        .map(signal => ({
+                            time: signal.time,
+                            position: signal.type === 'buy' ? 'belowBar' : 'aboveBar',
+                            color: signal.type === 'buy' ? '#26A69A' : '#EF5350',
+                            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+                            text: signal.type === 'buy' ? 'B' : 'S'
+                        }));
+                    if (data1Markers.length > 0) {
+                        data1CandlestickSeries.setMarkers(data1Markers);
+                    }
+                }
+
+                // Synchronize crosshairs and time ranges for all charts
+                allChartObjectsForSync.forEach(chart => {
+                    chart.timeScale().subscribeVisibleLogicalRangeChange(timeRange => {
+                        allChartObjectsForSync.forEach(otherChart => {
+                            if (otherChart !== chart) {
+                                otherChart.timeScale().setVisibleLogicalRange(timeRange);
+                            }
+                        });
+                    });
+                    chart.subscribeCrosshairMove(param => {
+                        allChartObjectsForSync.forEach(otherChart => {
+                            if (otherChart !== chart) {
+                                otherChart.setCrosshairPosition(param.point ? param.point.x : -1, param.point ? param.point.y : -1, param.seriesPrices, param.time);
+                            }
+                        });
+                    });
+                });
+
+                // Fit content for main charts
+                if (mainChart) mainChart.timeScale().fitContent();
+                if (data1Chart) data1Chart.timeScale().fitContent(); // Fit content for data1Chart too
+
+                // Fit content for subcharts - might need to be more nuanced
+                Object.values(subchartInstances).forEach(subEntry => {
+                    if (subEntry.chart) subEntry.chart.timeScale().fitContent();
+                });
+                
+                console.log('Charts created:', 
+                    'Main chart:', !!mainChart, 
+                    'Data1 chart:', !!data1Chart, 
+                    'Subcharts:', Object.keys(subchartInstances));
+                
                 loadingDiv.style.display = 'none';
-                window.dispatchEvent(new Event('resize')); // Trigger resize to set chart dimensions
 
                 // --- Populate Backtest Report Summary ---
                 if (data.report_data) {
+                    console.log('Processing backtest report data:', data.report_data);
                     populateReportData(data.report_data);
+                } else {
+                    console.log('No report data found. report_data:', data.report_data);
                 }
 
             })
@@ -387,173 +647,10 @@
                 console.error('Error fetching or processing chart data:', error);
             });
 
-        function getRandomColor() { /* ... (same as before) ... */
-            const r = Math.floor(Math.random() * 200); const g = Math.floor(Math.random() * 200); const b = Math.floor(Math.random() * 200);
-            return `rgb(${r},${g},${b})`;
-        }
-
-        function resizeAllCharts() {
-            mainChart.resize(mainChartDiv.clientWidth, mainChartDiv.clientHeight);
-            Object.values(subchartInstances).forEach(subEntry => {
-                // Find the div for this subchart (key is paneId)
-                const paneId = Object.keys(subchartInstances).find(key => subchartInstances[key] === subEntry);
-                const subDiv = document.getElementById(`subchart_pane_${paneId}`);
-                if (subDiv) subEntry.chart.resize(subDiv.clientWidth, subDiv.clientHeight);
-            });
-        }
-        window.addEventListener('resize', resizeAllCharts);
-        // Initial resize might be needed after DOM manipulation, give flexbox time
-        setTimeout(() => {
-            mainChartDiv.style.flex = '0.5'; // Example fixed height for main
-            // Re-calculate subchart flex based on how many were actually created
-            const actualSubchartsCreated = Object.keys(subchartInstances).length;
-            if (actualSubchartsCreated > 0) {
-                const remainingFlexForSubs = 1.0 - parseFloat(mainChartDiv.style.flex);
-                const flexPerActualSub = remainingFlexForSubs / actualSubchartsCreated;
-                 Object.keys(subchartInstances).forEach(paneId => {
-                    const subDiv = document.getElementById(`subchart_pane_${paneId}`);
-                    if(subDiv) subDiv.style.flex = `${flexPerActualSub}`;
-                });
-            }
+        setTimeout(() => { // Simplified setTimeout
             resizeAllCharts();
         }, 100);
-
-        // --- Helper functions for populating report data ---
-        function formatValue(value, type = 'number', decimalPlaces = 2) {
-            if (value === null || value === undefined || value === "N/A") return 'N/A';
-            if (typeof value === 'string' && (value.toLowerCase() === 'inf' || value.toLowerCase() === 'infinity')) return 'Infinity';
-            
-            if (typeof value !== 'number' && type !== 'string') return 'N/A'; // Ensure value is a number for numeric types
-
-            switch (type) {
-                case 'currency':
-                    return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // Basic currency, adapt as needed
-                case 'percentage':
-                    return value.toFixed(decimalPlaces) + '%';
-                case 'number':
-                    return value.toFixed(decimalPlaces);
-                case 'integer':
-                    return parseInt(value, 10).toString();
-                case 'string':
-                    return String(value);
-                default:
-                    return String(value);
-            }
-        }
-
-        function appendDlItem(dlElement, term, definition, valueType = 'string', decimalPlaces) {
-            const dt = document.createElement('dt');
-            dt.textContent = term;
-            const dd = document.createElement('dd');
-            dd.textContent = formatValue(definition, valueType, decimalPlaces);
-            dlElement.appendChild(dt);
-            dlElement.appendChild(dd);
-        }
-
-        function appendTableRow(tbodyElement, label, value, valueType = 'string', decimalPlaces) {
-            const tr = document.createElement('tr');
-            const tdLabel = document.createElement('td');
-            tdLabel.textContent = label;
-            const tdValue = document.createElement('td');
-            tdValue.textContent = formatValue(value, valueType, decimalPlaces);
-            tr.appendChild(tdLabel);
-            tr.appendChild(tdValue);
-            tbodyElement.appendChild(tr);
-        }
-
-        function populateReportData(reportData) {
-            const configDiv = document.getElementById('reportRunConfig');
-            const performanceDiv = document.getElementById('reportPerformanceSummary');
-            const statsDiv = document.getElementById('reportTradeStats');
-
-            // Clear previous content and add headers
-            configDiv.innerHTML = '<h3>Run Configuration</h3>';
-            performanceDiv.innerHTML = '<h3>Performance Summary</h3>';
-            statsDiv.innerHTML = '<h3>Trade Statistics</h3>';
-
-            if (!reportData || Object.keys(reportData).length === 0) {
-                const p = document.createElement('p');
-                p.textContent = 'No report data available.';
-                // Append to one of the divs, or a general report area
-                document.getElementById('backtestReportArea').appendChild(p);
-                return;
-            }
-
-            // Populate Run Configuration
-            if (reportData.run_config) {
-                const rc = reportData.run_config;
-                const dlConfig = document.createElement('dl');
-                appendDlItem(dlConfig, 'Strategy:', rc.strategy_name);
-                
-                // Improved parameter display
-                if (rc.parameters && typeof rc.parameters === 'object' && Object.keys(rc.parameters).length > 0) {
-                    const paramsDt = document.createElement('dt');
-                    paramsDt.textContent = 'Parameters:';
-                    const paramsDd = document.createElement('dd');
-                    
-                    const paramsUl = document.createElement('ul');
-                    paramsUl.style.listStyleType = 'none'; // Optional: remove bullets
-                    paramsUl.style.paddingLeft = '0'; // Optional: remove default padding
-                    paramsUl.style.marginLeft = '0'; // Align with other dd items if dt is floated
-
-                    for (const key in rc.parameters) {
-                        if (Object.prototype.hasOwnProperty.call(rc.parameters, key)) {
-                            const li = document.createElement('li');
-                            li.innerHTML = `<span style="font-weight:normal; color:#9db2bd;">&nbsp;&nbsp;&nbsp;&nbsp;${key}:</span> ${formatValue(rc.parameters[key], typeof rc.parameters[key] === 'number' ? 'number' : 'string', 2)}`;
-                            paramsUl.appendChild(li);
-                        }
-                    }
-                    paramsDd.appendChild(paramsUl);
-                    dlConfig.appendChild(paramsDt);
-                    dlConfig.appendChild(paramsDd);
-
-                } else {
-                    appendDlItem(dlConfig, 'Parameters:', 'N/A');
-                }
-                
-                appendDlItem(dlConfig, 'Data File 1:', rc.data_path_1);
-                appendDlItem(dlConfig, 'From Date:', rc.fromdate);
-                appendDlItem(dlConfig, 'To Date:', rc.todate);
-                configDiv.appendChild(dlConfig);
-            }
-
-            // Populate Performance Summary
-            if (reportData.performance_summary) {
-                const ps = reportData.performance_summary;
-                const tablePs = document.createElement('table');
-                const tbodyPs = document.createElement('tbody');
-                
-                appendTableRow(tbodyPs, 'Total Net P&L:', ps.total_net_pnl, 'currency');
-                appendTableRow(tbodyPs, 'Max Drawdown:', ps.max_drawdown_pct, 'percentage');
-                appendTableRow(tbodyPs, 'Sharpe Ratio:', ps.sharpe_ratio, 'number', 2);
-                appendTableRow(tbodyPs, 'SQN:', ps.sqn, 'number', 2);
-                
-                tablePs.appendChild(tbodyPs);
-                performanceDiv.appendChild(tablePs);
-            }
-
-            // Populate Trade Statistics
-            if (reportData.trade_stats) {
-                const ts = reportData.trade_stats;
-                const tableTs = document.createElement('table');
-                const tbodyTs = document.createElement('tbody');
-
-                appendTableRow(tbodyTs, 'Total Closed Trades:', ts.total_closed_trades, 'integer');
-                appendTableRow(tbodyTs, 'Win Rate:', ts.win_rate_pct, 'percentage');
-                appendTableRow(tbodyTs, 'Profit Factor:', ts.profit_factor, 'number', 2); // Can be 'Infinity' or 'N/A'
-                appendTableRow(tbodyTs, 'Average P&L per Trade:', ts.avg_pnl_per_trade, 'currency');
-                appendTableRow(tbodyTs, 'Total Winning Trades:', ts.total_winning_trades, 'integer');
-                appendTableRow(tbodyTs, 'Total Losing Trades:', ts.total_losing_trades, 'integer');
-                appendTableRow(tbodyTs, 'Average Win P&L:', ts.avg_win_pnl, 'currency');
-                appendTableRow(tbodyTs, 'Average Loss P&L:', ts.avg_loss_pnl, 'currency');
-                appendTableRow(tbodyTs, 'Max Win P&L (Single Trade):', ts.max_win_pnl, 'currency');
-                appendTableRow(tbodyTs, 'Max Loss P&L (Single Trade):', ts.max_loss_pnl, 'currency');
-                
-                tableTs.appendChild(tbodyTs);
-                statsDiv.appendChild(tableTs);
-            }
-        }
-
     </script>
 </body>
 </html>
+``` 

@@ -50,8 +50,22 @@ class ValueCaptureAnalyzer(bt.Analyzer):
         except IndexError:
             for key in self.d0_ohlc:
                 self.d0_ohlc[key].append(float('nan'))
-        try: self.d1_ohlc['open'].append(self.strategy.data1.open[0]); ... # and so on for H,L,C
-        except IndexError:
+        
+        # Correctly capture all OHLC for data1
+        try:
+            if len(self.strategy.datas) > 1 and self.strategy.data1: # Check if data1 exists
+                self.d1_ohlc['open'].append(self.strategy.data1.open[0])
+                self.d1_ohlc['high'].append(self.strategy.data1.high[0])
+                self.d1_ohlc['low'].append(self.strategy.data1.low[0])
+                self.d1_ohlc['close'].append(self.strategy.data1.close[0])
+            else: # If data1 doesn't exist or isn't used by the strategy
+                for key in self.d1_ohlc:
+                    self.d1_ohlc[key].append(float('nan'))
+        except IndexError: # If data1 exists but there's no current bar (e.g., end of data)
+            for key in self.d1_ohlc:
+                self.d1_ohlc[key].append(float('nan'))
+        except AttributeError: # If self.strategy.data1 is None or not what we expect
+            print("ValueCaptureAnalyzer: Warning - self.strategy.data1 not available or not as expected.")
             for key in self.d1_ohlc:
                 self.d1_ohlc[key].append(float('nan'))
 

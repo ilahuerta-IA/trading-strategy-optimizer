@@ -102,7 +102,8 @@ def get_chart_data():
 
     output_json = {
         "data0_ohlc": [],
-        "data1_line": [],
+        "data1_line": [], # Keep for now, might be used by indicators
+        "data1_ohlc": [], # For data1 candlestick chart
         "portfolio_value_line": [],
         "indicator_configs": [],
         "indicator_series": {},
@@ -110,9 +111,9 @@ def get_chart_data():
         "report_data": {} # For backtest report summary
     }
     
-    value_analysis_data = CACHED_BACKTEST_DATA.get("value_analysis", {}) # Use the value_analysis part for charts
-    metrics_report = CACHED_BACKTEST_DATA.get("metrics_report", {})
-    run_config_summary = CACHED_BACKTEST_DATA.get("run_config", {})
+    value_analysis_data = CACHED_BACKTEST_DATA.get('value_analysis', {}) # Use the value_analysis part for charts
+    metrics_report = CACHED_BACKTEST_DATA.get('metrics_report', {})
+    run_config_summary = CACHED_BACKTEST_DATA.get('run_config', {})
 
     try:
         datetimes = value_analysis_data.get('datetimes', [])
@@ -135,14 +136,34 @@ def get_chart_data():
         else:
             print("API Warning: Insufficient data for Data0 OHLC.")
 
-        # Data1 Line
-        d1_ohlc_data = value_analysis_data.get('d1_ohlc', {})
-        d1_close_values = d1_ohlc_data.get('close', [])
+        # Data1 Line (existing logic, kept for potential other uses)
+        d1_ohlc_data_for_line = value_analysis_data.get('d1_ohlc', {}) # Use a different variable name to avoid confusion
+        d1_close_values = d1_ohlc_data_for_line.get('close', [])
         if times_sec and d1_close_values and len(times_sec) == len(d1_close_values):
             for i in range(len(times_sec)):
                 output_json["data1_line"].append({"time": times_sec[i], "value": d1_close_values[i]})
         else:
-            print("API Warning: Insufficient or mismatched data for Data1 line.")
+            # This warning pertains to the d1_line, not necessarily the new d1_ohlc
+            print("API Warning: Insufficient or mismatched data for Data1 line (close values).")
+
+        # Data1 OHLC for Candlestick Chart
+        d1_ohlc_full_data = value_analysis_data.get('d1_ohlc', {})
+        if times_sec and d1_ohlc_full_data.get('close'): # Check for 'close' as a proxy for valid OHLC data
+            if all(len(d1_ohlc_full_data.get(k, [])) == len(datetimes) for k in ['open', 'high', 'low', 'close']):
+                for i in range(len(times_sec)):
+                    output_json["data1_ohlc"].append({
+                        "time": times_sec[i],
+                        "open": d1_ohlc_full_data['open'][i],
+                        "high": d1_ohlc_full_data['high'][i],
+                        "low": d1_ohlc_full_data['low'][i],
+                        "close": d1_ohlc_full_data['close'][i]
+                    })
+            else:
+                print("API Warning: Data1 OHLC lists length mismatch with datetimes. Data1 candlestick chart may be empty.")
+                output_json["data1_ohlc"] = [] # Ensure it's empty on error
+        else:
+            print("API Warning: Insufficient data for Data1 OHLC. Data1 candlestick chart will be empty.")
+            output_json["data1_ohlc"] = [] # Ensure it's empty
 
         # Portfolio Value Line
         portfolio_values = value_analysis_data.get('values', [])
