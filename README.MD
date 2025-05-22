@@ -1,5 +1,3 @@
-
-```markdown
 # Python Backtesting & Analysis Platform
 
 ## Overview
