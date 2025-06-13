@@ -16,6 +16,9 @@ from analyzers.value_capture import ValueCaptureAnalyzer
 from utils.parsing import parse_kwargs_str
 from config import settings
 
+# Import strategy registry for dynamic loading
+from strategies import strategy_registry
+
 # Define a structure for results
 class BacktestResult:
     """Holds the structured results from a backtest run."""
@@ -110,49 +113,40 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
     print(f"Parsing sizer args: '{args.sizer}'")
     sizer_kwargs = parse_kwargs_func(args.sizer)
     print(f"Applying sizer kwargs: {sizer_kwargs}")
-    cerebro.addsizer(bt.sizers.FixedSize, **sizer_kwargs)
-
-    # --- Dynamic Strategy Selection ---
+    cerebro.addsizer(bt.sizers.FixedSize, **sizer_kwargs)    # --- Dynamic Strategy Selection ---
     strategy_name = args.strategy_name
     print(f"Selecting strategy: {strategy_name}")
     strat_kwargs = parse_kwargs_func(args.strat)
     strat_kwargs['run_name'] = args.run_name # Inject run_name
 
-    strategy_class = None
     try:
-        # Map strategy name argument to module and class name
-        if strategy_name == 'SMACrossOver':
-            module_name = 'strategies.sma_crossover'
-            class_name = 'SMACrossOverStrategy'
-        elif strategy_name == 'MACrossOver':
-             module_name = 'strategies.ma_cci_crossover'
-             class_name = 'MACrossOver'
-        elif strategy_name == 'CorrelatedSMACross':
-             module_name = 'strategies.correlated_sma_cross'
-             class_name = 'CorrelatedSMACrossStrategy'
-        elif strategy_name == 'BBandPearsonDivergence':
-             module_name = 'strategies.bband_pearson_divergence'
-             class_name = 'BBandPearsonDivergence'
-        elif strategy_name == 'NullStrategy': # Ensure NullStrategy is mapped
-             module_name = 'strategies.null_strategy'
-             class_name = 'NullStrategy'
-        else:
-            raise ValueError(f"Unknown strategy name provided: {strategy_name}")
+        # Use the strategy registry for dynamic loading
+        strategy_class = strategy_registry.load_strategy(strategy_name)
+        print(f"Successfully loaded strategy class: {strategy_class.__name__}")
+        
+    except ValueError as e:
+        # Strategy not registered
+        available_strategies = ', '.join(strategy_registry.get_strategy_names())
+        print(f"FATAL ERROR: {e}")
+        print(f"Available strategies: {available_strategies}")
+        return None
+        
+    except (ImportError, AttributeError) as e:
+        # Module or class loading error        print(f"FATAL ERROR: Could not load strategy '{strategy_name}': {e}")
+        strategy_info = strategy_registry.get_strategy_info(strategy_name)
+        if strategy_info:
+            print(f"Check that module '{strategy_info['module']}' exists and contains class '{strategy_info['class']}'")
+        return None
+        
+    except Exception as e:
+        # Unexpected error
+        print(f"FATAL ERROR: Unexpected error loading strategy '{strategy_name}': {e}")
+        traceback.print_exc()
+        return None
 
-        strategy_module = importlib.import_module(module_name)
-        strategy_class = getattr(strategy_module, class_name)
-
-    except (ImportError, AttributeError, ValueError) as e:
-        print(f"FATAL ERROR: Could not load strategy '{strategy_name}': {e}")
-        print("Check --strategy-name argument and ensure the strategy file/class exists and is mapped correctly in runner.py.")
-        return None # Return None on error
-
-    if strategy_class:
-        print(f"Applying strategy kwargs for {strategy_name}: {strat_kwargs}")
-        cerebro.addstrategy(strategy_class, **strat_kwargs)
-    else:
-        print("FATAL: Strategy class not loaded.")
-        return None # Return None on error
+    # Add strategy to cerebro
+    print(f"Applying strategy kwargs for {strategy_name}: {strat_kwargs}")
+    cerebro.addstrategy(strategy_class, **strat_kwargs)
 
     # --- Add Analyzers ---
     print("Adding Standard Analyzers: TradeAnalyzer, DrawDown")

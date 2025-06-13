@@ -2,9 +2,10 @@
 import backtrader as bt
 import numpy as np # Needed for isnan if Pearson returns NaN
 # Ensure PearsonR can be imported (adjust path if necessary)
-from indicators.correlation import PearsonR
+from src.indicators.correlation import PearsonR
+from .base_strategy import BaseStrategy, ParameterDefinition
 
-class BBandPearsonDivergence(bt.Strategy):
+class BBandPearsonDivergence(BaseStrategy):
     """
     Enters long on data0 if:
     1. data0 price touches or exceeds its upper Bollinger Band.
@@ -12,6 +13,107 @@ class BBandPearsonDivergence(bt.Strategy):
     3. Pearson correlation(d0, d1) has decreased significantly recently.
     Exits long on data0 if price crosses below its middle Bollinger Band.
     """
+    
+    @classmethod
+    def get_parameter_definitions(cls):
+        """Define parameters with structured metadata for UI generation."""
+        return [
+            ParameterDefinition(
+                name='bb_period_d0',
+                default_value=100,
+                ui_label='Data0 BB Period',
+                param_type='int',
+                description='Period for Bollinger Bands calculation on data0',
+                min_value=5,
+                max_value=200,
+                step=1,
+                category='Data0 Bollinger Bands'
+            ),
+            ParameterDefinition(
+                name='bb_dev_d0',
+                default_value=2.0,
+                ui_label='Data0 BB Deviation',
+                param_type='float',
+                description='Standard deviation multiplier for data0 Bollinger Bands',
+                min_value=0.5,
+                max_value=5.0,
+                step=0.1,
+                category='Data0 Bollinger Bands'
+            ),
+            ParameterDefinition(
+                name='bb_period_d1',
+                default_value=5,
+                ui_label='Data1 BB Period',
+                param_type='int',
+                description='Period for Bollinger Bands calculation on data1',
+                min_value=5,
+                max_value=200,
+                step=1,
+                category='Data1 Bollinger Bands'
+            ),
+            ParameterDefinition(
+                name='bb_dev_d1',
+                default_value=2.0,
+                ui_label='Data1 BB Deviation',
+                param_type='float',
+                description='Standard deviation multiplier for data1 Bollinger Bands',
+                min_value=0.5,
+                max_value=5.0,
+                step=0.1,
+                category='Data1 Bollinger Bands'
+            ),
+            ParameterDefinition(
+                name='pearson_period',
+                default_value=20,
+                ui_label='Pearson Period',
+                param_type='int',
+                description='Period for Pearson correlation calculation',
+                min_value=5,
+                max_value=100,
+                step=1,
+                category='Correlation'
+            ),
+            ParameterDefinition(
+                name='pearson_decrease_lookback',
+                default_value=2,
+                ui_label='Pearson Decrease Lookback',
+                param_type='int',
+                description='Number of bars back to check for correlation decrease',
+                min_value=1,
+                max_value=10,
+                step=1,
+                category='Correlation'
+            ),
+            ParameterDefinition(
+                name='pearson_decrease_pct',
+                default_value=0.6,
+                ui_label='Pearson Decrease Percentage',
+                param_type='float',
+                description='Minimum percentage decrease required in correlation',
+                min_value=0.0,
+                max_value=1.0,
+                step=0.05,
+                category='Correlation'
+            ),
+            ParameterDefinition(
+                name='exit_on_bbmid',
+                default_value=True,
+                ui_label='Exit on BB Mid',
+                param_type='bool',
+                description='Exit when price crosses below middle Bollinger Band',
+                category='Exit Rules'
+            ),
+            ParameterDefinition(
+                name='run_name',
+                default_value='bband_pearson_div',
+                ui_label='Run Name',
+                param_type='str',
+                description='Identifier for this strategy run',
+                category='General'
+            )
+        ]
+    
+    # Standard Backtrader params tuple
     params = (
         # Bollinger Bands parameters
         ('bb_period_d0', 100),

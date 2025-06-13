@@ -1,21 +1,78 @@
 # strategies/correlated_sma_cross.py
 import backtrader as bt
+from .base_strategy import BaseStrategy, ParameterDefinition
 
-class CorrelatedSMACrossStrategy(bt.Strategy):
+class CorrelatedSMACrossStrategy(BaseStrategy):
     """
     Buys data0 when its Fast SMA crosses above its Slow SMA AND
     data1's Fast SMA crosses below its Slow SMA.
     Exits data0 when its Fast SMA crosses below its Slow SMA.
     """
+
+    @classmethod
+    def get_parameter_definitions(cls):
+        """Define parameters with structured metadata for UI generation."""
+        return [
+            ParameterDefinition(
+                name='p_fast_d0',
+                default_value=20,
+                ui_label='Data0 Fast SMA Period',
+                param_type='int',
+                description='Period for the fast Simple Moving Average on primary data feed',
+                min_value=1,
+                max_value=200,
+                step=1,
+                category='Data0 Indicators'
+            ),
+            ParameterDefinition(
+                name='p_slow_d0',
+                default_value=50,
+                ui_label='Data0 Slow SMA Period',
+                param_type='int',
+                description='Period for the slow Simple Moving Average on primary data feed',
+                min_value=2,
+                max_value=500,
+                step=1,
+                category='Data0 Indicators'
+            ),
+            ParameterDefinition(
+                name='p_fast_d1',
+                default_value=20,
+                ui_label='Data1 Fast SMA Period',
+                param_type='int',
+                description='Period for the fast Simple Moving Average on secondary data feed',
+                min_value=1,
+                max_value=200,
+                step=1,
+                category='Data1 Indicators'
+            ),
+            ParameterDefinition(
+                name='p_slow_d1',
+                default_value=50,
+                ui_label='Data1 Slow SMA Period',
+                param_type='int',
+                description='Period for the slow Simple Moving Average on secondary data feed',
+                min_value=2,
+                max_value=500,
+                step=1,
+                category='Data1 Indicators'
+            ),
+            ParameterDefinition(
+                name='run_name',
+                default_value='corr_sma_run',
+                ui_label='Run Name',
+                param_type='str',
+                description='Identifier for this strategy run',
+                category='General'
+            )        ]
+    
+    # Generate Backtrader-compatible params from definitions
     params = (
-        # Parameters for data0 (e.g., XAUUSD)
-        ('p_fast_d0', 20),  # Period for the fast SMA on data0
-        ('p_slow_d0', 50),  # Period for the slow SMA on data0
-        # Parameters for data1 (e.g., SP500)
-        ('p_fast_d1', 20),  # Period for the fast SMA on data1
-        ('p_slow_d1', 50),  # Period for the slow SMA on data1
-        # ---
-        ('run_name', 'corr_sma_run') # Default run name
+        ('p_fast_d0', 20),
+        ('p_slow_d0', 50),
+        ('p_fast_d1', 20),
+        ('p_slow_d1', 50),
+        ('run_name', 'corr_sma_run')
     )
 
     # Define with base display names or placeholders

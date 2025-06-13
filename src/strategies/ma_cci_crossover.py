@@ -1,19 +1,120 @@
 # strategies/ma_cci_crossover.py
 import backtrader as bt
-from indicators.correlation import PearsonR # Make sure this import is correct
+from src.indicators.correlation import PearsonR # Make sure this import is correct
+from .base_strategy import BaseStrategy, ParameterDefinition
 
-class MACrossOver(bt.Strategy):
+class MACrossOver(BaseStrategy):
+    
+    @classmethod
+    def get_parameter_definitions(cls):
+        """Define parameters with structured metadata for UI generation."""
+        return [
+            ParameterDefinition(
+                name='ma',
+                default_value=bt.ind.MovAv.SMA,
+                ui_label='Moving Average Type',
+                param_type='str',
+                description='Type of moving average to use',
+                choices=['SMA', 'EMA'],
+                category='Indicators'
+            ),
+            ParameterDefinition(
+                name='pd1',
+                default_value=50,
+                ui_label='Data0 MA Period',
+                param_type='int',
+                description='Period for moving average on primary data feed',
+                min_value=1,
+                max_value=200,
+                step=1,
+                category='Indicators'
+            ),
+            ParameterDefinition(
+                name='pd2',
+                default_value=50,
+                ui_label='Data1 MA Period',
+                param_type='int',
+                description='Period for moving average on secondary data feed',
+                min_value=1,
+                max_value=200,
+                step=1,
+                category='Indicators'
+            ),
+            ParameterDefinition(
+                name='corr_period',
+                default_value=20,
+                ui_label='Correlation Period',
+                param_type='int',
+                description='Period for Pearson correlation calculation',
+                min_value=5,
+                max_value=100,
+                step=1,
+                category='Correlation'
+            ),
+            ParameterDefinition(
+                name='cci_period',
+                default_value=20,
+                ui_label='CCI Period',
+                param_type='int',
+                description='Period for Commodity Channel Index calculation',
+                min_value=5,
+                max_value=100,
+                step=1,
+                category='Indicators'
+            ),
+            ParameterDefinition(
+                name='atr_period',
+                default_value=14,
+                ui_label='ATR Period',
+                param_type='int',
+                description='Period for Average True Range calculation',
+                min_value=5,
+                max_value=50,
+                step=1,
+                category='Risk Management'
+            ),
+            ParameterDefinition(
+                name='atr_multiplier',
+                default_value=1.5,
+                ui_label='ATR Multiplier',
+                param_type='float',
+                description='Multiplier for ATR-based calculations',
+                min_value=0.1,
+                max_value=5.0,
+                step=0.1,
+                category='Risk Management'
+            ),
+            ParameterDefinition(
+                name='cci_exit_level',
+                default_value=20,
+                ui_label='CCI Exit Level',
+                param_type='int',
+                description='CCI threshold for exit signals',
+                min_value=-100,
+                max_value=100,
+                step=5,
+                category='Exit Rules'
+            ),
+            ParameterDefinition(
+                name='run_name',
+                default_value='default_ma_cci_run',
+                ui_label='Run Name',
+                param_type='str',
+                description='Identifier for this strategy run',
+                category='General'
+            )        ]
+    
+    # Generate Backtrader-compatible params from definitions  
     params = (
-        ('ma', bt.ind.MovAv.SMA),
+        ('ma', 'SMA'),
         ('pd1', 50),
         ('pd2', 50),
         ('corr_period', 20),
         ('cci_period', 20),
         ('atr_period', 14),
         ('atr_multiplier', 1.5),
-        ('run_name', 'default_ma_cci_run'),
-         # --- Add CCI Exit Threshold ---
-        ('cci_exit_level', 20)
+        ('cci_exit_level', 20),
+        ('run_name', 'default_ma_cci_run')
     )
 
     def __init__(self):
