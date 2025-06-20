@@ -1,0 +1,112 @@
+buendesarrollador\Python\Portafolio\quant_bot_project\src\static\css\style.css
+html {
+    background-color: #131722; /* Ensure the very root of the page is dark */
+}
+
+body {
+    padding: 0;
+    margin: 0;
+    background-color: #131722; /* Dark background for the whole page */
+    display: flex;
+    flex-direction: column; /* Stack chart containers vertically */
+    min-height: 100vh; /* Ensure body takes at least full viewport height */
+    overflow-y: auto; /* Allow vertical scrollbars if content overflows */
+    color: #D9D9D9; /* Default text color */
+    font-family: 'Trebuchet MS', sans-serif;
+}
+
+.chart-pane {
+    width: 100%;
+    position: relative; /* For potential absolutely positioned children */
+    border-top: 1px solid #2B2B43; /* Restore separator line */
+    background-color: #131722; /* Set dark background for all subchart panes */
+}
+#mainChartContainer {
+    width: 100%;
+    height: 40vh; /* Adjusted height */
+    margin-bottom: 10px;
+}
+#data1ChartContainer { /* New container for data1 */
+    width: 100%;
+    height: 40vh; /* Similar height to main chart */
+    margin-bottom: 10px;
+}
+#subchartsArea {
+    width: 100%;
+    /* Height will be dynamic based on content or could be set */
+    margin-bottom: 10px;
+}
+#loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #131722; /* FIX: Cover screen with dark background during load */
+    color: white;
+    font-size: 20px;
+    z-index: 9999;
+}
+/* Simple legend style (can be enhanced) */
+.lw-chart-legend {
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    z-index: 1; /* Below crosshair/tooltips */
+    font-size: 11px;
+    line-height: 16px;
+    pointer-events: none; /* Allow clicks to pass through to chart */
+}
+
+/* Styles for Backtest Report Area */
+#backtestReportArea {
+    padding: 15px;
+    color: #D9D9D9;
+    background-color: #181A20;
+    font-size: 0.9em;
+    border-top: 1px solid #2B2B43;
+}
+.report-section {
+    margin-bottom: 15px;
+}
+.report-section h3 {
+    color: #4e8df5;
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 1.1em;
+}
+.report-section dl {
+    margin-left: 0;
+    padding-left: 0;
+}
+.report-section dt {
+    font-weight: bold;
+    color: #b0b8c2;
+    width: 200px;
+    float: left;
+    clear: left;
+    margin-bottom: 4px;
+}
+.report-section dd {
+    margin-left: 210px;
+    margin-bottom: 4px;
+    color: #D9D9D9;
+}
+.report-section table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+.report-section th, .report-section td {
+    border: 1px solid #2B2B43;
+    padding: 6px;
+    text-align: left;
+}
+.report-section td:first-child {
+    font-weight: bold;
+    color: #b0b8c2;
+    width: 40%;
+}

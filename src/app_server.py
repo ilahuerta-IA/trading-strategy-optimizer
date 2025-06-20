@@ -34,9 +34,11 @@ except ImportError as e:
 CACHED_BACKTEST_DATA = None # This will store a dictionary with value_analysis, metrics_report, and run_config
 
 # --- Initialize Flask App ---
-# Flask automatically looks for 'templates' folder in the same dir as the app file.
-# If app_server.py is in src/ and templates/ is in src/templates/, this is correct.
-app = Flask(__name__)
+# By explicitly setting the folder paths, we make the app more robust
+# and ensure it can always find the CSS, JS, and HTML files.
+app = Flask(__name__,
+            static_folder='static',
+            template_folder='templates')
 CORS(app) # Enable CORS for all routes
 
 def run_simulation_and_cache():
