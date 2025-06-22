@@ -18,13 +18,19 @@ sys.path.insert(0, str(project_root))
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# --- Additional imports ---
+import backtrader as bt
+from typing import Callable, Dict, Any
+import importlib
 
 # --- Imports from your project ---
 # Ensure these paths are correct relative to how Python resolves them now
 try:
-    from backtesting.runner import setup_and_run_backtest, BacktestResult
+    from backtesting.runner import setup_and_run_backtest
     from config import settings
     from utils.parsing import parse_kwargs_str
+    from strategies import get_strategy_class, list_available_strategies
+    from strategies.base_strategy import ParameterDefinition
 except ImportError as e:
     print(f"Error importing project modules: {e}")
     print("Ensure app_server.py is in the 'src' directory or adjust Python path.")
@@ -60,9 +66,6 @@ def run_simulation_and_cache():
             self.cerebro = settings.DEFAULT_CEREBRO_ARGS
             self.run_name = f"web_run_{datetime.datetime.now():%Y%m%d_%H%M%S}"
             self.plot = False # Plotting is handled by the frontend JS
-            # Add any other arguments your parse_args in main.py might define as default
-            # For example, if 'candlestick' was still there:
-            # self.candlestick = False # Default for candlestick flag
 
     args = ArgsMock()
 
@@ -98,22 +101,22 @@ def index():
 def get_chart_data():
     """API endpoint to provide chart data and backtest report in JSON format."""
     global CACHED_BACKTEST_DATA
-    if CACHED_BACKTEST_DATA is None or CACHED_BACKTEST_DATA.get("value_analysis") is None: # Check specifically for value_analysis for charts
+    if CACHED_BACKTEST_DATA is None or CACHED_BACKTEST_DATA.get("value_analysis") is None:
         print("API Error: Backtest data (value_analysis) not cached or simulation failed.")
         return jsonify({"error": "Backtest chart data not available. Simulation might have failed or not run."}), 404
 
     output_json = {
         "data0_ohlc": [],
-        "data1_line": [], # Keep for now, might be used by indicators
-        "data1_ohlc": [], # For data1 candlestick chart
+        "data1_line": [],
+        "data1_ohlc": [],
         "portfolio_value_line": [],
         "indicator_configs": [],
         "indicator_series": {},
         "trade_signals": [],
-        "report_data": {} # For backtest report summary
+        "report_data": {}
     }
     
-    value_analysis_data = CACHED_BACKTEST_DATA.get('value_analysis', {}) # Use the value_analysis part for charts
+    value_analysis_data = CACHED_BACKTEST_DATA.get('value_analysis', {})
     metrics_report = CACHED_BACKTEST_DATA.get('metrics_report', {})
     run_config_summary = CACHED_BACKTEST_DATA.get('run_config', {})
 
@@ -139,18 +142,17 @@ def get_chart_data():
             print("API Warning: Insufficient data for Data0 OHLC.")
 
         # Data1 Line (existing logic, kept for potential other uses)
-        d1_ohlc_data_for_line = value_analysis_data.get('d1_ohlc', {}) # Use a different variable name to avoid confusion
+        d1_ohlc_data_for_line = value_analysis_data.get('d1_ohlc', {})
         d1_close_values = d1_ohlc_data_for_line.get('close', [])
         if times_sec and d1_close_values and len(times_sec) == len(d1_close_values):
             for i in range(len(times_sec)):
                 output_json["data1_line"].append({"time": times_sec[i], "value": d1_close_values[i]})
         else:
-            # This warning pertains to the d1_line, not necessarily the new d1_ohlc
             print("API Warning: Insufficient or mismatched data for Data1 line (close values).")
 
         # Data1 OHLC for Candlestick Chart
         d1_ohlc_full_data = value_analysis_data.get('d1_ohlc', {})
-        if times_sec and d1_ohlc_full_data.get('close'): # Check for 'close' as a proxy for valid OHLC data
+        if times_sec and d1_ohlc_full_data.get('close'):
             if all(len(d1_ohlc_full_data.get(k, [])) == len(datetimes) for k in ['open', 'high', 'low', 'close']):
                 for i in range(len(times_sec)):
                     output_json["data1_ohlc"].append({
@@ -162,10 +164,10 @@ def get_chart_data():
                     })
             else:
                 print("API Warning: Data1 OHLC lists length mismatch with datetimes. Data1 candlestick chart may be empty.")
-                output_json["data1_ohlc"] = [] # Ensure it's empty on error
+                output_json["data1_ohlc"] = []
         else:
             print("API Warning: Insufficient data for Data1 OHLC. Data1 candlestick chart will be empty.")
-            output_json["data1_ohlc"] = [] # Ensure it's empty
+            output_json["data1_ohlc"] = []
 
         # Portfolio Value Line
         portfolio_values = value_analysis_data.get('values', [])
@@ -269,6 +271,68 @@ def get_chart_data():
         return jsonify({"error": "Error formatting data on server."}), 500
 
     return jsonify(output_json)
+
+def get_strategy_parameter_definitions(strategy_name: str):
+    """Retrieve parameter definitions for a given strategy."""
+    try:
+        strategy_class = get_strategy_class(strategy_name)
+        
+        if hasattr(strategy_class, 'get_parameter_definitions'):
+            return strategy_class.get_parameter_definitions()
+        else:
+            print(f"Strategy {strategy_name} does not have parameter definitions")
+            return []
+            
+    except (ValueError, ImportError, AttributeError) as e:
+        print(f"Error loading strategy parameter definitions for '{strategy_name}': {e}")
+        return []
+
+# NEW: Add endpoint to list all available strategies
+@app.route('/api/strategies')
+def get_available_strategies():
+    """API endpoint to get all available strategy names."""
+    try:
+        strategies = list_available_strategies()
+        return jsonify({
+            'strategies': strategies,
+            'count': len(strategies)
+        })
+    except Exception as e:
+        return jsonify({'error': f'Failed to load strategies: {e}'}), 500
+
+# Update the existing parameter endpoint to handle errors better
+@app.route('/api/strategy_parameters/<strategy_name>')
+def get_strategy_parameters(strategy_name):
+    """API endpoint to get parameter definitions for a strategy."""
+    try:
+        param_defs = get_strategy_parameter_definitions(strategy_name)
+        
+        # Convert to JSON-serializable format
+        param_data = []
+        for param_def in param_defs:
+            param_data.append({
+                'name': param_def.name,
+                'default_value': param_def.default_value,
+                'ui_label': param_def.ui_label,
+                'type': param_def.type,
+                'description': param_def.description,
+                'min_value': param_def.min_value,
+                'max_value': param_def.max_value,
+                'step': param_def.step,
+                'choices': param_def.choices,
+                'group': param_def.group
+            })
+        
+        return jsonify({
+            'strategy_name': strategy_name,
+            'parameters': param_data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to get parameters for strategy {strategy_name}: {e}',
+            'available_strategies': list_available_strategies()
+        }), 404
 
 if __name__ == '__main__':
     multiprocessing.freeze_support() # For Windows compatibility if using multiprocessing internally

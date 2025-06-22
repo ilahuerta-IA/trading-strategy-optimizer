@@ -15,6 +15,7 @@ from analyzers.value_capture import ValueCaptureAnalyzer
 # Assuming parse_kwargs_str is in utils.parsing
 from utils.parsing import parse_kwargs_str
 from config import settings
+from strategies import get_strategy_class, list_available_strategies
 
 # Define a structure for results
 class BacktestResult:
@@ -116,43 +117,32 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
     strategy_name = args.strategy_name
     print(f"Selecting strategy: {strategy_name}")
     strat_kwargs = parse_kwargs_func(args.strat)
-    strat_kwargs['run_name'] = args.run_name # Inject run_name
-
+    
     strategy_class = None
     try:
-        # Map strategy name argument to module and class name
-        if strategy_name == 'SMACrossOver':
-            module_name = 'strategies.sma_crossover'
-            class_name = 'SMACrossOverStrategy'
-        elif strategy_name == 'MACrossOver':
-             module_name = 'strategies.ma_cci_crossover'
-             class_name = 'MACrossOver'
-        elif strategy_name == 'CorrelatedSMACross':
-             module_name = 'strategies.correlated_sma_cross'
-             class_name = 'CorrelatedSMACrossStrategy'
-        elif strategy_name == 'BBandPearsonDivergence':
-             module_name = 'strategies.bband_pearson_divergence'
-             class_name = 'BBandPearsonDivergence'
-        elif strategy_name == 'NullStrategy': # Ensure NullStrategy is mapped
-             module_name = 'strategies.null_strategy'
-             class_name = 'NullStrategy'
+        # NEW: Use dynamic strategy loading
+        strategy_class = get_strategy_class(strategy_name)
+        print(f"Successfully loaded strategy class: {strategy_class.__name__}")
+        
+        # Validate parameters if the strategy supports it
+        if hasattr(strategy_class, 'validate_parameters'):
+            print(f"Original strategy kwargs: {strat_kwargs}")
+            strat_kwargs = strategy_class.validate_parameters(strat_kwargs)
+            print(f"Validated strategy kwargs: {strat_kwargs}")
         else:
-            raise ValueError(f"Unknown strategy name provided: {strategy_name}")
+            print(f"Strategy {strategy_name} does not support parameter validation")
 
-        strategy_module = importlib.import_module(module_name)
-        strategy_class = getattr(strategy_module, class_name)
-
-    except (ImportError, AttributeError, ValueError) as e:
+    except (ValueError, ImportError, AttributeError) as e:
         print(f"FATAL ERROR: Could not load strategy '{strategy_name}': {e}")
-        print("Check --strategy-name argument and ensure the strategy file/class exists and is mapped correctly in runner.py.")
-        return None # Return None on error
+        print(f"Available strategies: {list_available_strategies()}")
+        return None
 
     if strategy_class:
         print(f"Applying strategy kwargs for {strategy_name}: {strat_kwargs}")
         cerebro.addstrategy(strategy_class, **strat_kwargs)
     else:
         print("FATAL: Strategy class not loaded.")
-        return None # Return None on error
+        return None
 
     # --- Add Analyzers ---
     print("Adding Standard Analyzers: TradeAnalyzer, DrawDown")
