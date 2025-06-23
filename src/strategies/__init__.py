@@ -73,10 +73,8 @@ def get_strategy_info(strategy_name: str) -> Dict[str, str]:
 
 # Register all available strategies
 register_strategy('CorrelatedSMACross', 'strategies.correlated_sma_cross', 'CorrelatedSMACrossStrategy')
-register_strategy('SMACrossOver', 'strategies.sma_crossover', 'SMACrossOverStrategy')
 register_strategy('MACrossOver', 'strategies.ma_cci_crossover', 'MACrossOver')
 register_strategy('BBandPearsonDivergence', 'strategies.bband_pearson_divergence', 'BBandPearsonDivergence')
-register_strategy('NullStrategy', 'strategies.null_strategy', 'NullStrategy')
 
 # Export the main functions
 __all__ = [

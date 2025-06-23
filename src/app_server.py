@@ -1,5 +1,5 @@
 # src/app_server.py
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 import pandas as pd
 import numpy as np
@@ -286,6 +286,9 @@ def get_strategy_parameter_definitions(strategy_name: str):
     except (ValueError, ImportError, AttributeError) as e:
         print(f"Error loading strategy parameter definitions for '{strategy_name}': {e}")
         return []
+    except Exception as e:
+        print(f"Unexpected error loading strategy '{strategy_name}': {e}")
+        return []
 
 # NEW: Add endpoint to list all available strategies
 @app.route('/api/strategies')
@@ -333,6 +336,293 @@ def get_strategy_parameters(strategy_name):
             'error': f'Failed to get parameters for strategy {strategy_name}: {e}',
             'available_strategies': list_available_strategies()
         }), 404
+
+@app.route('/api/strategies_info', methods=['GET'])
+def get_strategies_info():
+    """
+    API endpoint to get comprehensive information about all available strategies,
+    including their parameter definitions.
+    
+    Returns:
+        JSON response with list of strategy objects containing name and parameters
+    """
+    try:
+        # Get all available strategy names
+        strategy_names = list_available_strategies()
+        strategies_info = []
+        
+        for strategy_name in strategy_names:
+            try:
+                # Get the strategy class
+                strategy_class = get_strategy_class(strategy_name)
+                
+                # Get parameter definitions if available
+                parameters = []
+                if hasattr(strategy_class, 'get_parameter_definitions'):
+                    param_defs = strategy_class.get_parameter_definitions()
+                    
+                    # Convert ParameterDefinition objects to JSON-serializable dictionaries
+                    for param_def in param_defs:
+                        parameters.append({
+                            'name': param_def.name,
+                            'default_value': param_def.default_value,
+                            'ui_label': param_def.ui_label,
+                            'type': param_def.type,
+                            'description': param_def.description,
+                            'min_value': param_def.min_value,
+                            'max_value': param_def.max_value,
+                            'step': param_def.step,
+                            'choices': param_def.choices,
+                            'group': param_def.group
+                        })
+                else:
+                    print(f"Warning: Strategy '{strategy_name}' does not have parameter definitions")
+                
+                # Add strategy info to the list
+                strategies_info.append({
+                    'name': strategy_name,
+                    'parameters': parameters
+                })
+                
+            except Exception as e:
+                print(f"Error loading strategy '{strategy_name}': {e}")
+                # Add strategy with error info for debugging
+                strategies_info.append({
+                    'name': strategy_name,
+                    'parameters': [],
+                    'error': f"Failed to load strategy: {e}"
+                })
+        
+        return jsonify({
+            'strategies': strategies_info,
+            'total_count': len(strategies_info)
+        })
+        
+    except Exception as e:
+        print(f"Error in get_strategies_info: {e}")
+        return jsonify({
+            'error': f'Failed to retrieve strategies information: {e}',
+            'strategies': []
+        }), 500
+
+@app.route('/api/data_files', methods=['GET'])
+def get_data_files():
+    """
+    API endpoint to get list of available CSV data files.
+    
+    Returns:
+        JSON response with list of CSV filenames in the data/ directory
+    """
+    try:
+        # Get the project root directory (parent of src)
+        project_root = Path(__file__).resolve().parent.parent
+        data_dir = project_root / 'data'
+        
+        # Check if data directory exists
+        if not data_dir.exists():
+            return jsonify({
+                'error': 'Data directory not found',
+                'data_files': [],
+                'data_dir_path': str(data_dir)
+            }), 404
+        
+        # Scan for CSV files
+        csv_files = []
+        for file_path in data_dir.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() == '.csv':
+                csv_files.append(file_path.name)
+        
+        # Sort files alphabetically for consistent ordering
+        csv_files.sort()
+        
+        return jsonify({
+            'data_files': csv_files,
+            'count': len(csv_files),
+            'data_dir_path': str(data_dir)
+        })
+        
+    except Exception as e:
+        print(f"Error scanning data directory: {e}")
+        return jsonify({
+            'error': f'Failed to scan data directory: {e}',
+            'data_files': []
+        }), 500
+
+@app.route('/api/run_single_backtest', methods=['POST'])
+def run_single_backtest():
+    """
+    API endpoint to run a single backtest with custom parameters from frontend.
+    
+    Expected JSON payload:
+    {
+        "strategy_name": "CorrelatedSMACross",
+        "data_files": {
+            "data_path_1": "AAPL_daily.csv",
+            "data_path_2": "SPY_daily.csv"
+        },
+        "date_range": {
+            "fromdate": "2020-01-01",
+            "todate": "2023-12-31"
+        },
+        "strategy_parameters": {
+            "p_fast_d0": 15,
+            "p_slow_d0": 45,
+            "p_fast_d1": 20,
+            "p_slow_d1": 50,
+            "run_name": "custom_web_run"
+        },
+        "broker_config": {
+            "cash": 100000,
+            "commission": 0.001
+        },
+        "sizer_config": {
+            "stake": 100
+        }
+    }
+    
+    Returns:
+        JSON response with backtest results or error
+    """
+    try:
+        # Extract JSON payload from request
+        if not request.json:
+            return jsonify({'error': 'No JSON payload provided'}), 400
+        
+        payload = request.json
+        print(f"Received backtest request: {payload}")
+        
+        # --- Extract and validate parameters ---
+        
+        # 1. Strategy Configuration
+        strategy_name = payload.get('strategy_name')
+        if not strategy_name:
+            return jsonify({'error': 'strategy_name is required'}), 400
+        
+        # Validate strategy exists
+        available_strategies = list_available_strategies()
+        if strategy_name not in available_strategies:
+            return jsonify({
+                'error': f'Strategy "{strategy_name}" not available',
+                'available_strategies': available_strategies
+            }), 400
+        
+        # 2. Data Files Configuration
+        data_files = payload.get('data_files', {})
+        data_path_1 = data_files.get('data_path_1')
+        data_path_2 = data_files.get('data_path_2')
+        
+        if not data_path_1:
+            return jsonify({'error': 'data_path_1 is required'}), 400
+        
+        # Convert relative filenames to full paths
+        project_root = Path(__file__).resolve().parent.parent
+        data_dir = project_root / 'data'
+        
+        full_data_path_1 = str(data_dir / data_path_1)
+        full_data_path_2 = str(data_dir / data_path_2) if data_path_2 else None
+        
+        # Validate data files exist
+        if not Path(full_data_path_1).exists():
+            return jsonify({'error': f'Data file not found: {data_path_1}'}), 400
+        if data_path_2 and not Path(full_data_path_2).exists():
+            return jsonify({'error': f'Data file not found: {data_path_2}'}), 400
+        
+        # 3. Date Range Configuration
+        date_range = payload.get('date_range', {})
+        fromdate = date_range.get('fromdate', '2020-01-01')
+        todate = date_range.get('todate', '2023-12-31')
+        
+        # 4. Strategy Parameters
+        strategy_parameters = payload.get('strategy_parameters', {})
+        
+        # 5. Broker Configuration
+        broker_config = payload.get('broker_config', {})
+        cash = broker_config.get('cash', 100000)
+        commission = broker_config.get('commission', 0.001)
+        
+        # 6. Sizer Configuration  
+        sizer_config = payload.get('sizer_config', {})
+        stake = sizer_config.get('stake', 100)
+        
+        # --- Create Args-like object for setup_and_run_backtest ---        
+        class WebBacktestArgs:
+            """Mock args object that mimics argparse.Namespace for web requests."""
+            def __init__(self):
+                # Data configuration
+                self.data_path_1 = full_data_path_1
+                self.data_path_2 = full_data_path_2
+                
+                # Strategy configuration
+                self.strategy_name = strategy_name
+                
+                # Date configuration
+                self.fromdate = fromdate
+                self.todate = todate
+                
+                # Broker configuration (formatted as kwargs string)
+                self.broker = f"cash={cash},commission={commission}"
+                
+                # Sizer configuration (formatted as kwargs string)
+                self.sizer = f"stake={stake}"
+                
+                # Strategy parameters (formatted as kwargs string)
+                strat_params = []
+                for param_name, param_value in strategy_parameters.items():
+                    if isinstance(param_value, str):
+                        strat_params.append(f"{param_name}='{param_value}'")
+                    else:
+                        strat_params.append(f"{param_name}={param_value}")
+                self.strat = ",".join(strat_params)
+                
+                # Cerebro configuration
+                self.cerebro = ""  # Use defaults
+                
+                # Run configuration
+                self.run_name = strategy_parameters.get('run_name', f"web_run_{datetime.datetime.now():%Y%m%d_%H%M%S}")
+                self.plot = False  # Web interface handles plotting
+        
+        # Create the args object
+        web_args = WebBacktestArgs()
+        
+        # --- Log the configuration for debugging ---
+        print("=== Web Backtest Configuration ===")
+        print(f"Strategy: {web_args.strategy_name}")
+        print(f"Data Path 1: {web_args.data_path_1}")
+        print(f"Data Path 2: {web_args.data_path_2}")
+        print(f"Date Range: {web_args.fromdate} to {web_args.todate}")
+        print(f"Broker Args: {web_args.broker}")
+        print(f"Sizer Args: {web_args.sizer}")
+        print(f"Strategy Args: {web_args.strat}")
+        print(f"Run Name: {web_args.run_name}")
+        print("===================================")
+        
+        # --- Call setup_and_run_backtest (placeholder for now) ---
+        
+        # TODO: Actually call setup_and_run_backtest here
+        # results_data_object = setup_and_run_backtest(web_args, parse_kwargs_func=parse_kwargs_str)
+        
+        # For now, return success with the configuration
+        return jsonify({
+            'status': 'success',
+            'message': 'Backtest configuration prepared successfully',
+            'configuration': {
+                'strategy_name': web_args.strategy_name,
+                'data_path_1': web_args.data_path_1,
+                'data_path_2': web_args.data_path_2,
+                'date_range': f"{web_args.fromdate} to {web_args.todate}",
+                'broker_config': web_args.broker,
+                'sizer_config': web_args.sizer,
+                'strategy_config': web_args.strat,
+                'run_name': web_args.run_name
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in run_single_backtest: {e}")
+        traceback.print_exc()
+        return jsonify({
+            'error': f'Failed to prepare backtest: {e}'
+        }), 500
 
 if __name__ == '__main__':
     multiprocessing.freeze_support() # For Windows compatibility if using multiprocessing internally
