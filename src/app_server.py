@@ -451,178 +451,56 @@ def get_data_files():
 @app.route('/api/run_single_backtest', methods=['POST'])
 def run_single_backtest():
     """
-    API endpoint to run a single backtest with custom parameters from frontend.
-    
-    Expected JSON payload:
-    {
-        "strategy_name": "CorrelatedSMACross",
-        "data_files": {
-            "data_path_1": "AAPL_daily.csv",
-            "data_path_2": "SPY_daily.csv"
-        },
-        "date_range": {
-            "fromdate": "2020-01-01",
-            "todate": "2023-12-31"
-        },
-        "strategy_parameters": {
-            "p_fast_d0": 15,
-            "p_slow_d0": 45,
-            "p_fast_d1": 20,
-            "p_slow_d1": 50,
-            "run_name": "custom_web_run"
-        },
-        "broker_config": {
-            "cash": 100000,
-            "commission": 0.001
-        },
-        "sizer_config": {
-            "stake": 100
-        }
-    }
-    
-    Returns:
-        JSON response with backtest results or error
+    Receives backtest parameters, logs them, and returns an immediate
+    confirmation. In the future, this will queue the backtest.
     """
     try:
-        # Extract JSON payload from request
         if not request.json:
-            return jsonify({'error': 'No JSON payload provided'}), 400
+            return jsonify({'status': 'error', 'message': 'Invalid request: No JSON payload provided.'}), 400
         
         payload = request.json
-        print(f"Received backtest request: {payload}")
-        
-        # --- Extract and validate parameters ---
-        
-        # 1. Strategy Configuration
+        print("--- BACKEND RECEIVED NEW BACKTEST REQUEST ---")
+        print(f"Received payload: {payload}")
+
+        # --- Extract and Validate Parameters (more comprehensively) ---
         strategy_name = payload.get('strategy_name')
+        strategy_params = payload.get('strategy_parameters', {}) # Expect parameters to be nested
+        
         if not strategy_name:
-            return jsonify({'error': 'strategy_name is required'}), 400
-        
-        # Validate strategy exists
-        available_strategies = list_available_strategies()
-        if strategy_name not in available_strategies:
-            return jsonify({
-                'error': f'Strategy "{strategy_name}" not available',
-                'available_strategies': available_strategies
-            }), 400
-        
-        # 2. Data Files Configuration
-        data_files = payload.get('data_files', {})
-        data_path_1 = data_files.get('data_path_1')
-        data_path_2 = data_files.get('data_path_2')
-        
-        if not data_path_1:
-            return jsonify({'error': 'data_path_1 is required'}), 400
-        
-        # Convert relative filenames to full paths
-        project_root = Path(__file__).resolve().parent.parent
-        data_dir = project_root / 'data'
-        
-        full_data_path_1 = str(data_dir / data_path_1)
-        full_data_path_2 = str(data_dir / data_path_2) if data_path_2 else None
-        
-        # Validate data files exist
-        if not Path(full_data_path_1).exists():
-            return jsonify({'error': f'Data file not found: {data_path_1}'}), 400
-        if data_path_2 and not Path(full_data_path_2).exists():
-            return jsonify({'error': f'Data file not found: {data_path_2}'}), 400
-        
-        # 3. Date Range Configuration
-        date_range = payload.get('date_range', {})
-        fromdate = date_range.get('fromdate', '2020-01-01')
-        todate = date_range.get('todate', '2023-12-31')
-        
-        # 4. Strategy Parameters
-        strategy_parameters = payload.get('strategy_parameters', {})
-        
-        # 5. Broker Configuration
-        broker_config = payload.get('broker_config', {})
-        cash = broker_config.get('cash', 100000)
-        commission = broker_config.get('commission', 0.001)
-        
-        # 6. Sizer Configuration  
-        sizer_config = payload.get('sizer_config', {})
-        stake = sizer_config.get('stake', 100)
-        
-        # --- Create Args-like object for setup_and_run_backtest ---        
-        class WebBacktestArgs:
-            """Mock args object that mimics argparse.Namespace for web requests."""
-            def __init__(self):
-                # Data configuration
-                self.data_path_1 = full_data_path_1
-                self.data_path_2 = full_data_path_2
-                
-                # Strategy configuration
-                self.strategy_name = strategy_name
-                
-                # Date configuration
-                self.fromdate = fromdate
-                self.todate = todate
-                
-                # Broker configuration (formatted as kwargs string)
-                self.broker = f"cash={cash},commission={commission}"
-                
-                # Sizer configuration (formatted as kwargs string)
-                self.sizer = f"stake={stake}"
-                
-                # Strategy parameters (formatted as kwargs string)
-                strat_params = []
-                for param_name, param_value in strategy_parameters.items():
-                    if isinstance(param_value, str):
-                        strat_params.append(f"{param_name}='{param_value}'")
-                    else:
-                        strat_params.append(f"{param_name}={param_value}")
-                self.strat = ",".join(strat_params)
-                
-                # Cerebro configuration
-                self.cerebro = ""  # Use defaults
-                
-                # Run configuration
-                self.run_name = strategy_parameters.get('run_name', f"web_run_{datetime.datetime.now():%Y%m%d_%H%M%S}")
-                self.plot = False  # Web interface handles plotting
-        
-        # Create the args object
-        web_args = WebBacktestArgs()
-        
-        # --- Log the configuration for debugging ---
-        print("=== Web Backtest Configuration ===")
-        print(f"Strategy: {web_args.strategy_name}")
-        print(f"Data Path 1: {web_args.data_path_1}")
-        print(f"Data Path 2: {web_args.data_path_2}")
-        print(f"Date Range: {web_args.fromdate} to {web_args.todate}")
-        print(f"Broker Args: {web_args.broker}")
-        print(f"Sizer Args: {web_args.sizer}")
-        print(f"Strategy Args: {web_args.strat}")
-        print(f"Run Name: {web_args.run_name}")
-        print("===================================")
-        
-        # --- Call setup_and_run_backtest (placeholder for now) ---
-        
-        # TODO: Actually call setup_and_run_backtest here
-        # results_data_object = setup_and_run_backtest(web_args, parse_kwargs_func=parse_kwargs_str)
-        
-        # For now, return success with the configuration
+            return jsonify({'status': 'error', 'message': '`strategy_name` is a required field.'}), 400
+
+        # Extract a specific parameter for logging, e.g., p_fast_d0
+        p_fast_d0_value = strategy_params.get('p_fast_d0')
+
+        # --- Log the received data clearly on the backend console ---
+        print("\n--- Parsed Configuration ---")
+        print(f"Strategy: {strategy_name}")
+        # Log the specific parameter you're testing
+        print(f"Parameter 'p_fast_d0' received with value: {p_fast_d0_value}")
+        # Log all received strategy parameters
+        print(f"Full Strategy Params: {strategy_params}")
+        print("--------------------------\n")
+
+        # --- Placeholder for queuing logic ---
+        # In the future, this is where you would:
+        # 1. Generate a unique task_id.
+        # 2. Add the `payload` and `task_id` to the in-memory queue.
+        # 3. Add a new row to the SQLite database with the task_id and 'queued' status.
+        # 4. Return the task_id to the user.
+
+        # For this "little step", we just return success.
+        task_id_placeholder = f"task_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+
         return jsonify({
-            'status': 'success',
-            'message': 'Backtest configuration prepared successfully',
-            'configuration': {
-                'strategy_name': web_args.strategy_name,
-                'data_path_1': web_args.data_path_1,
-                'data_path_2': web_args.data_path_2,
-                'date_range': f"{web_args.fromdate} to {web_args.todate}",
-                'broker_config': web_args.broker,
-                'sizer_config': web_args.sizer,
-                'strategy_config': web_args.strat,
-                'run_name': web_args.run_name
-            }
-        })
-        
+            'status': 'queued', # Use a more descriptive status for the future
+            'message': f"Backtest for strategy '{strategy_name}' has been successfully queued. (This is a test response).",
+            'task_id': task_id_placeholder # Return a placeholder task_id
+        }), 202 # Use HTTP status 202 Accepted, which is standard for async tasks
+
     except Exception as e:
-        print(f"Error in run_single_backtest: {e}")
-        traceback.print_exc()
-        return jsonify({
-            'error': f'Failed to prepare backtest: {e}'
-        }), 500
+        print(f"ERROR in /api/run_single_backtest: {str(e)}")
+        traceback.print_exc() # Print full traceback for better debugging
+        return jsonify({'status': 'error', 'message': f'An unexpected server error occurred: {str(e)}'}), 500
 
 if __name__ == '__main__':
     multiprocessing.freeze_support() # For Windows compatibility if using multiprocessing internally

@@ -225,3 +225,98 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error fetching or processing chart data:', error);
         });
 });
+
+// Add this code within a DOMContentLoaded event listener or at the end of your existing script
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Get DOM elements
+    const runButton = document.getElementById('runBacktestButton');
+    const responseDiv = document.getElementById('responseMessage');
+    const pFastD0Input = document.getElementById('p_fast_d0_input');
+    const strategyNameInput = document.getElementById('strategyNameInput');
+
+    if (runButton) {
+        runButton.addEventListener('click', () => {
+            console.log('--- FRONTEND: Run Backtest Button Clicked ---');
+            
+            // 1. Get user input
+            const pFastD0Value = parseInt(pFastD0Input.value, 10);
+            const strategyName = strategyNameInput.value;
+
+            console.log(`Frontend Input - Strategy: ${strategyName}, p_fast_d0: ${pFastD0Value}`);
+
+            // Basic validation on the frontend
+            if (isNaN(pFastD0Value) || pFastD0Value <= 0) {
+                responseDiv.innerText = 'Error: Please enter a valid, positive number for the MA Period.';
+                responseDiv.className = 'error';
+                responseDiv.style.display = 'block';
+                return;
+            }
+
+            // 2. Construct the JSON payload
+            const payload = {
+                strategy_name: strategyName,
+                strategy_parameters: {
+                    p_fast_d0: pFastD0Value,
+                    // Add other default parameters if your strategy needs them
+                    p_slow_d0: 50,
+                    p_fast_d1: 20,
+                    p_slow_d1: 50
+                },
+                // Include other top-level keys with default values
+                data_files: {
+                    data_path_1: "SPY_5m_1Yea.csv", // Use a default for this test
+                    data_path_2: "XAUUSD_5m_1Yea.csv"
+                },
+                date_range: {
+                    fromdate: "2023-01-01",
+                    todate: "2023-12-31"
+                }
+            };
+
+            console.log('Frontend Payload to send:', payload);
+
+            // 3. Provide UI feedback
+            runButton.disabled = true;
+            runButton.innerText = 'Sending Request...';
+            responseDiv.style.display = 'none'; // Hide old messages
+
+            // 4. Send the request
+            fetch('/api/run_single_backtest', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            })
+            .then(response => {
+                console.log('Frontend: Response status:', response.status);
+                if (!response.ok) {
+                    // Handle HTTP errors like 400 or 500
+                    return response.json().then(err => { throw err; });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Frontend: Response from backend:', data);
+                // Display success message
+                responseDiv.innerText = `Success: ${data.message} | Task ID: ${data.task_id}`;
+                responseDiv.className = 'success';
+                responseDiv.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Frontend: Error:', error);
+                // Display error message, using the message from the backend if available
+                responseDiv.innerText = `Error: ${error.message || 'A network error occurred.'}`;
+                responseDiv.className = 'error';
+                responseDiv.style.display = 'block';
+            })
+            .finally(() => {
+                // This block will run whether the fetch succeeded or failed
+                runButton.disabled = false;
+                runButton.innerText = 'Run Backtest (Test)';
+                console.log('--- FRONTEND: Request completed ---');
+            });
+        });
+    }
+});

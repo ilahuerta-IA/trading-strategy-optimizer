@@ -12,6 +12,25 @@
 <body>
     <div id="loading">Loading chart data...</div>
 
+    <!-- Backtest Control Panel -->
+    <div id="backtestControlPanel" style="padding: 20px; background-color: #181A20; border-bottom: 1px solid #2B2B43;">
+        <h2>Run a New Backtest</h2>
+        <div id="controlForm">
+            <div class="form-group">
+                <label for="strategyNameInput">Strategy:</label>
+                <input type="text" id="strategyNameInput" value="CorrelatedSMACross" readonly>
+            </div>
+            <div class="form-group">
+                <label for="p_fast_d0_input">Fast MA Period (p_fast_d0):</label>
+                <input type="number" id="p_fast_d0_input" value="20" min="1" step="1">
+            </div>
+            <div class="form-group">
+                <button id="runBacktestButton">Run Backtest (Test)</button>
+            </div>
+        </div>
+        <div id="responseMessage"></div>
+    </div>
+
     <!-- Main Chart Container -->
     <div id="mainChartContainer"></div>
     <div id="data1ChartContainer"></div> <!-- New container for data1 chart -->
