@@ -31,7 +31,10 @@ class BacktestResult:
 def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, Any]]):
     """Sets up and runs the Backtrader Cerebro engine."""
 
-    cerebro = bt.Cerebro()
+    cerebro = bt.Cerebro(stdstats=False)
+    
+    # Add TimeReturn analyzer immediately after creating Cerebro
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn')
 
     # --- Date Filtering ---
     data_kwargs = dict()
@@ -93,19 +96,33 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
 
     # --- Broker ---
     print(f"Parsing broker args: '{args.broker}'")
-    broker_kwargs = parse_kwargs_func(args.broker)
-    broker_init_kwargs = broker_kwargs.copy()
-    commission_config = {}
-    if 'commission' in broker_init_kwargs:
-        commission_value = broker_init_kwargs.pop('commission')
-        commission_config['commission'] = commission_value
-        commission_config['percabs'] = True
-    print(f"Initial Broker kwargs: {broker_init_kwargs}")
-    cerebro.broker = bt.brokers.BackBroker(**broker_init_kwargs)
-    if commission_config:
-        print(f"Setting commission: {commission_config['commission']*100:.3f}%")
-        cerebro.broker.setcommission(**commission_config)
-    else: print("No commission specified.")
+    # This gives us a dictionary like {'cash': 100000, 'commission': 0.001}
+    broker_kwargs = parse_kwargs_func(args.broker) 
+    
+    # 1. Explicitly get and remove 'cash' to handle it separately.
+    #    We provide a default and ensure it's a float.
+    initial_cash = float(broker_kwargs.pop('cash', 100000.0))
+
+    # 2. Explicitly get and remove 'commission' to handle it separately.
+    #    We provide a default and ensure it's a float.
+    commission_val = float(broker_kwargs.pop('commission', 0.0))
+
+    # 3. Now, broker_kwargs contains only "other" arguments.
+    #    Initialize the broker with these remaining arguments (if any).
+    print(f"Initializing broker with remaining kwargs: {broker_kwargs}")
+    cerebro.broker = bt.brokers.BackBroker(**broker_kwargs)
+
+    # 4. Use the dedicated, type-safe methods to set the critical values.
+    #    This is the most robust way and avoids any ambiguity from kwargs.
+    print(f"Setting initial cash to: {initial_cash:.2f}")
+    cerebro.broker.setcash(initial_cash)
+
+    if commission_val > 0.0:
+        print(f"Setting commission: {commission_val * 100:.3f}%")
+        # Backtrader's setcommission doesn't need percabs=True, it assumes percentage
+        cerebro.broker.setcommission(commission=commission_val)
+    else:
+        print("No commission specified.")
 
     # --- Sizer ---
     print(f"Parsing sizer args: '{args.sizer}'")
@@ -140,6 +157,7 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
     if strategy_class:
         print(f"Applying strategy kwargs for {strategy_name}: {strat_kwargs}")
         cerebro.addstrategy(strategy_class, **strat_kwargs)
+        
     else:
         print("FATAL: Strategy class not loaded.")
         return None

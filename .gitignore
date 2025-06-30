@@ -22,3 +22,10 @@ credentials.json
 # Logs y archivos temporales
 *.log
 *.tmp
+
+# Database and Logs
+backtests.db
+debug_logs/
+
+# Data folder
+data/

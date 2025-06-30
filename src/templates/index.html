@@ -2,16 +2,11 @@
 <html>
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0" />
-    <title>Backtrader Advanced JS Chart</title>
-    <!-- TradingView Lightweight Charts Standalone JS Library -->
-    <script type="text/javascript" src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <!-- Link to external stylesheet -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quantitative Backtest Analysis</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div id="loading">Loading chart data...</div>
-
     <!-- Backtest Control Panel -->
     <div id="backtestControlPanel" style="padding: 20px; background-color: #181A20; border-bottom: 1px solid #2B2B43;">
         <h2>Run a New Backtest</h2>
@@ -25,28 +20,22 @@
                 <input type="number" id="p_fast_d0_input" value="20" min="1" step="1">
             </div>
             <div class="form-group">
-                <button id="runBacktestButton">Run Backtest (Test)</button>
+                <button id="runBacktestButton">Run Backtest</button>
             </div>
         </div>
-        <div id="responseMessage"></div>
     </div>
 
-    <!-- Main Chart Container -->
-    <div id="mainChartContainer"></div>
-    <div id="data1ChartContainer"></div> <!-- New container for data1 chart -->
-
-    <!-- Area where subcharts will be dynamically added -->
-    <div id="subchartsArea" style="display: flex; flex-direction: column; flex-grow: 1;"></div>
-
-    <!-- Backtest Report Area -->
-    <div id="backtestReportArea">
-        <div id="reportRunConfig"></div>
-        <div id="reportPerformanceSummary"></div>
-        <div id="reportTradeStats"></div>
+    <!-- Results Area - Clean and Professional -->
+    <div id="resultsArea" style="padding: 20px;">
+        <div id="backtestReportArea">
+            <!-- These will be populated by ui.js -->
+            <div id="reportRunConfig"></div>
+            <div id="reportPerformanceSummary"></div>
+            <div id="reportTradeStats"></div>
+        </div>
     </div>
 
-    <!-- Link to external JavaScript files -->
-    <!-- Note: The 'type="module"' allows using import/export -->
+    <!-- Clean JavaScript Loading -->
     <script src="{{ url_for('static', filename='js/ui.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/chart.js') }}" type="module"></script>
 </body>
