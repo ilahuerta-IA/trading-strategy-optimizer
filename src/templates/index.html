@@ -1,41 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Quantitative Backtest Analysis</title>
+    <title>Backtrader Web Interface</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <!-- Backtest Control Panel -->
-    <div id="backtestControlPanel" style="padding: 20px; background-color: #181A20; border-bottom: 1px solid #2B2B43;">
+    <div id="backtestControlPanel">
         <h2>Run a New Backtest</h2>
         <div id="controlForm">
             <div class="form-group">
                 <label for="strategyNameInput">Strategy:</label>
                 <input type="text" id="strategyNameInput" value="CorrelatedSMACross" readonly>
             </div>
-            <div class="form-group">
-                <label for="p_fast_d0_input">Fast MA Period (p_fast_d0):</label>
-                <input type="number" id="p_fast_d0_input" value="20" min="1" step="1">
+            
+            <!-- This container will be populated by JavaScript -->
+            <div id="strategyParamsContainer">
+                <p>Loading parameters...</p>
             </div>
+
             <div class="form-group">
                 <button id="runBacktestButton">Run Backtest</button>
             </div>
         </div>
+        <div id="responseMessage"></div>
     </div>
 
-    <!-- Results Area - Clean and Professional -->
-    <div id="resultsArea" style="padding: 20px;">
+    <div id="resultsArea">
         <div id="backtestReportArea">
-            <!-- These will be populated by ui.js -->
             <div id="reportRunConfig"></div>
             <div id="reportPerformanceSummary"></div>
             <div id="reportTradeStats"></div>
         </div>
     </div>
 
-    <!-- Clean JavaScript Loading -->
     <script src="{{ url_for('static', filename='js/ui.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/chart.js') }}" type="module"></script>
 </body>
