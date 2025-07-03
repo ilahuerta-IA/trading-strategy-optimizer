@@ -208,49 +208,6 @@ def get_strategies_info():
             'strategies': []
         }), 500
 
-@app.route('/api/data_files', methods=['GET'])
-def get_data_files():
-    """
-    API endpoint to get list of available CSV data files.
-    
-    Returns:
-        JSON response with list of CSV filenames in the data/ directory
-    """
-    try:
-        # Get the project root directory (parent of src)
-        project_root = Path(__file__).resolve().parent.parent
-        data_dir = project_root / 'data'
-        
-        # Check if data directory exists
-        if not data_dir.exists():
-            return jsonify({
-                'error': 'Data directory not found',
-                'data_files': [],
-                'data_dir_path': str(data_dir)
-            }), 404
-        
-        # Scan for CSV files
-        csv_files = []
-        for file_path in data_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() == '.csv':
-                csv_files.append(file_path.name)
-        
-        # Sort files alphabetically for consistent ordering
-        csv_files.sort()
-        
-        return jsonify({
-            'data_files': csv_files,
-            'count': len(csv_files),
-            'data_dir_path': str(data_dir)
-        })
-        
-    except Exception as e:
-        print(f"Error scanning data directory: {e}")
-        return jsonify({
-            'error': f'Failed to scan data directory: {e}',
-            'data_files': []
-        }), 500
-
 @app.route('/api/run_single_backtest', methods=['POST'])
 def run_single_backtest():
     """Queues a backtest task and returns a task_id."""
@@ -290,7 +247,7 @@ def run_single_backtest():
         traceback.print_exc() # Print full traceback for better debugging
         return jsonify({'status': 'error', 'message': f'An unexpected server error occurred: {str(e)}'}), 500
 
-# --- NEW: Endpoint to check the status of a task ---
+# --- Endpoint to check the status of a task ---
 @app.route('/api/backtest_status/<task_id>', methods=['GET'])
 def get_backtest_status(task_id):
     """Checks the status of a backtest task from the database."""
@@ -306,7 +263,7 @@ def get_backtest_status(task_id):
 
     return jsonify(dict(task_row)) # Convert the row object to a dictionary
 
-# NEW Endpoint to get a list of all tasks
+# Endpoint to get a list of all tasks
 @app.route('/api/list_tasks', methods=['GET'])
 def list_tasks():
     """Returns a list of all backtest tasks from the database."""
@@ -323,7 +280,7 @@ def list_tasks():
         print(f"ERROR in /api/list_tasks: {str(e)}")
         return jsonify({'error': f'Failed to fetch tasks: {str(e)}'}), 500
 
-# NEW Endpoint to get the full result for a completed task
+# Endpoint to get the full result for a completed task
 @app.route('/api/get_result/<task_id>', methods=['GET'])
 def get_result(task_id):
     """Returns the full result_json for a completed task."""
@@ -348,6 +305,28 @@ def get_result(task_id):
     except Exception as e:
         print(f"ERROR in /api/get_result/{task_id}: {str(e)}")
         return jsonify({'error': f'Failed to fetch result: {str(e)}'}), 500
+    
+# Endpoint to scan the 'data/' directory and return available CSV files
+@app.route('/api/data_files', methods=['GET'])
+def get_data_files():
+    """
+    Scans the 'data/' directory and returns a list of available CSV files.
+    """
+    try:
+        data_dir = project_root / 'data'
+        if not data_dir.is_dir():
+            return jsonify({'error': 'Data directory not found on server.'}), 404
+        
+        # Find all files ending with .csv (case-insensitive)
+        csv_files = [f.name for f in data_dir.glob('*.csv')]
+        csv_files.sort() # Sort alphabetically for a consistent order
+        
+        return jsonify(csv_files)
+
+    except Exception as e:
+        print(f"Error scanning data directory: {e}")
+        traceback.print_exc()
+        return jsonify({'error': 'An error occurred while scanning for data files.'}), 500
 
 if __name__ == '__main__':
     multiprocessing.freeze_support() # For Windows compatibility if using multiprocessing internally

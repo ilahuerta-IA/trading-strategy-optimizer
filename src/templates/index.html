@@ -9,16 +9,32 @@
     <div id="backtestControlPanel">
         <h2>Run a New Backtest</h2>
         <div id="controlForm">
+            <!-- Data File Selectors -->
+            <div class="form-group">
+                <label for="dataFile1Select">Data File 1 (Primary):</label>
+                <select id="dataFile1Select" name="data_path_1"><option>Loading...</option></select>
+            </div>
+            <div class="form-group">
+                <label for="dataFile2Select">Data File 2 (Secondary):</label>
+                <select id="dataFile2Select" name="data_path_2"><option>Loading...</option></select>
+            </div>
+            
+            <hr class="form-separator">
+        
+            <!-- Strategy Selection -->
             <div class="form-group">
                 <label for="strategyNameInput">Strategy:</label>
                 <input type="text" id="strategyNameInput" value="CorrelatedSMACross" readonly>
             </div>
             
-            <!-- This container will be populated by JavaScript -->
+            <!-- Dynamic Parameter Container -->
             <div id="strategyParamsContainer">
                 <p>Loading parameters...</p>
             </div>
-
+            
+            <hr class="form-separator">
+        
+            <!-- Run Button -->
             <div class="form-group">
                 <button id="runBacktestButton">Run Backtest</button>
             </div>

@@ -1,4 +1,4 @@
-// src/static/js/chart.js - DYNAMIC PARAMETER FORM VERSION (COMPLETE)
+// src/static/js/chart.js - DYNAMIC DATA FILE SELECTORS
 
 import { populateReportData } from './ui.js';
 
@@ -10,6 +10,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const responseDiv = document.getElementById('responseMessage');
     const strategyNameInput = document.getElementById('strategyNameInput');
     const paramsContainer = document.getElementById('strategyParamsContainer');
+    // --- Get references to the new select elements ---
+    const dataFile1Select = document.getElementById('dataFile1Select');
+    const dataFile2Select = document.getElementById('dataFile2Select');
+
+    /**
+     * Populates a <select> dropdown with a list of filenames.
+     * @param {HTMLSelectElement} selectElement The dropdown element.
+     * @param {Array<string>} fileList The list of filenames.
+     */
+    function populateDataFileDropdown(selectElement, fileList) {
+        if (!selectElement) return;
+        selectElement.innerHTML = ''; // Clear "Loading..."
+
+        if (!fileList || fileList.length === 0) {
+            selectElement.innerHTML = '<option value="">No data files found</option>';
+            return;
+        }
+
+        fileList.forEach(fileName => {
+            const option = document.createElement('option');
+            option.value = fileName;
+            option.textContent = fileName;
+            selectElement.appendChild(option);
+        });
+    }
 
     /**
      * Creates HTML input fields for a strategy's parameters.
@@ -70,9 +95,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Initializes the page by fetching strategy info and building the form.
+     * Initializes the entire page by fetching all required data.
      */
     function initializePage() {
+        // --- Fetch and populate Data File selectors ---
+        fetch('/api/data_files')
+            .then(res => res.ok ? res.json() : Promise.reject(new Error('Failed to load data files')))
+            .then(fileList => {
+                populateDataFileDropdown(dataFile1Select, fileList);
+                populateDataFileDropdown(dataFile2Select, fileList);
+                
+                // Pre-select default files if they exist in the list
+                if (fileList.includes("SPY_5m_1Yea.csv")) {
+                    dataFile1Select.value = "SPY_5m_1Yea.csv";
+                }
+                if (fileList.includes("XAUUSD_5m_1Yea.csv")) {
+                    dataFile2Select.value = "XAUUSD_5m_1Yea.csv";
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching data files:", error);
+                const errorMsg = '<option value="">Error loading files</option>';
+                if (dataFile1Select) dataFile1Select.innerHTML = errorMsg;
+                if (dataFile2Select) dataFile2Select.innerHTML = errorMsg;
+            });
+
+        // --- Fetch and populate Strategy Parameters ---
         const strategyName = strategyNameInput.value;
         if (!strategyName) {
             paramsContainer.innerHTML = '<p style="color: red;">No default strategy is set.</p>';
@@ -172,13 +220,30 @@ document.addEventListener('DOMContentLoaded', () => {
             clearUI();
 
             const strategyParameters = gatherStrategyParameters();
+            
+            // --- Get selected data files from dropdowns ---
+            const selectedDataFile1 = dataFile1Select ? dataFile1Select.value : null;
+            const selectedDataFile2 = dataFile2Select ? dataFile2Select.value : null;
+
+            if (!selectedDataFile1 || !selectedDataFile2) {
+                if (responseDiv) {
+                    responseDiv.innerText = "Please select data files for both Data Path 1 and Data Path 2.";
+                    responseDiv.className = 'error';
+                    responseDiv.style.display = 'block';
+                }
+                if (runButton) {
+                    runButton.disabled = false;
+                    runButton.innerText = 'Run Backtest';
+                }
+                return;
+            }
 
             const payload = {
                 strategy_name: strategyNameInput.value,
                 strategy_parameters: strategyParameters,
                 data_files: { 
-                    data_path_1: "SPY_5m_1Yea.csv", 
-                    data_path_2: "XAUUSD_5m_1Yea.csv" 
+                    data_path_1: selectedDataFile1, 
+                    data_path_2: selectedDataFile2 
                 },
             };
 
