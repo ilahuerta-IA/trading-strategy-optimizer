@@ -249,18 +249,27 @@ def setup_and_run_backtest(args, parse_kwargs_func: Callable[[str], Dict[str, An
     output_result.value_analysis = analysis_results.get('valuecapture')
 
     # --- Populate Run Configuration Summary ---
+    
+    # Carefully construct the fromdate and todate strings for the report.
+    fromdate_report = args.fromdate
+    if not fromdate_report: # If fromdate was None or empty
+        fromdate_report = "Start of Data"
+    
+    todate_report = args.todate
+    if not todate_report: # If todate was None or empty
+        todate_report = "End of Data"
+
     run_config_data = {
         "run_name": args.run_name,
-        "strategy_name": strategy_name, # This is args.strategy_name
-        "parameters": strat_kwargs, # Strategy-specific parameters
-        "data_path_1": args.data_path_1,
-        "data_path_2": getattr(args, 'data_path_2', 'N/A'),
-        "fromdate": str(data_kwargs.get('fromdate')) if data_kwargs.get('fromdate') else getattr(args, 'fromdate', 'Start of Data'),
-        "todate": str(data_kwargs.get('todate')) if data_kwargs.get('todate') else getattr(args, 'todate', 'End of Data'),
-        "broker_config_str": args.broker,
-        "sizer_config_str": args.sizer,
-        "cerebro_config_str": args.cerebro
+        "strategy_name": strategy_name,
+        "parameters": strat_kwargs,
+        "data_path_1": Path(args.data_path_1).name, # Just show the filename
+        "data_path_2": Path(args.data_path_2).name if getattr(args, 'data_path_2', None) else 'N/A',
+        "fromdate": fromdate_report, # Use our cleaned-up date string
+        "todate": todate_report,     # Use our cleaned-up date string
+        "initial_cash": float(parse_kwargs_func(args.broker).get('cash', 0)) # Directly get cash for the report
     }
+
     output_result.run_config_summary = run_config_data
 
     # --- Detailed Terminal Printing ---

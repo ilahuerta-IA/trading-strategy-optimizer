@@ -152,7 +152,13 @@ def convert_payload_to_args(payload, task_id):
     data_files = payload.get('data_files', {})
     args.data_path_1 = str(project_root / 'data' / data_files.get('data_path_1', Path(settings.DEFAULT_DATA_PATH_1).name))
     args.data_path_2 = str(project_root / 'data' / data_files.get('data_path_2', Path(settings.DEFAULT_DATA_PATH_2).name))
-    args.fromdate, args.todate = None, None
+    
+    # Use the dates from the payload.
+    date_range = payload.get('date_range', {})
+    args.fromdate = date_range.get('fromdate') # This will be a string like "2024-03-01"
+    args.todate = date_range.get('todate')
+
+    
     strategy_params = payload.get('strategy_parameters', {})
     args.strat = ','.join([f"{key}={value}" for key, value in strategy_params.items()])
     args.broker, args.sizer, args.cerebro = settings.DEFAULT_BROKER_ARGS, settings.DEFAULT_SIZER_ARGS, settings.DEFAULT_CEREBRO_ARGS

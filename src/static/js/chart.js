@@ -1,18 +1,19 @@
-// src/static/js/chart.js - DYNAMIC DATA FILE SELECTORS
+// src/static/js/chart.js - WITH DYNAMIC DATE PICKERS
 
 import { populateReportData } from './ui.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- State & DOM Elements ---
     let pollingInterval = null;
-    let strategiesInfo = null; // To store all strategy definitions
+    let strategiesInfo = null;
     const runButton = document.getElementById('runBacktestButton');
     const responseDiv = document.getElementById('responseMessage');
     const strategyNameInput = document.getElementById('strategyNameInput');
     const paramsContainer = document.getElementById('strategyParamsContainer');
-    // --- Get references to the new select elements ---
     const dataFile1Select = document.getElementById('dataFile1Select');
     const dataFile2Select = document.getElementById('dataFile2Select');
+    const fromDateInput = document.getElementById('fromDateInput');
+    const toDateInput = document.getElementById('toDateInput');
 
     /**
      * Populates a <select> dropdown with a list of filenames.
@@ -37,12 +38,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Fetches the date range for a given file and updates the date pickers.
+     * @param {string} filename The selected data file name.
+     */
+    function updateDatePickersForFile(filename) {
+        if (!filename || !fromDateInput || !toDateInput) return;
+
+        fetch(`/api/data_file_info/${filename}`)
+            .then(res => res.ok ? res.json() : Promise.reject('File info not found'))
+            .then(data => {
+                if (data.start_date && data.end_date) {
+                    // Set the min, max, and current values of the date pickers
+                    fromDateInput.min = data.start_date;
+                    fromDateInput.max = data.end_date;
+                    fromDateInput.value = data.start_date; // Default to start of data
+
+                    toDateInput.min = data.start_date;
+                    toDateInput.max = data.end_date;
+                    toDateInput.value = data.end_date;   // Default to end of data
+                }
+            })
+            .catch(error => {
+                console.error(`Error fetching date range for ${filename}:`, error);
+                // Clear the date pickers on error
+                fromDateInput.value = '';
+                toDateInput.value = '';
+            });
+    }
+
+    /**
      * Creates HTML input fields for a strategy's parameters.
      * @param {Array<object>} paramDefinitions - List of parameter definitions from the API.
      */
     function buildParameterForm(paramDefinitions) {
         if (!paramsContainer) return;
-        paramsContainer.innerHTML = ''; // Clear "Loading..." or old params
+        paramsContainer.innerHTML = '';
 
         if (!paramDefinitions || paramDefinitions.length === 0) {
             paramsContainer.innerHTML = '<p style="color: #888;">This strategy has no configurable parameters.</p>';
@@ -52,11 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
         paramDefinitions.forEach(param => {
             const formGroup = document.createElement('div');
             formGroup.className = 'form-group';
-
             const label = document.createElement('label');
             label.setAttribute('for', `param-${param.name}`);
             label.textContent = `${param.ui_label || param.name}:`;
-            
             const input = document.createElement('input');
             input.id = `param-${param.name}`;
             input.name = param.name;
@@ -67,7 +95,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (param.max_value !== null) input.max = param.max_value;
             }
             input.value = param.default_value;
-
             formGroup.appendChild(label);
             formGroup.appendChild(input);
             paramsContainer.appendChild(formGroup);
@@ -81,67 +108,72 @@ document.addEventListener('DOMContentLoaded', () => {
     function gatherStrategyParameters() {
         const params = {};
         if (!paramsContainer) return params;
-
         const inputs = paramsContainer.querySelectorAll('input');
         inputs.forEach(input => {
-            const paramName = input.name;
             let value = input.value;
             if (input.type === 'number') {
                 value = parseFloat(value);
             }
-            params[paramName] = value;
+            params[input.name] = value;
         });
         return params;
     }
 
     /**
-     * Initializes the entire page by fetching all required data.
+     * The `initializePage` function now needs to trigger the date fetch.
      */
     function initializePage() {
-        // --- Fetch and populate Data File selectors ---
+        // Fetch and populate Strategy Parameters
+        const strategyName = strategyNameInput.value;
+        if (strategyName) {
+            fetch('/api/strategies_info')
+                .then(res => res.ok ? res.json() : Promise.reject(new Error(`Server Error: ${res.statusText}`)))
+                .then(data => {
+                    strategiesInfo = data.strategies;
+                    const targetStrategy = strategiesInfo.find(s => s.name === strategyName);
+                    if (targetStrategy && targetStrategy.parameters) {
+                        buildParameterForm(targetStrategy.parameters);
+                    } else {
+                        paramsContainer.innerHTML = `<p style="color: red;">Could not find parameters for strategy: ${strategyName}</p>`;
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching strategy info:", error);
+                    paramsContainer.innerHTML = `<p style="color: red;">Failed to load strategy parameters.</p>`;
+                });
+        } else {
+             paramsContainer.innerHTML = '<p style="color: red;">No default strategy is set.</p>';
+        }
+
+        // Fetch Data Files and set up the listener
         fetch('/api/data_files')
             .then(res => res.ok ? res.json() : Promise.reject(new Error('Failed to load data files')))
             .then(fileList => {
                 populateDataFileDropdown(dataFile1Select, fileList);
                 populateDataFileDropdown(dataFile2Select, fileList);
                 
-                // Pre-select default files if they exist in the list
                 if (fileList.includes("SPY_5m_1Yea.csv")) {
                     dataFile1Select.value = "SPY_5m_1Yea.csv";
                 }
                 if (fileList.includes("XAUUSD_5m_1Yea.csv")) {
                     dataFile2Select.value = "XAUUSD_5m_1Yea.csv";
                 }
+
+                // --- After populating, fetch dates for the initially selected file ---
+                if (dataFile1Select.value) {
+                    updateDatePickersForFile(dataFile1Select.value);
+                }
+
+                // --- Add an event listener to update dates when the user changes the primary file ---
+                dataFile1Select.addEventListener('change', (event) => {
+                    updateDatePickersForFile(event.target.value);
+                });
             })
             .catch(error => {
                 console.error("Error fetching data files:", error);
                 const errorMsg = '<option value="">Error loading files</option>';
                 if (dataFile1Select) dataFile1Select.innerHTML = errorMsg;
                 if (dataFile2Select) dataFile2Select.innerHTML = errorMsg;
-            });
-
-        // --- Fetch and populate Strategy Parameters ---
-        const strategyName = strategyNameInput.value;
-        if (!strategyName) {
-            paramsContainer.innerHTML = '<p style="color: red;">No default strategy is set.</p>';
-            return;
-        }
-
-        fetch('/api/strategies_info')
-            .then(res => res.ok ? res.json() : Promise.reject(new Error(`Server Error: ${res.statusText}`)))
-            .then(data => {
-                strategiesInfo = data.strategies; // Store the array of strategies
-                const targetStrategy = strategiesInfo.find(s => s.name === strategyName);
-                
-                if (targetStrategy && targetStrategy.parameters) {
-                    buildParameterForm(targetStrategy.parameters);
-                } else {
-                    paramsContainer.innerHTML = `<p style="color: red;">Could not find parameters for strategy: ${strategyName}</p>`;
-                }
-            })
-            .catch(error => {
-                console.error("Error fetching strategy info:", error);
-                paramsContainer.innerHTML = `<p style="color: red;">Failed to load strategy parameters from the server.</p>`;
             });
     }
 
@@ -218,12 +250,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (runButton) {
         runButton.addEventListener('click', () => {
             clearUI();
-
-            const strategyParameters = gatherStrategyParameters();
             
-            // --- Get selected data files from dropdowns ---
-            const selectedDataFile1 = dataFile1Select ? dataFile1Select.value : null;
-            const selectedDataFile2 = dataFile2Select ? dataFile2Select.value : null;
+            // --- Get ALL form values ---
+            const strategyParameters = gatherStrategyParameters();
+            const selectedDataFile1 = dataFile1Select.value;
+            const selectedDataFile2 = dataFile2Select.value;
+            const fromDate = fromDateInput.value;
+            const toDate = toDateInput.value;
 
             if (!selectedDataFile1 || !selectedDataFile2) {
                 if (responseDiv) {
@@ -231,13 +264,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     responseDiv.className = 'error';
                     responseDiv.style.display = 'block';
                 }
-                if (runButton) {
-                    runButton.disabled = false;
-                    runButton.innerText = 'Run Backtest';
-                }
                 return;
             }
 
+            // --- Construct the payload ---
             const payload = {
                 strategy_name: strategyNameInput.value,
                 strategy_parameters: strategyParameters,
@@ -245,7 +275,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     data_path_1: selectedDataFile1, 
                     data_path_2: selectedDataFile2 
                 },
+                date_range: {
+                    fromdate: fromDate,
+                    todate: toDate
+                }
             };
+            
+            console.log("Submitting complete payload:", payload);
 
             runButton.disabled = true;
             runButton.innerText = 'Queuing Task...';

@@ -92,20 +92,18 @@ export function populateReportData(resultsData) {
     console.log("UI: Extracted metrics:", { tradeAnalyzer, drawdown, sharpe, sqn });
 
     // --- Run Configuration Section ---
-    if (reportRunConfigDiv && Object.keys(runConfig).length > 0) {
-        let configHtml = '<h3>Run Configuration</h3><table class="report-table">';
-        configHtml += `<tr><td><strong>Strategy</strong></td><td>${runConfig.strategy_name || 'N/A'}</td></tr>`;
-        configHtml += `<tr><td><strong>Start Date</strong></td><td>${runConfig.start_date || 'N/A'}</td></tr>`;
-        configHtml += `<tr><td><strong>End Date</strong></td><td>${runConfig.end_date || 'N/A'}</td></tr>`;
-        configHtml += `<tr><td><strong>Initial Cash</strong></td><td>$${formatValue(runConfig.initial_cash, 0)}</td></tr>`;
+    if (reportRunConfigDiv && runConfig && Object.keys(runConfig).length > 0) {
+        let configHtml = '<h3>Run Configuration</h3><table class="report-table">'; // Use a table for better alignment
         
-        // Strategy parameters
-        const params = runConfig.strategy_parameters || {};
-        if (Object.keys(params).length > 0) {
-            configHtml += `<tr><td><strong>Fast MA (D0)</strong></td><td>${formatCount(params.p_fast_d0)}</td></tr>`;
-            configHtml += `<tr><td><strong>Slow MA (D0)</strong></td><td>${formatCount(params.p_slow_d0)}</td></tr>`;
-            configHtml += `<tr><td><strong>Fast MA (D1)</strong></td><td>${formatCount(params.p_fast_d1)}</td></tr>`;
-            configHtml += `<tr><td><strong>Slow MA (D1)</strong></td><td>${formatCount(params.p_slow_d1)}</td></tr>`;
+        configHtml += `<tr><td>Strategy</td><td>${runConfig.strategy_name || 'N/A'}</td></tr>`;
+        configHtml += `<tr><td>Start Date</td><td>${runConfig.fromdate || 'N/A'}</td></tr>`;
+        configHtml += `<tr><td>End Date</td><td>${runConfig.todate || 'N/A'}</td></tr>`;
+        configHtml += `<tr><td>Initial Cash</td><td>$${formatValue(runConfig.initial_cash)}</td></tr>`; // Using your formatValue function
+        
+        // Show parameters if available
+        if (runConfig.parameters && Object.keys(runConfig.parameters).length > 0) {
+            // Use <pre> for nice JSON formatting
+            configHtml += `<tr><td>Parameters</td><td><pre>${JSON.stringify(runConfig.parameters, null, 2)}</pre></td></tr>`;
         }
         
         configHtml += '</table>';

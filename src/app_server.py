@@ -328,6 +328,38 @@ def get_data_files():
         traceback.print_exc()
         return jsonify({'error': 'An error occurred while scanning for data files.'}), 500
 
+@app.route('/api/data_file_info/<filename>', methods=['GET'])
+def get_data_file_info(filename):
+    """
+    Reads a CSV file to find its start and end dates.
+    Assumes the first column is the date and the second is the time.
+    """
+    try:
+        file_path = project_root / 'data' / filename
+        if not file_path.is_file():
+            return jsonify({'error': 'File not found.'}), 404
+
+        # Use pandas to read only the necessary rows for efficiency
+        # Read the first row after the header to get the start date
+        df_first = pd.read_csv(file_path, nrows=1)
+        start_date = df_first.iloc[0, 0] # First row, first column (Date)
+
+        # Read the last row to get the end date. This is trickier.
+        # A simple way for moderately sized files:
+        df_last = pd.read_csv(file_path, usecols=[0]).iloc[-1]
+        end_date = df_last.iloc[0] # Last row, first column (Date)
+        
+        # The date format is assumed to be YYYY-MM-DD from the CSV
+        return jsonify({
+            'start_date': start_date,
+            'end_date': end_date
+        })
+
+    except Exception as e:
+        print(f"Error reading file info for {filename}: {e}")
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to read file date range.'}), 500
+
 if __name__ == '__main__':
     multiprocessing.freeze_support() # For Windows compatibility if using multiprocessing internally
     
