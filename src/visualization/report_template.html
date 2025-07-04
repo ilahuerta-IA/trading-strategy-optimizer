@@ -1,0 +1,237 @@
+<!-- src/visualization/report_template.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Backtest Report</title>
+    <script type="text/javascript" src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; font-family: sans-serif; background-color: #131722; color: #D9D9D9; }
+        .container { display: flex; flex-direction: column; height: 100vh; }
+        .report-area { padding: 20px; overflow-y: auto; background-color: #181A20; max-height: 40vh; border-bottom: 1px solid #3c4043; }
+        .chart-area { flex-grow: 1; display: flex; flex-direction: column; overflow-y: auto; } /* Allow scrolling for many charts */
+        .chart-container { flex-grow: 1; position: relative; border-top: 1px solid #2B2B43; min-height: 200px; /* Ensure containers have a minimum height */ }
+        .chart-container:first-child { border-top: none; }
+        h3 { color: #4e8df5; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 0.9em; }
+        th, td { border: 1px solid #2B2B43; padding: 8px; text-align: left; }
+        td:first-child { font-weight: bold; color: #b0b8c2; width: 250px; }
+        pre { background-color: #2b2b43; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="reportArea" class="report-area">
+            <h2>Backtest Results</h2>
+            <div id="reportRunConfig"></div>
+            <div id="reportPerformanceSummary"></div>
+            <div id="reportTradeStats"></div>
+        </div>
+        <div id="chartArea" class="chart-area">
+            <div id="mainChartContainer" class="chart-container" style="height: 400px; flex-shrink: 0;"></div>
+            <div id="data1ChartContainer" class="chart-container" style="height: 250px; flex-shrink: 0;"></div>
+            <!-- New container for dynamic subcharts -->
+            <div id="subchartsArea"></div>
+        </div>
+    </div>
+
+    <script>
+        // This is the full JavaScript that SHOULD BE inside report_template.html
+
+        // The data is injected by Python here
+        const resultsData = JSON.parse('{{RESULTS_JSON}}');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.title = `Report: ${resultsData.run_name || 'Backtest'}`;
+            // Immediately call the main rendering functions
+            populateReportData(resultsData);
+            renderAllCharts(resultsData);
+        });
+
+        // --- HELPER FUNCTIONS ---
+
+        function formatValue(value, precision = 2, suffix = '') {
+            if (value === null || value === undefined) return 'N/A';
+            if (typeof value === 'number' && !isNaN(value)) {
+                const formatter = new Intl.NumberFormat('en-US', {
+                    minimumFractionDigits: precision,
+                    maximumFractionDigits: precision,
+                });
+                return `${formatter.format(value)}${suffix}`;
+            }
+            if (value) return String(value);
+            return 'N/A';
+        }
+
+        function populateReportData(data) {
+            const runConfigDiv = document.getElementById('reportRunConfig');
+            const perfDiv = document.getElementById('reportPerformanceSummary');
+            const tradeStatsDiv = document.getElementById('reportTradeStats');
+            
+            const runConfig = data.run_config_summary || {};
+            const metrics = data.metrics || {};
+            const tradeAnalyzer = metrics.tradeanalyzer || {};
+            const drawdown = metrics.drawdown || {};
+            const sqn = metrics.sqn || {};
+            const sharpe = metrics.sharpe || {};
+
+            // --- Run Configuration ---
+            let configHtml = '<h3>Run Configuration</h3><table>';
+            configHtml += `<tr><td>Strategy</td><td>${runConfig.strategy_name || 'N/A'}</td></tr>`;
+            configHtml += `<tr><td>Start Date</td><td>${runConfig.fromdate || 'N/A'}</td></tr>`;
+            configHtml += `<tr><td>End Date</td><td>${runConfig.todate || 'N/A'}</td></tr>`;
+            configHtml += `<tr><td>Initial Cash</td><td>$${formatValue(runConfig.initial_cash)}</td></tr>`;
+            if (runConfig.parameters) {
+                configHtml += `<tr><td>Parameters</td><td><pre>${JSON.stringify(runConfig.parameters, null, 2)}</pre></td></tr>`;
+            }
+            configHtml += '</table>';
+            runConfigDiv.innerHTML = configHtml;
+
+            // --- Performance Summary ---
+            let summaryHtml = '<h3>Performance Summary</h3><table>';
+            summaryHtml += `<tr><td>Total Net PnL</td><td>$${formatValue(tradeAnalyzer.pnl?.net?.total)}</td></tr>`;
+            summaryHtml += `<tr><td>Max Drawdown</td><td>${formatValue(drawdown.max?.drawdown, 2, '%')}</td></tr>`;
+            summaryHtml += `<tr><td>SQN</td><td>${formatValue(sqn?.sqn, 3)}</td></tr>`;
+            summaryHtml += `<tr><td>Sharpe Ratio</td><td>${formatValue(sharpe?.sharperatio, 3)}</td></tr>`;
+            perfDiv.innerHTML = summaryHtml;
+            
+            // --- Trade Statistics ---
+            let statsHtml = '<h3>Trade Statistics</h3><table>';
+            statsHtml += `<tr><td>Total Closed Trades</td><td>${tradeAnalyzer.total?.closed || 0}</td></tr>`;
+            statsHtml += `<tr><td>Winning Trades</td><td>${tradeAnalyzer.won?.total || 0}</td></tr>`;
+            statsHtml += `<tr><td>Losing Trades</td><td>${tradeAnalyzer.lost?.total || 0}</td></tr>`;
+            statsHtml += `<tr><td>Average Win</td><td>$${formatValue(tradeAnalyzer.won?.pnl?.average)}</td></tr>`;
+            statsHtml += `<tr><td>Average Loss</td><td>$${formatValue(tradeAnalyzer.lost?.pnl?.average)}</td></tr>`;
+            tradeStatsDiv.innerHTML = statsHtml;
+        }
+
+        function getIndicatorColor(seriesKey) {
+            const lowerKey = seriesKey.toLowerCase();
+            if (lowerKey.includes('fast')) return '#FFD700'; // Yellow
+            if (lowerKey.includes('slow')) return '#FFA500'; // Orange
+            return '#4e8df5'; // Default Blue
+        }
+
+        // --- MAIN RENDERING FUNCTION ---
+
+        function renderAllCharts(data) {
+            const mainContainer = document.getElementById('mainChartContainer');
+            const data1Container = document.getElementById('data1ChartContainer');
+            const subchartsAreaDiv = document.getElementById('subchartsArea');
+
+            const valueAnalysis = data.value_analysis || {};
+            const datetimes = valueAnalysis.datetimes || [];
+
+            const chartOptions = {
+                layout: { backgroundColor: '#131722', textColor: '#D9D9D9' },
+                grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+                timeScale: { timeVisible: true, secondsVisible: false },
+            };
+
+            const formatOhlc = (ohlc, dts) => {
+                if (!ohlc?.open || !dts) return [];
+                return dts.map((iso, i) => ({
+                    time: new Date(iso).getTime() / 1000,
+                    open: ohlc.open[i], high: ohlc.high[i], low: ohlc.low[i], close: ohlc.close[i]
+                })).filter(d => d.open !== null && d.open !== undefined);
+            };
+            const d0Data = formatOhlc(valueAnalysis.d0_ohlc, datetimes);
+            const d1Data = formatOhlc(valueAnalysis.d1_ohlc, datetimes);
+
+            let mainChart = null;
+            let data1Chart = null;
+            const allChartObjectsForSync = [];
+
+            if (d0Data.length > 0) {
+                mainChart = LightweightCharts.createChart(mainContainer, {...chartOptions, width: mainContainer.clientWidth, height: mainContainer.clientHeight});
+                allChartObjectsForSync.push(mainChart);
+                const series = mainChart.addCandlestickSeries({ title: "Data 0" });
+                series.setData(d0Data);
+
+                if (valueAnalysis.signals) {
+                    const markers = valueAnalysis.signals
+                        .filter(s => !s.data_feed || s.data_feed === 'data0')
+                        .map(s => ({
+                            time: new Date(s.datetime).getTime() / 1000,
+                            position: s.type === 'buy' ? 'belowBar' : 'aboveBar',
+                            color: s.type === 'buy' ? '#26A69A' : '#EF5350',
+                            shape: s.type === 'buy' ? 'arrowUp' : 'arrowDown',
+                            text: s.type.charAt(0).toUpperCase()
+                        }));
+                    series.setMarkers(markers);
+                }
+            }
+
+            if (d1Data.length > 0) {
+                data1Chart = LightweightCharts.createChart(data1Container, {...chartOptions, width: data1Container.clientWidth, height: data1Container.clientHeight});
+                allChartObjectsForSync.push(data1Chart);
+                const series2 = data1Chart.addCandlestickSeries({ title: "Data 1" });
+                series2.setData(d1Data);
+            }
+
+            if (valueAnalysis.indicator_configs && valueAnalysis.indicators) {
+                valueAnalysis.indicator_configs.forEach(config => {
+                    const seriesData = valueAnalysis.indicators[config.internal_id];
+                    if (!seriesData) return;
+
+                    const formattedIndicatorData = datetimes.map((dt, i) => ({
+                        time: new Date(dt).getTime() / 1000,
+                        value: seriesData[i]
+                    })).filter(p => p.value !== null && p.value !== undefined);
+
+                    let targetChart;
+                    if (config.target_pane === 'main' && mainChart) {
+                        targetChart = mainChart;
+                    } else if (config.target_pane === 'data1_pane' && data1Chart) {
+                        targetChart = data1Chart;
+                    } else {
+                        const subDiv = document.createElement('div');
+                        subDiv.className = 'chart-container';
+                        subDiv.style.height = '200px';
+                        subchartsAreaDiv.appendChild(subDiv);
+                        
+                        targetChart = LightweightCharts.createChart(subDiv, {...chartOptions, width: subDiv.clientWidth, height: 200});
+                        allChartObjectsForSync.push(targetChart);
+                    }
+                    
+                    if (targetChart) {
+                        const lineSeries = targetChart.addLineSeries({
+                            color: config.options.color || getIndicatorColor(config.internal_id),
+                            lineWidth: 2,
+                            title: config.display_name
+                        });
+                        lineSeries.setData(formattedIndicatorData);
+                    }
+                });
+            }
+            
+            if (valueAnalysis.values) {
+                const portfolioData = datetimes.map((dt, i) => ({
+                    time: new Date(dt).getTime() / 1000,
+                    value: valueAnalysis.values[i]
+                })).filter(p => p.value !== null && p.value !== undefined);
+                
+                const subDiv = document.createElement('div');
+                subDiv.className = 'chart-container';
+                subDiv.style.height = '250px';
+                subchartsAreaDiv.appendChild(subDiv);
+
+                const portfolioChart = LightweightCharts.createChart(subDiv, {...chartOptions, width: subDiv.clientWidth, height: 250});
+                allChartObjectsForSync.push(portfolioChart);
+                const portfolioSeries = portfolioChart.addLineSeries({ color: '#4CAF50', title: 'Portfolio Value' });
+                portfolioSeries.setData(portfolioData);
+            }
+            
+            allChartObjectsForSync.forEach(sourceChart => {
+                sourceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                    allChartObjectsForSync.forEach(targetChart => {
+                        if (targetChart !== sourceChart) {
+                            targetChart.timeScale().setVisibleLogicalRange(range);
+                        }
+                    });
+                });
+            });
+        }
+    </script>
+</body>
+</html>

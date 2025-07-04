@@ -1,20 +1,21 @@
+# main.py
 import argparse
 from pathlib import Path
 import sys
 import datetime
-import matplotlib.pyplot as plt # Keep for potentially showing default plot
+import traceback
 
 # --- Path setup ---
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parent
 src_path = project_root / 'src'
 sys.path.insert(0, str(src_path))
-# print(f"Added to sys.path: {src_path}") # Optional debug
 
 # --- Imports ---
 from backtesting.runner import setup_and_run_backtest
-from config import settings # Import defaults from config
-from utils.parsing import parse_kwargs_str # Assuming parse_kwargs_str is moved to utils
-from visualization.custom_plotter import plot_with_lightweight_charts
+from config import settings
+from utils.parsing import parse_kwargs_str
+# --- NEW: Import the new plotter ---
+from visualization.web_plotter import create_standalone_report
 
 def parse_args(pargs=None):
     """Parses command line arguments."""
@@ -24,70 +25,33 @@ def parse_args(pargs=None):
     )
     default_run_name = f"backtest_{datetime.datetime.now():%Y%m%d_%H%M%S}"
 
-    # --- Data Paths (Keep Generic) ---
-    parser.add_argument('--data-path-1', default=settings.DEFAULT_DATA_PATH_1,
-                        metavar='FILEPATH', help='Path to CSV data file for the first asset')
-    parser.add_argument('--data-path-2', default=settings.DEFAULT_DATA_PATH_2,
-                        metavar='FILEPATH', help='Path to CSV data file for the second asset (can be same as first)')
-    
-    # --- Strategy Selection ---
-    parser.add_argument('--strategy-name', default=settings.DEFAULT_STRATEGY_NAME,
-                        help='Name of the strategy class to run (e.g., SMACrossOver, MACrossOver)')
-    # --- Standard Arguments ---
-    parser.add_argument('--fromdate', default=settings.DEFAULT_FROM_DATE,
-                        help='Start Date[time] in YYYY-MM-DD[THH:MM:SS] format')
-    parser.add_argument('--todate', default=settings.DEFAULT_TO_DATE,
-                        help='End Date[time] in YYYY-MM-DD[THH:MM:SS] format')
-    parser.add_argument('--broker', default=settings.DEFAULT_BROKER_ARGS,
-                        metavar='kwargs', help='kwargs for BackBroker')
-    parser.add_argument('--sizer', default=settings.DEFAULT_SIZER_ARGS,
-                        metavar='kwargs', help='kwargs for FixedSize sizer')
-    # --- Strategy Params (applied to selected strategy) ---
-    parser.add_argument('--strat', default=settings.DEFAULT_STRAT_ARGS,
-                        metavar='kwargs', help='kwargs to override selected strategy params (e.g., p_fast=15,p_slow=40)')
-    parser.add_argument('--cerebro', default=settings.DEFAULT_CEREBRO_ARGS,
-                        metavar='kwargs', help='kwargs for cerebro.run (e.g., stdstats=False)')
-    parser.add_argument('--plot', action='store_true',
-                        help='Enable plotting (generates lightweight chart and attempts default Backtrader plot)')
-    parser.add_argument('--run-name', default=default_run_name,
-                        help='Identifier name for this backtest run')
+    # ... (all your argparse arguments are unchanged) ...
+    parser.add_argument('--data-path-1', default=settings.DEFAULT_DATA_PATH_1, help='Path to CSV data file for the first asset')
+    parser.add_argument('--data-path-2', default=settings.DEFAULT_DATA_PATH_2, help='Path to CSV data file for the second asset')
+    parser.add_argument('--strategy-name', default=settings.DEFAULT_STRATEGY_NAME, help='Name of the strategy class to run')
+    parser.add_argument('--fromdate', default=settings.DEFAULT_FROM_DATE, help='Start Date in YYYY-MM-DD format')
+    parser.add_argument('--todate', default=settings.DEFAULT_TO_DATE, help='End Date in YYYY-MM-DD format')
+    parser.add_argument('--broker', default=settings.DEFAULT_BROKER_ARGS, help='kwargs for BackBroker')
+    parser.add_argument('--sizer', default=settings.DEFAULT_SIZER_ARGS, help='kwargs for FixedSize sizer')
+    parser.add_argument('--strat', default=settings.DEFAULT_STRAT_ARGS, help='kwargs for selected strategy')
+    parser.add_argument('--cerebro', default=settings.DEFAULT_CEREBRO_ARGS, help='kwargs for cerebro.run')
+    parser.add_argument('--plot', action='store_true', help='Generate and open an interactive HTML report.')
+    parser.add_argument('--run-name', default=default_run_name, help='Identifier name for this backtest run')
     return parser.parse_args(pargs)
 
 if __name__ == '__main__':
     print("Starting backtest run...")
     args = parse_args()
 
-
-    # --- Run the backtest and get structured results ---
+    # This part is unchanged
     results_data = setup_and_run_backtest(args, parse_kwargs_func=parse_kwargs_str)
 
-    # --- Generate Custom Plot using Lightweight Charts ---
-    if results_data:
-        print("\n--- Attempting Lightweight Charts Plot Generation ---")
-        # Check if the crucial analysis dictionary exists
-        if hasattr(results_data, 'value_analysis') and results_data.value_analysis is not None:
-            data0_name = Path(args.data_path_1).stem
-            data1_name = Path(args.data_path_2).stem
-
-            # --- Call the NEW plotting function ---
-            plot_with_lightweight_charts(
-                analysis_data=results_data.value_analysis,
-                run_name=args.run_name,
-                data0_name=data0_name,
-                data1_name=data1_name
-            )
-            # --- End Call ---
-        else:
-            print("Lightweight Chart Skipped: Value analysis data not found or is None in results.")
-    else:
-        print("Lightweight Chart Skipped: Backtest runner did not return results.")
-
-    # --- Optional: Show default plot ---
+    # --- NEW PLOTTING LOGIC ---
     if args.plot:
-        print("\nDisplaying any generated Matplotlib figures (including default Backtrader plot)...")
-        if plt.get_fignums():
-            plt.show()
+        if results_data:
+            # Call our new function that creates and opens the HTML file
+            create_standalone_report(results_data)
         else:
-            print("No Matplotlib figures found to display (or default plot disabled/failed).")
-
-    print("Backtest run script finished.")
+            print("Plotting skipped: Backtest runner did not return valid results.")
+    
+    print("\nBacktest run script finished.")

@@ -26,6 +26,8 @@ credentials.json
 # Database and Logs
 backtests.db
 debug_logs/
+temp_reports/
+
 
 # Data folder
 data/
