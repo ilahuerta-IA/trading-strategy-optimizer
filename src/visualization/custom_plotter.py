@@ -1,7 +1,6 @@
 # visualization/custom_plotter.py
-from lightweight_charts import Chart
+from lightweight_charts import Chart, TopBar
 import pandas as pd
-# import numpy as np
 import traceback
 import time # For a small delay if needed
 
@@ -32,7 +31,12 @@ def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name=
 
     # --- Prepare DataFrames ---
     try:
-        d0_df = pd.DataFrame({ 'time': pd.to_datetime(datetimes), 'open': d0_ohlc.get('open', []), 'high': d0_ohlc.get('high', []), 'low': d0_ohlc.get('low', []), 'close': d0_ohlc.get('close', []) })
+        d0_df = pd.DataFrame({ 'time': pd.to_datetime(datetimes),
+                            'open': d0_ohlc.get('open', []),
+                            'high': d0_ohlc.get('high', []),
+                            'low': d0_ohlc.get('low', []),
+                            'close': d0_ohlc.get('close', [])
+                        })
         d0_df.dropna(subset=['time', 'open', 'high', 'low', 'close'], inplace=True)
         if d0_df.empty: raise ValueError("Data0 DataFrame is empty.")
         print(f"DEBUG: Real d0_df length: {len(d0_df)}")
@@ -50,14 +54,22 @@ def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name=
     except Exception as e:
         print(f"Lightweight Charts Plotter Error creating DataFrames: {e}"); traceback.print_exc(); return
 
-    # --- Create and Configure Chart ---
+    # --- 4. Create and Configure Chart ---
     try:
-        top_subchart_height = 0.45
-        main_chart_height = 0.45 # Give main chart more space
-        bottom_subchart_height = 0.1
+        # --- Create a TopBar object ---
+        top_bar = TopBar(text=run_name)
 
-        chart = Chart(inner_width=1, inner_height=main_chart_height)
+        # --- Initialize the Chart, passing the top_bar ---
+        chart = Chart(
+            width=1600, 
+            height=800, 
+            topbar=top_bar, 
+            inner_width=1.0, 
+            inner_height=1.0
+        )
         chart.legend(visible=True)
+        
+        # --- Set consistent background color ---
         chart.layout(background_color='#131722', text_color='#D9D9D9')
         chart.grid(vert_enabled=True, horz_enabled=True, color='#3C4043')
         chart.candle_style(up_color='#26A69A', down_color='#EF5350', wick_up_color='#26A69A', wick_down_color='#EF5350', border_visible=False, wick_visible=True)
@@ -66,13 +78,13 @@ def plot_with_lightweight_charts(analysis_data, run_name="Backtest", data0_name=
         subchart_1 = None; line_1 = None
         if not d1_line_df.empty:
             print("Creating subchart 1 (Top) for Data 1...")
-            subchart_1 = chart.create_subchart(position='top', width=1.0, height=top_subchart_height, sync=True)
+            subchart_1 = chart.create_subchart(position='top', width=1.0, height=0.45, sync=True)
             line_1 = subchart_1.create_line(d1_line_name, color='orange', width=1, price_label=True)
 
         subchart_2 = None; line_2 = None
         if not value_line_df.empty:
              print("Creating subchart 2 (Bottom) for Portfolio Value...")
-             subchart_2 = chart.create_subchart(position='bottom', width=1.0, height=bottom_subchart_height, sync=True)
+             subchart_2 = chart.create_subchart(position='bottom', width=1.0, height=0.1, sync=True)
              line_2 = subchart_2.create_line(value_line_name, color='green', width=2, style='dashed', price_label=True)
 
         # Set data

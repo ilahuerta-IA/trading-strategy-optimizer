@@ -1,236 +1,400 @@
-<!-- src/visualization/report_template.html -->
+<!-- src/visualization/report_template.html - CHARTS-ONLY VERSION -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backtest Report</title>
+    <title>Backtest Chart Report</title>
     <script type="text/javascript" src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; font-family: sans-serif; background-color: #131722; color: #D9D9D9; }
-        .container { display: flex; flex-direction: column; height: 100vh; }
-        .report-area { padding: 20px; overflow-y: auto; background-color: #181A20; max-height: 40vh; border-bottom: 1px solid #3c4043; }
-        .chart-area { flex-grow: 1; display: flex; flex-direction: column; overflow-y: auto; } /* Allow scrolling for many charts */
-        .chart-container { flex-grow: 1; position: relative; border-top: 1px solid #2B2B43; min-height: 200px; /* Ensure containers have a minimum height */ }
-        .chart-container:first-child { border-top: none; }
-        h3 { color: #4e8df5; }
-        table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 0.9em; }
-        th, td { border: 1px solid #2B2B43; padding: 8px; text-align: left; }
-        td:first-child { font-weight: bold; color: #b0b8c2; width: 250px; }
-        pre { background-color: #2b2b43; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-break: break-all; }
+        /* Simple, robust styles for a multi-chart layout */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            background-color: #131722; /* Dark background */
+            color: #D9D9D9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+        .chart-container {
+            width: 100%;
+            height: 40vh; 
+            margin-bottom: 10px; /* A small separator between charts */
+            background-color: #131722; /* Set dark background for all chart panes */
+        }
+        /* Report section styles */
+        .report-section {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #1e1e2e;
+            border-radius: 8px;
+            border: 1px solid #2b2b43;
+        }
+        .report-section h3 {
+            margin-top: 0;
+            color: #4CAF50;
+        }
+        .report-section table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .report-section td {
+            padding: 8px;
+            border: 1px solid #2b2b43;
+        }
+        .report-section td:first-child {
+            font-weight: bold;
+            color: #b0b8c2;
+            width: 40%;
+        }
+        /* --- Styles for the draggable resizer --- */
+        .resizer {
+            height: 10px;
+            background: #181A20;
+            cursor: row-resize;
+            border-top: 1px solid #3c4043;
+            border-bottom: 1px solid #3c4043;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div id="reportArea" class="report-area">
-            <h2>Backtest Results</h2>
+    <!-- Area for Backtest Report Statistics -->
+    <div id="resultsArea">
+        <div id="backtestReportArea">
+            <h2 id="reportTitle">Backtest Report</h2>
             <div id="reportRunConfig"></div>
             <div id="reportPerformanceSummary"></div>
             <div id="reportTradeStats"></div>
         </div>
-        <div id="chartArea" class="chart-area">
-            <div id="mainChartContainer" class="chart-container" style="height: 400px; flex-shrink: 0;"></div>
-            <div id="data1ChartContainer" class="chart-container" style="height: 250px; flex-shrink: 0;"></div>
-            <!-- New container for dynamic subcharts -->
-            <div id="subchartsArea"></div>
-        </div>
-    </div>
+    </div> 
+
+    <!-- The containers for our three charts with resizers in between -->
+    <div id="mainChartContainer" class="chart-container"></div>
+    <div class="resizer" data-resizes-top="mainChartContainer" data-resizes-bottom="data1ChartContainer"></div>
+    <div id="data1ChartContainer" class="chart-container"></div>
+    <div class="resizer" data-resizes-top="data1ChartContainer" data-resizes-bottom="portfolioChartContainer"></div>
+    <div id="portfolioChartContainer" class="chart-container"></div>
 
     <script>
-        // This is the full JavaScript that SHOULD BE inside report_template.html
-
-        // The data is injected by Python here
-        const resultsData = JSON.parse('{{RESULTS_JSON}}');
+        // Use backticks for the safest string embedding
+        const resultsDataString = `{{REPLACE_WITH_JSON}}`;
 
         document.addEventListener('DOMContentLoaded', () => {
-            document.title = `Report: ${resultsData.run_name || 'Backtest'}`;
-            // Immediately call the main rendering functions
-            populateReportData(resultsData);
-            renderAllCharts(resultsData);
+            let parsedData;
+            try {
+                parsedData = JSON.parse(resultsDataString);
+            } catch (e) {
+                document.body.innerHTML = `<h1>Error parsing data.</h1>`;
+                console.error("JSON Parse Error:", e);
+                return;
+            }
+            
+            document.title = `Report: ${parsedData.run_name || 'Backtest'}`;
+            
+            // --- Populate the report data sections ---
+            populateReportData(parsedData);
+
+            renderAllCharts(parsedData);
+
+            // --- Initialize the chart resizers ---
+            initializeResizers();
         });
 
-        // --- HELPER FUNCTIONS ---
+        /**
+         * Initializes the draggable vertical resizers between charts.
+         */
+        function initializeResizers() {
+            const resizers = document.querySelectorAll('.resizer');
+            
+            resizers.forEach(resizer => {
+                let topElement, bottomElement;
+                let topChart, bottomChart;
+                let startY, startTopHeight, startBottomHeight;
 
-        function formatValue(value, precision = 2, suffix = '') {
-            if (value === null || value === undefined) return 'N/A';
-            if (typeof value === 'number' && !isNaN(value)) {
-                const formatter = new Intl.NumberFormat('en-US', {
-                    minimumFractionDigits: precision,
-                    maximumFractionDigits: precision,
+                const topId = resizer.getAttribute('data-resizes-top');
+                const bottomId = resizer.getAttribute('data-resizes-bottom');
+
+                resizer.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    topElement = document.getElementById(topId);
+                    bottomElement = document.getElementById(bottomId);
+                    
+                    // Get the chart instances stored on the elements
+                    topChart = topElement.chartInstance;
+                    bottomChart = bottomElement.chartInstance;
+
+                    startY = e.clientY;
+                    startTopHeight = topElement.offsetHeight;
+                    startBottomHeight = bottomElement.offsetHeight;
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
                 });
-                return `${formatter.format(value)}${suffix}`;
-            }
-            if (value) return String(value);
-            return 'N/A';
+
+                function onMouseMove(e) {
+                    const deltaY = e.clientY - startY;
+                    let newTopHeight = startTopHeight + deltaY;
+                    let newBottomHeight = startBottomHeight - deltaY;
+                    
+                    // Enforce a minimum height to prevent charts from disappearing
+                    const minHeight = 100; // pixels
+                    if (newTopHeight < minHeight || newBottomHeight < minHeight) {
+                        return;
+                    }
+
+                    topElement.style.height = `${newTopHeight}px`;
+                    bottomElement.style.height = `${newBottomHeight}px`;
+
+                    // Tell the charts to resize their canvas to fit the new container size
+                    if (topChart) topChart.resize(topElement.clientWidth, newTopHeight);
+                    if (bottomChart) bottomChart.resize(bottomElement.clientWidth, newBottomHeight);
+                }
+
+                function onMouseUp() {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                }
+            });
         }
 
-        function populateReportData(data) {
-            const runConfigDiv = document.getElementById('reportRunConfig');
-            const perfDiv = document.getElementById('reportPerformanceSummary');
-            const tradeStatsDiv = document.getElementById('reportTradeStats');
-            
-            const runConfig = data.run_config_summary || {};
-            const metrics = data.metrics || {};
+        /**
+         * Populates the report tables with summary and statistics.
+         */
+        function populateReportData(results) {
+            const reportRunConfigDiv = document.getElementById('reportRunConfig');
+            const reportPerformanceSummaryDiv = document.getElementById('reportPerformanceSummary');
+            const reportTradeStatsDiv = document.getElementById('reportTradeStats');
+
+            const metrics = results.metrics || {};
             const tradeAnalyzer = metrics.tradeanalyzer || {};
             const drawdown = metrics.drawdown || {};
-            const sqn = metrics.sqn || {};
             const sharpe = metrics.sharpe || {};
+            const sqn = metrics.sqn || {};
+            const runConfig = results.run_config_summary || {};
 
-            // --- Run Configuration ---
-            let configHtml = '<h3>Run Configuration</h3><table>';
-            configHtml += `<tr><td>Strategy</td><td>${runConfig.strategy_name || 'N/A'}</td></tr>`;
-            configHtml += `<tr><td>Start Date</td><td>${runConfig.fromdate || 'N/A'}</td></tr>`;
-            configHtml += `<tr><td>End Date</td><td>${runConfig.todate || 'N/A'}</td></tr>`;
-            configHtml += `<tr><td>Initial Cash</td><td>$${formatValue(runConfig.initial_cash)}</td></tr>`;
-            if (runConfig.parameters) {
-                configHtml += `<tr><td>Parameters</td><td><pre>${JSON.stringify(runConfig.parameters, null, 2)}</pre></td></tr>`;
+            // Helper functions for formatting
+            const formatValue = (val, prec = 2, suffix = '') => (val === null || val === undefined) ? 'N/A' : `${val.toFixed(prec)}${suffix}`;
+            const formatCount = (val) => (val === null || val === undefined) ? 'N/A' : val;
+
+            // --- Run Configuration Section ---
+            if (reportRunConfigDiv) {
+                let configHtml = '<div class="report-section"><h3>Run Configuration</h3><table>';
+                configHtml += `<tr><td>Strategy</td><td>${runConfig.strategy_name || 'N/A'}</td></tr>`;
+                configHtml += `<tr><td>Start Date</td><td>${runConfig.fromdate || 'N/A'}</td></tr>`;
+                configHtml += `<tr><td>End Date</td><td>${runConfig.todate || 'N/A'}</td></tr>`;
+                configHtml += `<tr><td>Initial Cash</td><td>$${formatValue(runConfig.initial_cash, 2)}</td></tr>`;
+                configHtml += '</table></div>';
+                reportRunConfigDiv.innerHTML = configHtml;
             }
-            configHtml += '</table>';
-            runConfigDiv.innerHTML = configHtml;
 
-            // --- Performance Summary ---
-            let summaryHtml = '<h3>Performance Summary</h3><table>';
-            summaryHtml += `<tr><td>Total Net PnL</td><td>$${formatValue(tradeAnalyzer.pnl?.net?.total)}</td></tr>`;
-            summaryHtml += `<tr><td>Max Drawdown</td><td>${formatValue(drawdown.max?.drawdown, 2, '%')}</td></tr>`;
-            summaryHtml += `<tr><td>SQN</td><td>${formatValue(sqn?.sqn, 3)}</td></tr>`;
-            summaryHtml += `<tr><td>Sharpe Ratio</td><td>${formatValue(sharpe?.sharperatio, 3)}</td></tr>`;
-            perfDiv.innerHTML = summaryHtml;
-            
-            // --- Trade Statistics ---
-            let statsHtml = '<h3>Trade Statistics</h3><table>';
-            statsHtml += `<tr><td>Total Closed Trades</td><td>${tradeAnalyzer.total?.closed || 0}</td></tr>`;
-            statsHtml += `<tr><td>Winning Trades</td><td>${tradeAnalyzer.won?.total || 0}</td></tr>`;
-            statsHtml += `<tr><td>Losing Trades</td><td>${tradeAnalyzer.lost?.total || 0}</td></tr>`;
-            statsHtml += `<tr><td>Average Win</td><td>$${formatValue(tradeAnalyzer.won?.pnl?.average)}</td></tr>`;
-            statsHtml += `<tr><td>Average Loss</td><td>$${formatValue(tradeAnalyzer.lost?.pnl?.average)}</td></tr>`;
-            tradeStatsDiv.innerHTML = statsHtml;
+            // --- Performance Summary Section ---
+            if (reportPerformanceSummaryDiv) {
+                let summaryHtml = '<div class="report-section"><h3>Performance Summary</h3><table>';
+                summaryHtml += `<tr><td>Total Net PnL</td><td>$${formatValue(tradeAnalyzer.pnl?.net?.total)}</td></tr>`;
+                summaryHtml += `<tr><td>Max Drawdown</td><td>${formatValue(drawdown.max?.drawdown, 2, '%')}</td></tr>`;
+                summaryHtml += `<tr><td>Sharpe Ratio</td><td>${formatValue(sharpe?.sharperatio, 3)}</td></tr>`;
+                summaryHtml += `<tr><td>SQN</td><td>${formatValue(sqn?.sqn, 3)}</td></tr>`;
+                summaryHtml += '</table></div>';
+                reportPerformanceSummaryDiv.innerHTML = summaryHtml;
+            }
+
+            // --- Trade Statistics Section ---
+            if (reportTradeStatsDiv && Object.keys(tradeAnalyzer).length > 0) {
+                let statsHtml = '<div class="report-section"><h3>Trade Statistics</h3><table>';
+                
+                statsHtml += `<tr><td>Total Closed Trades</td><td>${formatCount(tradeAnalyzer.total?.closed)}</td></tr>`;
+                statsHtml += `<tr><td>Winning Trades</td><td>${formatCount(tradeAnalyzer.won?.total)}</td></tr>`;
+                statsHtml += `<tr><td>Losing Trades</td><td>${formatCount(tradeAnalyzer.lost?.total)}</td></tr>`;
+                
+                const avgWin = tradeAnalyzer.won?.pnl?.average;
+                const avgLoss = tradeAnalyzer.lost?.pnl?.average;
+                const maxWin = tradeAnalyzer.won?.pnl?.max;
+                const maxLoss = tradeAnalyzer.lost?.pnl?.max;
+                
+                statsHtml += `<tr><td>Average Win</td><td>$${formatValue(avgWin)}</td></tr>`;
+                statsHtml += `<tr><td>Average Loss</td><td>$${formatValue(avgLoss)}</td></tr>`;
+                statsHtml += `<tr><td>Largest Win</td><td>$${formatValue(maxWin)}</td></tr>`;
+                statsHtml += `<tr><td>Largest Loss</td><td>$${formatValue(maxLoss)}</td></tr>`;
+                
+                const longestWinStreak = tradeAnalyzer.streak?.won?.longest;
+                const longestLossStreak = tradeAnalyzer.streak?.lost?.longest;
+                
+                statsHtml += `<tr><td>Longest Winning Streak</td><td>${formatCount(longestWinStreak)}</td></tr>`;
+                statsHtml += `<tr><td>Longest Losing Streak</td><td>${formatCount(longestLossStreak)}</td></tr>`;
+                
+                const avgLength = tradeAnalyzer.len?.average;
+                const maxLength = tradeAnalyzer.len?.max;
+                
+                statsHtml += `<tr><td>Average Trade Length</td><td>${formatValue(avgLength, 1, ' bars')}</td></tr>`;
+                statsHtml += `<tr><td>Longest Trade</td><td>${formatValue(maxLength, 0, ' bars')}</td></tr>`;
+                
+                statsHtml += '</table></div>';
+                reportTradeStatsDiv.innerHTML = statsHtml;
+            }
         }
-
-        function getIndicatorColor(seriesKey) {
-            const lowerKey = seriesKey.toLowerCase();
-            if (lowerKey.includes('fast')) return '#FFD700'; // Yellow
-            if (lowerKey.includes('slow')) return '#FFA500'; // Orange
-            return '#4e8df5'; // Default Blue
-        }
-
-        // --- MAIN RENDERING FUNCTION ---
-
-        function renderAllCharts(data) {
-            const mainContainer = document.getElementById('mainChartContainer');
-            const data1Container = document.getElementById('data1ChartContainer');
-            const subchartsAreaDiv = document.getElementById('subchartsArea');
-
-            const valueAnalysis = data.value_analysis || {};
+        
+        /**
+         * The main function to render all charts.
+         */
+        function renderAllCharts(results) {
+            const valueAnalysis = results.value_analysis || {};
             const datetimes = valueAnalysis.datetimes || [];
 
-            const chartOptions = {
-                layout: { backgroundColor: '#131722', textColor: '#D9D9D9' },
-                grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
-                timeScale: { timeVisible: true, secondsVisible: false },
-            };
-
-            const formatOhlc = (ohlc, dts) => {
-                if (!ohlc?.open || !dts) return [];
-                return dts.map((iso, i) => ({
-                    time: new Date(iso).getTime() / 1000,
-                    open: ohlc.open[i], high: ohlc.high[i], low: ohlc.low[i], close: ohlc.close[i]
-                })).filter(d => d.open !== null && d.open !== undefined);
-            };
-            const d0Data = formatOhlc(valueAnalysis.d0_ohlc, datetimes);
-            const d1Data = formatOhlc(valueAnalysis.d1_ohlc, datetimes);
-
-            let mainChart = null;
-            let data1Chart = null;
+            // Array to hold all chart instances for synchronization
             const allChartObjectsForSync = [];
 
-            if (d0Data.length > 0) {
-                mainChart = LightweightCharts.createChart(mainContainer, {...chartOptions, width: mainContainer.clientWidth, height: mainContainer.clientHeight});
-                allChartObjectsForSync.push(mainChart);
-                const series = mainChart.addCandlestickSeries({ title: "Data 0" });
-                series.setData(d0Data);
+            // --- Helper Functions ---
+            const createChart = (container) => {
+                if (!container) return null;
+                const chart = LightweightCharts.createChart(container, {
+                    width: container.clientWidth,
+                    height: container.clientHeight,
+                    layout: { background: { color: '#131722' }, textColor: '#D9D9D9', fontSize: 11, fontFamily: 'Trebuchet MS' },
+                    grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+                    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#484848' },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                    rightPriceScale: { borderColor: '#484848' },
+                });
+                // --- Store chart instance on the container element for the resizer ---
+                container.chartInstance = chart;
+                return chart;
+            };
+            const formatOhlc = (ohlc) => datetimes.map((iso, i) => (
+                { time: new Date(iso).getTime() / 1000, 
+                open: ohlc.open[i], 
+                high: ohlc.high[i], 
+                low: ohlc.low[i], 
+                close: ohlc.close[i] })).filter(d => d.open != null);
+            const formatLine = (values) => datetimes.map((iso, i) => (
+                { time: new Date(iso).getTime() / 1000, 
+                value: values[i] })).filter(d => d.value != null);
+            
+            // Helper to get a color for an indicator line
+            const getIndicatorColor = (seriesKey) => {
+                const lowerKey = seriesKey.toLowerCase();
+                if (lowerKey.includes('fast')) return '#FFD700';
+                if (lowerKey.includes('slow')) return '#FFA500';
+                if (lowerKey.includes('rsi')) return '#9C27B0';
+                return '#4e8df5';
+            };
 
-                if (valueAnalysis.signals) {
-                    const markers = valueAnalysis.signals
+            // --- Format all necessary data ---
+            const d0Data = formatOhlc(valueAnalysis.d0_ohlc);
+            const d1Data = formatOhlc(valueAnalysis.d1_ohlc);
+            const portfolioData = formatLine(valueAnalysis.values);
+
+            // --- Define chart variables ---
+            let mainChart = null;
+            let data1Chart = null;
+            let series1 = null;
+            let series2 = null;
+
+            // --- Render Chart 1: Data 0 ---
+            const mainContainer = document.getElementById('mainChartContainer');
+            if (d0Data.length > 0) {
+                mainChart = createChart(mainContainer);
+                allChartObjectsForSync.push(mainChart);
+                series1 = mainChart.addCandlestickSeries({ upColor: '#26A69A', downColor: '#EF5350' });
+                series1.setData(d0Data);
+                mainChart.timeScale().fitContent();
+            } else {
+                mainContainer.innerHTML = '<p style="color:#555;padding:20px;">No Data 0 available.</p>';
+            }
+
+            // --- Render Chart 2: Data 1 ---
+            const data1Container = document.getElementById('data1ChartContainer');
+            if (d1Data.length > 0) {
+                data1Chart = createChart(data1Container);
+                allChartObjectsForSync.push(data1Chart);
+                series2 = data1Chart.addCandlestickSeries({ upColor: '#26A69A', downColor: '#EF5350' });
+                series2.setData(d1Data);
+                data1Chart.timeScale().fitContent();
+            } else {
+                data1Container.innerHTML = '<p style="color:#555;padding:20px;">No Data 1 available.</p>';
+            }
+
+            // --- Render Chart 3: Portfolio Value ---
+            const portfolioContainer = document.getElementById('portfolioChartContainer');
+            if (portfolioData.length > 0) {
+                const chart3 = createChart(portfolioContainer);
+                allChartObjectsForSync.push(chart3);
+                const series3 = chart3.addAreaSeries({ lineColor: '#4CAF50', topColor: 'rgba(76, 175, 80, 0.4)', bottomColor: 'rgba(76, 175, 80, 0.0)' });
+                series3.setData(portfolioData);
+                chart3.timeScale().fitContent();
+            } else {
+                portfolioContainer.innerHTML = '<p style="color:#555;padding:20px;">No Portfolio Value data available.</p>';
+            }
+
+            // --- Plot Trade Markers ---
+            // This section adds buy and sell markers to the charts based on the strategy's signals.
+            if (valueAnalysis.signals) {
+                // Add markers for the main data feed (Data 0)
+                if (series1) {
+                    const data0Markers = valueAnalysis.signals
                         .filter(s => !s.data_feed || s.data_feed === 'data0')
-                        .map(s => ({
-                            time: new Date(s.datetime).getTime() / 1000,
-                            position: s.type === 'buy' ? 'belowBar' : 'aboveBar',
-                            color: s.type === 'buy' ? '#26A69A' : '#EF5350',
-                            shape: s.type === 'buy' ? 'arrowUp' : 'arrowDown',
-                            text: s.type.charAt(0).toUpperCase()
+                        .map(s => ({ 
+                            time: new Date(s.datetime).getTime() / 1000, 
+                            position: s.type === 'buy' ? 'belowBar' : 'aboveBar', 
+                            color: s.type === 'buy' ? '#26A69A' : '#EF5350', 
+                            shape: s.type === 'buy' ? 'arrowUp' : 'arrowDown', 
+                            text: s.type === 'buy' ? 'B' : 'S' 
                         }));
-                    series.setMarkers(markers);
+                    series1.setMarkers(data0Markers);
+                }
+                // Add markers for the secondary data feed (Data 1)
+                if (series2) {
+                    const data1Markers = valueAnalysis.signals
+                        .filter(s => s.data_feed === 'data1')
+                        .map(s => ({ 
+                            time: new Date(s.datetime).getTime() / 1000, 
+                            position: s.type === 'buy' ? 'belowBar' : 'aboveBar', 
+                            color: s.type === 'buy' ? '#26A69A' : '#EF5350', 
+                            shape: s.type === 'buy' ? 'arrowUp' : 'arrowDown', 
+                            text: s.type === 'buy' ? 'B' : 'S' 
+                        }));
+                    series2.setMarkers(data1Markers);
                 }
             }
 
-            if (d1Data.length > 0) {
-                data1Chart = LightweightCharts.createChart(data1Container, {...chartOptions, width: data1Container.clientWidth, height: data1Container.clientHeight});
-                allChartObjectsForSync.push(data1Chart);
-                const series2 = data1Chart.addCandlestickSeries({ title: "Data 1" });
-                series2.setData(d1Data);
-            }
+            // --- Plot indicators ---
+            const indicatorSeries = valueAnalysis.indicators || {};
+            Object.keys(indicatorSeries).forEach(seriesKey => {
+                const seriesData = indicatorSeries[seriesKey];
+                if (!seriesData || !Array.isArray(seriesData) || seriesData.length === 0) return;
 
-            if (valueAnalysis.indicator_configs && valueAnalysis.indicators) {
-                valueAnalysis.indicator_configs.forEach(config => {
-                    const seriesData = valueAnalysis.indicators[config.internal_id];
-                    if (!seriesData) return;
+                let targetChart;
+                // Determine which chart to plot on based on key naming convention
+                if (seriesKey.includes('_d0_') || seriesKey.includes('data0')) {
+                    targetChart = mainChart;
+                } else if (seriesKey.includes('_d1_') || seriesKey.includes('data1')) {
+                    targetChart = data1Chart;
+                }
+                // Note: This version does not create new subcharts, only plots on existing ones.
 
-                    const formattedIndicatorData = datetimes.map((dt, i) => ({
-                        time: new Date(dt).getTime() / 1000,
-                        value: seriesData[i]
-                    })).filter(p => p.value !== null && p.value !== undefined);
-
-                    let targetChart;
-                    if (config.target_pane === 'main' && mainChart) {
-                        targetChart = mainChart;
-                    } else if (config.target_pane === 'data1_pane' && data1Chart) {
-                        targetChart = data1Chart;
-                    } else {
-                        const subDiv = document.createElement('div');
-                        subDiv.className = 'chart-container';
-                        subDiv.style.height = '200px';
-                        subchartsAreaDiv.appendChild(subDiv);
-                        
-                        targetChart = LightweightCharts.createChart(subDiv, {...chartOptions, width: subDiv.clientWidth, height: 200});
-                        allChartObjectsForSync.push(targetChart);
-                    }
-                    
-                    if (targetChart) {
-                        const lineSeries = targetChart.addLineSeries({
-                            color: config.options.color || getIndicatorColor(config.internal_id),
-                            lineWidth: 2,
-                            title: config.display_name
+                if (targetChart) {
+                    const formattedLineData = formatLine(seriesData);
+                    const lineSeries = targetChart.addLineSeries({
+                        color: getIndicatorColor(seriesKey),
+                        lineWidth: 2,
+                        title: seriesKey.replace(/_/g, ' ')
+                    });
+                    lineSeries.setData(formattedLineData);
+                }
+            });
+            
+            // --- Chart Synchronization ---
+            // This ensures that when one chart is zoomed or panned, the others follow.
+            if (allChartObjectsForSync.length > 1) {
+                allChartObjectsForSync.forEach(sourceChart => {
+                    sourceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                        if (range === null) return;
+                        allChartObjectsForSync.forEach(targetChart => {
+                            if (targetChart !== sourceChart) {
+                                targetChart.timeScale().setVisibleLogicalRange(range);
+                            }
                         });
-                        lineSeries.setData(formattedIndicatorData);
-                    }
-                });
-            }
-            
-            if (valueAnalysis.values) {
-                const portfolioData = datetimes.map((dt, i) => ({
-                    time: new Date(dt).getTime() / 1000,
-                    value: valueAnalysis.values[i]
-                })).filter(p => p.value !== null && p.value !== undefined);
-                
-                const subDiv = document.createElement('div');
-                subDiv.className = 'chart-container';
-                subDiv.style.height = '250px';
-                subchartsAreaDiv.appendChild(subDiv);
-
-                const portfolioChart = LightweightCharts.createChart(subDiv, {...chartOptions, width: subDiv.clientWidth, height: 250});
-                allChartObjectsForSync.push(portfolioChart);
-                const portfolioSeries = portfolioChart.addLineSeries({ color: '#4CAF50', title: 'Portfolio Value' });
-                portfolioSeries.setData(portfolioData);
-            }
-            
-            allChartObjectsForSync.forEach(sourceChart => {
-                sourceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                    allChartObjectsForSync.forEach(targetChart => {
-                        if (targetChart !== sourceChart) {
-                            targetChart.timeScale().setVisibleLogicalRange(range);
-                        }
                     });
                 });
-            });
+            }
         }
     </script>
 </body>

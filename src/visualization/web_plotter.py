@@ -29,7 +29,7 @@ def create_standalone_report(results_data):
 
         # 3. Inject the JSON data into the HTML template
         #    Remove the single quotes from around the placeholder
-        final_html = template_html.replace("{{RESULTS_JSON}}", results_json)
+        final_html = template_html.replace("{{REPLACE_WITH_JSON}}", results_json)
 
         # 4. Save the final HTML to a temporary file
         TEMP_DIR.mkdir(exist_ok=True)
