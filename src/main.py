@@ -14,7 +14,7 @@ sys.path.insert(0, str(src_path))
 from backtesting.runner import setup_and_run_backtest
 from config import settings
 from utils.parsing import parse_kwargs_str
-# --- NEW: Import the new plotter ---
+# --- Import the new plotter ---
 from visualization.web_plotter import create_standalone_report
 
 def parse_args(pargs=None):
@@ -25,7 +25,7 @@ def parse_args(pargs=None):
     )
     default_run_name = f"backtest_{datetime.datetime.now():%Y%m%d_%H%M%S}"
 
-    # ... (all your argparse arguments are unchanged) ...
+    # ... (all argparse arguments are unchanged) ...
     parser.add_argument('--data-path-1', default=settings.DEFAULT_DATA_PATH_1, help='Path to CSV data file for the first asset')
     parser.add_argument('--data-path-2', default=settings.DEFAULT_DATA_PATH_2, help='Path to CSV data file for the second asset')
     parser.add_argument('--strategy-name', default=settings.DEFAULT_STRATEGY_NAME, help='Name of the strategy class to run')
@@ -46,10 +46,10 @@ if __name__ == '__main__':
     # This part is unchanged
     results_data = setup_and_run_backtest(args, parse_kwargs_func=parse_kwargs_str)
 
-    # --- NEW PLOTTING LOGIC ---
+    # --- PLOTTING LOGIC ---
     if args.plot:
         if results_data:
-            # Call our new function that creates and opens the HTML file
+            # Call our function that creates and opens the HTML file
             create_standalone_report(results_data)
         else:
             print("Plotting skipped: Backtest runner did not return valid results.")

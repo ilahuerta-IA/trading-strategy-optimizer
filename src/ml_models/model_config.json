@@ -1,0 +1,20 @@
+{
+    "CONTEXT_LENGTH": 30,
+    "PREDICTION_LENGTH": 1,
+    "LAGS_SEQUENCE": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+    ],
+    "D_MODEL": 32,
+    "ENCODER_LAYERS": 2,
+    "DECODER_LAYERS": 2,
+    "ENCODER_ATTENTION_HEADS": 4,
+    "DECODER_ATTENTION_HEADS": 4,
+    "DROPOUT": 0.1,
+    "NUM_TIME_FEATURES": 4
+}
