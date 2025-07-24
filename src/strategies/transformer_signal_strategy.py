@@ -1,116 +1,151 @@
 import backtrader as bt
 import torch
-import torch.nn as nn
 import joblib
 import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerModel
+from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerForPrediction
+from datetime import timedelta
+
+# --- WARNING SUPPRESSION (DEFINITIVE FIX) ---
+import warnings
+from transformers.utils import logging
+
+# Suppress transformers' own logging and UserWarnings from that library
+logging.set_verbosity_error() 
+warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
+
+# --- CRITICAL FIX: Suppress the scikit-learn feature name warning ---
+# UserWarning is a built-in category, so no special import is needed.
+warnings.filterwarnings("ignore", category=UserWarning, message="X does not have valid feature names")
+# --- END OF WARNING SUPPRESSION ---
+
 
 # --- Path setup for model artifacts ---
-# Assumes the script is run from the project root (e.g., .../quant_bot_project/)
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Assumes the script is run from the directory containing the 'src' folder
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent 
 MODELS_DIR = PROJECT_ROOT / 'src' / 'ml_models'
 
-class TransformerForPointPrediction(nn.Module):
+def create_time_features_for_window(dt_index: pd.DatetimeIndex) -> np.ndarray:
     """
-    Custom wrapper for the TimeSeriesTransformerModel to add a prediction head.
-    This is necessary to match the architecture of the saved .pth file.
+    Generates and scales time features for a given datetime window.
     """
-    def __init__(self, config: TimeSeriesTransformerConfig):
+    features = pd.DataFrame(index=dt_index)
+    features['hour'] = (dt_index.hour / 23.0) - 0.5
+    features['day_of_week'] = (dt_index.dayofweek / 6.0) - 0.5
+    features['day_of_month'] = ((dt_index.day - 1) / 30.0) - 0.5
+    features['month'] = ((dt_index.month - 1) / 11.0) - 0.5
+    return features.values
+
+# --- Custom Indicator for Transformer Predictions ---
+class TransformerPredictionIndicator(bt.Indicator):
+    lines = ('prediction',)
+    params = (
+        ('models_dir', str(MODELS_DIR)),
+    )
+
+    def __init__(self):
         super().__init__()
-        self.model = TimeSeriesTransformerModel(config)
-        # Add a linear layer to map the transformer's output to a single point prediction
-        self.prediction_head = nn.Linear(config.d_model, 1)
+        self.p.models_dir = Path(self.p.models_dir)
 
-    def forward(self, *args, **kwargs):
-        outputs = self.model(*args, **kwargs)
-        # We use the last hidden state for prediction
-        last_hidden_state = outputs.last_hidden_state
-        # Pass the output of the last time step to the prediction head
-        return self.prediction_head(last_hidden_state[:, -1, :])
+        # 1. Load Config
+        with open(self.p.models_dir / 'model_config.json', 'r') as f:
+            model_config_dict = json.load(f)
+        config = TimeSeriesTransformerConfig.from_dict(model_config_dict)
 
+        # 2. Load Scaler
+        self.scaler = joblib.load(self.p.models_dir / 'target_scaler.pkl')
+
+        # 3. Load Model
+        self.model = TimeSeriesTransformerForPrediction(config)
+        self.model.load_state_dict(torch.load(self.p.models_dir / 'best_transformer_model.pth', map_location='cpu'))
+        self.model.eval()
+
+        # 4. Set parameters
+        self.context_length = config.context_length
+        self.prediction_length = config.prediction_length
+        self.max_lag = max(config.lags_sequence) if config.lags_sequence else 0
+        self.history_len = self.context_length + self.max_lag
+
+        # Let Backtrader know the minimum period needed before starting
+        self.addminperiod(self.history_len)
+        
+        print("--- TransformerPredictionIndicator Initialized ---")
+
+    def next(self):
+        # Get the required window of close prices as a NumPy array
+        close_prices = np.array(self.data.close.get(size=self.history_len))
+        
+        # Get the corresponding datetimes
+        datetimes = [self.data.num2date(self.data.datetime[-i]) for i in range(self.history_len)]
+        datetimes.reverse()
+        dt_index = pd.to_datetime(datetimes)
+
+        # Preprocess Data
+        scaled_prices = self.scaler.transform(close_prices.reshape(-1, 1)).flatten()
+        past_time_features_np = create_time_features_for_window(dt_index)
+        
+        # Create time features for the single future step we are predicting
+        future_dt_index = pd.to_datetime([dt_index[-1] + timedelta(minutes=5)])
+        future_time_features_np = create_time_features_for_window(future_dt_index)
+
+        # Convert to Tensors
+        past_values = torch.tensor(scaled_prices, dtype=torch.float32).unsqueeze(0)
+        past_time_features = torch.tensor(past_time_features_np, dtype=torch.float32).unsqueeze(0)
+        future_time_features = torch.tensor(future_time_features_np, dtype=torch.float32).unsqueeze(0)
+        past_observed_mask = torch.ones_like(past_values)
+
+        # Make Prediction using the generate method for inference
+        with torch.no_grad():
+            outputs = self.model.generate(
+                past_values=past_values,
+                past_time_features=past_time_features,
+                past_observed_mask=past_observed_mask,
+                future_time_features=future_time_features
+            )
+            scaled_prediction = outputs.sequences.mean(dim=1).cpu().numpy()
+
+        # Inverse-transform and set the indicator line
+        predicted_price = self.scaler.inverse_transform(scaled_prediction)[0][0]
+        self.lines.prediction[0] = predicted_price
+
+# --- Strategy and Cerebro Setup ---
 class TransformerSignalStrategy(bt.Strategy):
-    """
-    A backtrader strategy that uses a pre-trained Transformer model
-    to generate trading signals.
-    """
     def __init__(self):
         print("--- Initializing TransformerSignalStrategy ---")
-        
-        # 1. Load Model Configuration
-        config_path = MODELS_DIR / 'model_config.json'
-        print(f"Loading config from: {config_path}")
-        with open(config_path, 'r') as f:
-            model_config_dict = json.load(f)
-        
-        # The transformers library expects specific keys, so we map them if needed
-        # For this example, we assume the JSON is already in the correct format.
-        config = TimeSeriesTransformerConfig.from_dict(model_config_dict)
-        
-        # 2. Load Target Scaler
-        scaler_path = MODELS_DIR / 'target_scaler.pkl'
-        print(f"Loading scaler from: {scaler_path}")
-        self.scaler = joblib.load(scaler_path)
-
-        # 3. Instantiate the Custom Model
-        print("Instantiating TransformerForPointPrediction model...")
-        self.model = TransformerForPointPrediction(config)
-
-        # 4. Load Trained Weights
-        weights_path = MODELS_DIR / 'best_transformer_model.pth'
-        print(f"Loading weights from: {weights_path}")
-        # Load weights onto the CPU, adaptable for systems without a GPU
-        self.model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
-        
-        # 5. Set Model to Evaluation Mode
-        self.model.eval()
-        print("Model set to evaluation mode.")
-
-        # 6. Store Model Parameters
-        self.context_length = config.context_length
-        self.max_lag = 7  # As specified, using a default of 7
-        print(f"Context length: {self.context_length}, Max lag: {self.max_lag}")
-
-        # 7. Create a standard Backtrader indicator
+        self.prediction = TransformerPredictionIndicator(self.data)
+        self.prediction.plotinfo.plot = True
+        self.prediction.plotinfo.plotname = 'Prediction'
+        self.smoothed_prediction = bt.indicators.SMA(self.prediction.lines.prediction, period=3, plotname='Smoothed Prediction')
         self.sma = bt.indicators.SMA(self.data.close, period=50)
-        
         print("--- Strategy Initialization Complete ---")
 
     def next(self):
-        """
-        Main strategy logic. Will be implemented in the next step.
-        """
         pass
 
 if __name__ == '__main__':
-    # --- Cerebro Engine Setup ---
     cerebro = bt.Cerebro()
-
-    # --- Add Strategy ---
     cerebro.addstrategy(TransformerSignalStrategy)
-
-    # --- Add Data Feed ---
-    # This assumes you have a data file at the specified path.
-    # Update the path to your actual data file.
-    data_path = PROJECT_ROOT / 'data' / 'EURUSD_5_minute_data.csv'
+    
+    data_path = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Mon.csv'
     
     data = bt.feeds.GenericCSVData(
-        dataname=data_path,
-        dtformat=('%Y-%m-%d %H:%M:%S'),
-        datetime=0,
-        open=1,
-        high=2,
-        low=3,
-        close=4,
-        volume=5,
-        openinterest=-1,
+        dataname=str(data_path),
+        dtformat=('%Y%m%d'),
+        tmformat=('%H:%M:%S'),
+        datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6, openinterest=-1,
         timeframe=bt.TimeFrame.Minutes,
         compression=5
     )
     cerebro.adddata(data)
-
-    # --- Set Initial Capital and Run ---
+    
     cerebro.broker.setcash(100000.0)
     print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
+    
+    cerebro.run()
+    
+    print(f'Final Portfolio Value: {cerebro.broker.getvalue():.2f}')
+    
+    print("Backtest complete. Generating plot...")
+    cerebro.plot(style='candlestick', barup='green', bardown='red')

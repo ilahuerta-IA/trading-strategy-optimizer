@@ -11,6 +11,7 @@ The system is designed to be modular and extensible, allowing users to easily ad
 
 ## Features
 
+*   **Machine Learning Strategy Integration:** Includes a ready-to-use **Time Series Transformer** strategy for predictive analysis. The framework supports a two-step workflow: training the model and then running the backtest using the generated artifacts.
 *   **Standalone Interactive HTML Reports:** The command-line tool generates a single, portable `.html` file containing all charts (OHLC, indicators, portfolio value), trade markers, and statistical tables. This report is rendered using the **Lightweight Charts™** library and can be viewed offline and shared easily.
 *   **Asynchronous Web Backend:** The web app uses a robust architecture with a **background worker process** and **SQLite** database to handle long backtests without blocking the UI or causing server timeouts.
 *   **Fully Dynamic Web UI:** The web interface dynamically generates input forms for data files, date ranges, and all strategy-specific parameters based on definitions in the Python code, allowing for full configuration from the browser.
@@ -26,6 +27,8 @@ The system is designed to be modular and extensible, allowing users to easily ad
 │   ├── app_server.py           # Flask web server for interactive backtesting.
 │   ├── worker.py               # Background worker that runs backtests for the web app.
 │   ├── database.py             # SQLite database setup.
+│   ├── train_transformer.py    # Script to train the Time Series Transformer model.
+│   ├── ml_models/              # Stores trained model artifacts (e.g., .pth, .pkl).
 │   ├── templates/
 │   │   └── index.html          # Main HTML page for the web app.
 │   ├── static/                 # CSS and JS for the web app.
@@ -34,7 +37,7 @@ The system is designed to be modular and extensible, allowing users to easily ad
 │   │   └── report_template.html# Template for the HTML report.
 │   ├── backtesting/
 │   │   └── runner.py           # Core backtest setup and execution logic.
-│   ├── strategies/             # Directory for strategy classes.
+│   ├── strategies/             # Directory for strategy classes (including transformer_signal_strategy.py).
 │   └── utils/
 │       └── serialization.py    # Robust JSON serialization utility.
 ├── main.py                     # CLI entry point.
@@ -91,6 +94,37 @@ This is the recommended way to quickly test different parameter configurations a
 3.  **Run a backtest:**
     *   Use the form to configure your data files, date range, and strategy parameters.
     *   Click "Run Backtest" and wait for the numerical report to appear on the page.
+
+### 3. Machine Learning Strategy: Time Series Transformer
+
+This project includes a sophisticated predictive strategy based on a Time Series Transformer model. The repository comes with a **pre-trained model** specifically for **EUR/USD on a 5-minute timeframe**.
+
+The complete research, data preparation, and training methodology for this model are detailed in a dedicated repository:
+**[Applied ML Trading Transformer for EUR/USD](https://github.com/ilahuerta-IA/applied-ml-trading-transformer-eurusd.git)**
+
+You can immediately see this pre-trained model in action within this project.
+
+#### Using the Pre-Trained Model
+
+The model artifacts (`best_transformer_model.pth`, `target_scaler.pkl`, `model_config.json`) are already included in the `src/ml_models/` directory. To run a backtest and visualize the model's predictions against EUR/USD 5-minute price data, simply execute the strategy script directly.
+
+From the project root, run:
+```bash
+python src/strategies/transformer_signal_strategy.py
+```
+This will launch a `backtrader` instance and generate a plot showing the price, the model's raw prediction, and a smoothed prediction line.
+
+#### (Optional) Re-training Your Own Model
+
+If you wish to train the model on different data or with different parameters, you can use the provided training script.
+
+1.  **Prepare your data:** Place your historical data CSV file in the `/data` directory.
+2.  **(Optional) Modify configuration:** Adjust the model configuration and hyperparameters at the top of the `src/train_transformer.py` script.
+3.  **Run the training script:** This will overwrite the existing model artifacts in `src/ml_models/`.
+    ```bash
+    python src/train_transformer.py
+    ```
+4.  **Run the backtest:** Execute the strategy as described above to see your newly trained model in action.
 
 ## Development & Customization
 
