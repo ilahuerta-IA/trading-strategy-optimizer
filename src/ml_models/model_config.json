@@ -42,6 +42,6 @@
   "num_time_features": 4,
   "prediction_length": 1,
   "scaling": "mean",
-  "transformers_version": "4.53.2",
+  "transformers_version": "4.41.2",
   "use_cache": true
 }
