@@ -5,22 +5,35 @@ import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerForPrediction
 from datetime import timedelta
 
 # --- WARNING SUPPRESSION ---
+# Suppress common warnings from the libraries to keep the output clean.
 import warnings
 from transformers.utils import logging
 logging.set_verbosity_error()
 warnings.filterwarnings("ignore", category=UserWarning)
 # --- END WARNING SUPPRESSION ---
 
-# --- Path setup for model artifacts ---
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-MODELS_DIR = PROJECT_ROOT / 'src' / 'ml_models'
+# --- GLOBAL PATH CONFIGURATION ---
+# Define project paths in one place for easy management.
+try:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+    MODELS_DIR = PROJECT_ROOT / 'src' / 'ml_models'
+    DATA_PATH = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Mon.csv'
+    if not DATA_PATH.exists():
+        print(f"FATAL: Data file not found at {DATA_PATH}")
+        exit()
+except Exception:
+    print("FATAL: Could not determine project paths. Please run from the project root.")
+    exit()
 
+# --- HELPER FUNCTION ---
 def create_time_features_for_window(dt_index: pd.DatetimeIndex) -> np.ndarray:
-    """Generates and scales time features for a given datetime window."""
+    """
+    Generates time-based features (hour, day of week, etc.) required by the
+    Time Series Transformer model for a given datetime index.
+    """
     features = pd.DataFrame(index=dt_index)
     features['hour'] = (dt_index.hour / 23.0) - 0.5
     features['day_of_week'] = (dt_index.dayofweek / 6.0) - 0.5
@@ -28,199 +41,155 @@ def create_time_features_for_window(dt_index: pd.DatetimeIndex) -> np.ndarray:
     features['month'] = ((dt_index.month - 1) / 11.0) - 0.5
     return features.values
 
-# --- Custom Indicator for Transformer Predictions ---
+# --- INDICATOR: AI PRICE PREDICTION  ---
 class TransformerPredictionIndicator(bt.Indicator):
+    """
+    A custom Backtrader indicator that loads a pre-trained Time Series Transformer
+    model to generate a price prediction for the next timestep on each bar.
+    """
     lines = ('prediction',)
-    params = (
-        ('models_dir', str(MODELS_DIR)),
-    )
-
+    params = (('models_dir', str(MODELS_DIR)),)
+    plotinfo = dict(subplot=False, plotname='AI Prediction')
+    
     def __init__(self):
         super().__init__()
-        # --- This is the key line for overlaying the plot on the main chart ---
-        self.plotinfo.plotmaster = self.data
-        
         self.p.models_dir = Path(self.p.models_dir)
-
+        from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerForPrediction
         with open(self.p.models_dir / 'model_config.json', 'r') as f:
-            model_config_dict = json.load(f)
-        config = TimeSeriesTransformerConfig.from_dict(model_config_dict)
-
+            config = TimeSeriesTransformerConfig.from_dict(json.load(f))
         self.scaler = joblib.load(self.p.models_dir / 'target_scaler.pkl')
-
         self.model = TimeSeriesTransformerForPrediction(config)
         self.model.load_state_dict(torch.load(self.p.models_dir / 'best_transformer_model.pth', map_location='cpu'))
         self.model.eval()
-
-        self.context_length = config.context_length
-        self.max_lag = max(config.lags_sequence) if config.lags_sequence else 0
-        self.history_len = self.context_length + self.max_lag
-
+        self.history_len = config.context_length + max(config.lags_sequence or [0])
         self.addminperiod(self.history_len)
-        print("--- TransformerPredictionIndicator Initialized ---")
 
     def next(self):
-        close_prices = np.array(self.data.close.get(size=self.history_len))
-        
         datetimes = [self.data.num2date(self.data.datetime[-i]) for i in range(self.history_len)]
-        datetimes.reverse()
-        dt_index = pd.to_datetime(datetimes)
-
+        datetimes.reverse(); dt_index = pd.to_datetime(datetimes)
+        close_prices = np.array(self.data.close.get(size=self.history_len))
         scaled_prices = self.scaler.transform(close_prices.reshape(-1, 1)).flatten()
-        past_time_features_np = create_time_features_for_window(dt_index)
-        
+        past_time_features = torch.tensor(create_time_features_for_window(dt_index), dtype=torch.float32).unsqueeze(0)
         future_dt_index = pd.to_datetime([dt_index[-1] + timedelta(minutes=5)])
-        future_time_features_np = create_time_features_for_window(future_dt_index)
-
+        future_time_features = torch.tensor(create_time_features_for_window(future_dt_index), dtype=torch.float32).unsqueeze(0)
         past_values = torch.tensor(scaled_prices, dtype=torch.float32).unsqueeze(0)
-        past_time_features = torch.tensor(past_time_features_np, dtype=torch.float32).unsqueeze(0)
-        future_time_features = torch.tensor(future_time_features_np, dtype=torch.float32).unsqueeze(0)
         past_observed_mask = torch.ones_like(past_values)
-
         with torch.no_grad():
-            outputs = self.model.generate(
-                past_values=past_values,
-                past_time_features=past_time_features,
-                past_observed_mask=past_observed_mask,
-                future_time_features=future_time_features
-            )
-            scaled_prediction = outputs.sequences.mean(dim=1).cpu().numpy()
+            outputs = self.model.generate(past_values=past_values, past_time_features=past_time_features, past_observed_mask=past_observed_mask, future_time_features=future_time_features)
+        final_pred = self.scaler.inverse_transform(outputs.sequences.mean(dim=1).cpu().numpy()[:, -1].reshape(-1, 1))[0][0]
+        self.lines.prediction[0] = final_pred
 
-        # --- CRITICAL CHANGE: Select the LAST point of the prediction horizon ---
-        # scaled_prediction shape is (1, 6). We want the final value at index -1.
-        final_step_prediction = scaled_prediction[:, -1].reshape(-1, 1)
+# --- INDICATOR: ANGLE OF A LINE ---
+class AngleIndicator(bt.Indicator):
+    """
+    Calculates the angle of an input data line over a lookback period.
+    The angle (in degrees) indicates the steepness of the line's ascent or descent.
+    """
+    lines = ('angle',)
+    params = (('angle_lookback', 5), ('scale_factor', 50000),)
+    plotinfo = dict(subplot=True, plotname='Angle (Degrees)')
+    
+    def __init__(self):
+        self.addminperiod(self.p.angle_lookback)
+        super().__init__()
 
-        # Inverse-transform the final step and set the indicator line
-        predicted_price = self.scaler.inverse_transform(final_step_prediction)[0][0]
-        self.lines.prediction[0] = predicted_price
+    def next(self):
+        rise = (self.data0[0] - self.data0[-self.p.angle_lookback + 1]) * self.p.scale_factor
+        run = self.p.angle_lookback
+        self.lines.angle[0] = np.degrees(np.arctan2(rise, run))
 
-# --- Final Trading Strategy ---
+# --- MAIN TRADING STRATEGY ---
 class TransformerSignalStrategy(bt.Strategy):
+    """
+    A trend-following strategy that uses an AI prediction as a leading signal,
+    confirmed by multiple momentum conditions and the steepness (angle) of the signal.
+    """
+    # --- STRATEGY PARAMETERS ---
+    # All tunable variables are defined here for easy optimization and testing.
     params = (
-        ('sma_period', 5),
         ('pred_smooth_period', 5),
-        ('sma_momentum_period', 50),  # New configurable SMA for momentum filter
-        ('show_candlesticks', False),  # Parameter to switch between line and candlestick
-        ('position_size', 10000),  # Position size in units (10000 = 0.1 standard lot for forex)
+        ('sma_momentum_period', 50),
+        ('sma_long_term_period', 100),
+        ('sma_short_term_period', 5),
+        ('min_angle_for_entry', 85.0),
+        ('position_size', 10000),
     )
 
     def __init__(self):
-        print("--- Initializing TransformerSignalStrategy ---")
+        """Define all indicators that will be used in the strategy."""
         
-        # 1. Instantiate our custom prediction indicator
         self.prediction = TransformerPredictionIndicator(self.data)
-        self.prediction.plotinfo.plotmaster = self.data
-        self.prediction.plotinfo.plotname = 'Transformer_Prediction'
-        self.prediction.plotinfo.color = 'cyan'
-        self.prediction.plotinfo.linestyle = '--'
-
-        # 2. Apply smoothing to the prediction using the parameter
         self.smoothed_prediction = bt.indicators.SMA(
-            self.prediction.lines.prediction, 
-            period=self.p.pred_smooth_period,
-            plotname=f'Smoothed_Prediction({self.p.pred_smooth_period})'
+            self.prediction, 
+            period=self.p.pred_smooth_period
         )
-
-        # 3. Create the long-term trend filter (hidden from chart)
-        self.sma_long = bt.indicators.SMA(
-            self.data.close, 
-            period=self.p.sma_period,
-            plotname=f'SMA({self.p.sma_period})'
-        )
-        self.sma_long.plotinfo.plot = True #False  # Show on chart
-
-        # 4. Add a longer-term SMA for additional context
-        self.sma_50 = bt.indicators.SMA(
-            self.data.close,
-            period=100,
-            plotname='SMA(50)'
-        )
-
-        # 5. Add configurable momentum SMA
-        self.sma_momentum = bt.indicators.SMA(
-            self.data.close,
-            period=self.p.sma_momentum_period,
-            plotname=f'SMA_Momentum({self.p.sma_momentum_period})'
-        )
-
-        # 6. Create crossover signals
-        # Crossover between smoothed prediction and momentum SMA
-        self.smooth_cross_momentum = bt.indicators.CrossOver(self.smoothed_prediction, self.sma_momentum)
         
-        print("--- Strategy Initialization Complete ---")
+        self.angle = AngleIndicator(
+            self.smoothed_prediction, 
+            angle_lookback=self.p.pred_smooth_period
+        )
+        
+        self.sma_short_term = bt.indicators.SMA(
+            self.data.close,
+            period=self.p.sma_short_term_period
+        )
+        self.sma_long_term = bt.indicators.SMA(
+            self.data.close, 
+            period=self.p.sma_long_term_period
+        )
+        self.sma_momentum = bt.indicators.SMA(
+            self.data.close, 
+            period=self.p.sma_momentum_period
+        )
+        self.smooth_cross_momentum = bt.indicators.CrossOver(
+            self.smoothed_prediction, 
+            self.sma_momentum
+        )
 
     def next(self):
-        # --- Long-Only Strategy with 2-Period Momentum Confirmation ---
+        """This method is called for each bar of data and contains the trading logic."""
+        
+        if np.isnan(self.angle[0]):
+            return
 
-        # Check if we are already in the market
         if self.position:
-            # Exit long if smoothed prediction crosses down below momentum SMA
             if self.smooth_cross_momentum[0] < 0:
-                print(f'{self.data.datetime.date(0)}: CLOSE LONG @ {self.data.close[0]:.5f}')
                 self.close()
             return
 
-        # --- Entry Logic (Long Only) with 2-Period Rising Confirmation ---
-        # Entry conditions:
-        # 1. SMA(50) and Momentum SMA must be below transformer prediction
-        # 2. All indicators must be rising for 2 consecutive periods
-        # 3. Smoothed prediction crosses up above Momentum SMA
-        if (self.sma_50[0] < self.prediction[0] and 
-            self.sma_momentum[0] < self.prediction[0] and
-            # 2-period rising confirmation for SMA50
-            self.sma_50[0] > self.sma_50[-1] and
-            self.sma_50[-1] > self.sma_50[-2] and
-            # 2-period rising confirmation for momentum SMA
-            self.sma_momentum[0] > self.sma_momentum[-1] and
-            self.sma_momentum[-1] > self.sma_momentum[-2] and
-            # 2-period rising confirmation for transformer prediction
-            self.prediction[0] > self.prediction[-1] and
-            self.prediction[-1] > self.prediction[-2] and
-            # 2-period rising confirmation for smoothed prediction
-            self.smoothed_prediction[0] > self.smoothed_prediction[-1] and
-            self.smoothed_prediction[-1] > self.smoothed_prediction[-2] and
-            # Smoothed prediction crosses up above momentum SMA
-            self.smooth_cross_momentum[0] > 0):
-            print(f'{self.data.datetime.date(0)}: BUY CREATE @ {self.data.close[0]:.5f} - Size: {self.p.position_size}')
-            print(f'  SMA50 < Prediction: {self.sma_50[0]:.5f} < {self.prediction[0]:.5f}')
-            print(f'  SMA Momentum < Prediction: {self.sma_momentum[0]:.5f} < {self.prediction[0]:.5f}')
-            print(f'  SMA50 2-Period Rising: {self.sma_50[-2]:.5f} -> {self.sma_50[-1]:.5f} -> {self.sma_50[0]:.5f}')
-            print(f'  SMA Momentum 2-Period Rising: {self.sma_momentum[-2]:.5f} -> {self.sma_momentum[-1]:.5f} -> {self.sma_momentum[0]:.5f}')
-            print(f'  Prediction 2-Period Rising: {self.prediction[-2]:.5f} -> {self.prediction[-1]:.5f} -> {self.prediction[0]:.5f}')
-            print(f'  Smoothed Pred 2-Period Rising: {self.smoothed_prediction[-2]:.5f} -> {self.smoothed_prediction[-1]:.5f} -> {self.smoothed_prediction[0]:.5f}')
-            print(f'  Smoothed Pred crosses UP Momentum SMA: {self.smoothed_prediction[0]:.5f} > {self.sma_momentum[0]:.5f}')
-            # Use the configurable position size
+        is_bullish_filter = (self.sma_long_term[0] < self.prediction[0] and 
+                             self.sma_momentum[0] < self.prediction[0])
+
+        is_strong_momentum = self.smoothed_prediction[0] > self.smoothed_prediction[-1]
+
+        is_crossover_signal = self.smooth_cross_momentum[0] > 0
+
+        is_steep_angle = self.angle[0] > self.p.min_angle_for_entry
+        
+        if is_bullish_filter and is_strong_momentum and is_crossover_signal and is_steep_angle:
+            print(f"--- BUY SIGNAL @ {self.data.datetime.date(0)} (Angle: {self.angle[0]:.2f}° > {self.p.min_angle_for_entry}°) ---")
             self.buy(size=self.p.position_size)
 
-# --- Cerebro Setup ---
+# --- Cerebro Execution ---
 if __name__ == '__main__':
-    cerebro = bt.Cerebro()
+    cerebro = bt.Cerebro(runonce=False)
+    
     cerebro.addstrategy(TransformerSignalStrategy)
     
-    data_path = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Mon.csv'
-    
+    # Load the data feed
     data = bt.feeds.GenericCSVData(
-        dataname=str(data_path),
-        dtformat=('%Y%m%d'),
+        # --- FIX: Corrected parameter name from 'datame' to 'dataname' ---
+        dataname=str(DATA_PATH), 
+        dtformat=('%Y%m%d'), 
         tmformat=('%H:%M:%S'),
-        datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6, openinterest=-1,
-        timeframe=bt.TimeFrame.Minutes,
-        compression=5
-    )
+        datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6,
+        timeframe=bt.TimeFrame.Minutes, compression=5)
+    
     cerebro.adddata(data)
-    
     cerebro.broker.setcash(100000.0)
-    print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
     
+    print("--- Running Backtest ---")
     cerebro.run()
     
-    print(f'Final Portfolio Value: {cerebro.broker.getvalue():.2f}')
-    
-    print("Backtest complete. Generating plot...")
-    
-    # Use the parameter to determine chart style
-    strategy_instance = cerebro.runstrats[0][0]
-    if strategy_instance.p.show_candlesticks:
-        cerebro.plot(style='candlestick', barup='green', bardown='red')
-    else:
-        cerebro.plot(style='line')
+    print("\n--- Backtest Finished. Generating Plot... ---")
+    cerebro.plot(style='line')
