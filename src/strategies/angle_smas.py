@@ -15,7 +15,7 @@ import math
 # --- GLOBAL PATH CONFIGURATION ---
 try:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-    DATA_PATH = PROJECT_ROOT / 'data' /  'USDCHF_5m_1Yea.csv'#'GBPUSD_5m_2Mon.csv'#'EURUSD_5m_2Yea.csv'#'EURUSD_5m_2Mon.csv'
+    DATA_PATH = PROJECT_ROOT / 'data' /  'USDCHF_5m_1Yea.csv'#'XAUUSD_5m_1Yea(new).csv'#'USDCHF_5m_1Yea.csv'#'GBPUSD_5m_2Mon.csv'#'EURUSD_5m_2Yea.csv'#'EURUSD_5m_2Mon.csv'
     if not DATA_PATH.exists():
         print(f"FATAL: Data file not found at {DATA_PATH}")
         exit()
@@ -23,7 +23,7 @@ except Exception:
     print("FATAL: Could not determine project paths. Please run from the project root.")
     exit()
 
-# --- INDICATOR: ANGLE OF A LINE (Unchanged) ---
+# --- INDICATOR: ANGLE OF A LINE ---
 class AngleIndicator(bt.Indicator):
     lines = ('angle',)
     params = (('angle_lookback', 5), ('scale_factor', 50000),)
@@ -74,7 +74,7 @@ class StableSMAStrategy(bt.Strategy):
         self.num_closed_trades = 0
         self.num_won_trades = 0
         self.num_lost_trades = 0
-        self.total_trades_opened = 0 # This was missing
+        self.total_trades_opened = 0 
 
     def calculate_order_size(self, stop_price):
         risked_value = self.broker.get_value() * self.p.risk_percent
@@ -95,18 +95,22 @@ class StableSMAStrategy(bt.Strategy):
                 print(f"--- EXIT SIGNAL @ {self.data.datetime.date(0)}: Closing position. ---")
                 self.current_order = self.close() 
             return
+        
         if np.isnan(self.angle_prediction[0]) or np.isnan(self.angle_price[0]):
             return
         abs_divergence = abs(self.angle_prediction[0] - self.angle_price[0])
+        
         is_bullish_filter = (self.sma_long_term[0] < self.prediction[0] and self.sma_momentum[0] < self.prediction[0])
         is_strong_momentum = self.smoothed_prediction[0] > self.smoothed_prediction[-1]
         is_crossover_signal = self.smooth_cross_momentum[0] > 0
         is_steep_angle = self.angle_prediction[0] > self.p.min_angle_for_entry
         is_coherent_signal = abs_divergence < self.p.max_abs_divergence_entry
+        
         if is_bullish_filter and is_strong_momentum and is_crossover_signal and is_steep_angle and is_coherent_signal:
             stop_price = self.data.close[0] - (self.p.stop_loss_pips * self.p.pip_value)
             size = self.calculate_order_size(stop_price)
             if size <= 0: return
+            
             print(f"--- ATTEMPTING BUY @ {self.data.datetime.date(0)} (Size: {size}, Stop: {stop_price:.5f}) ---")
             brackets = self.buy_bracket(
                 size=size,
@@ -119,9 +123,10 @@ class StableSMAStrategy(bt.Strategy):
     def notify_order(self, order):
         if order.ref == getattr(self.current_order, 'ref', -1) and order.status in [order.Completed, order.Canceled, order.Rejected, order.Margin]:
             self.current_order = None
+        
         if order.status in [order.Completed]:
             if order.isbuy():
-                # --- CORRECTED: Increment opened trades counter ---
+                # --- Increment opened trades counter ---
                 self.total_trades_opened += 1
                 print(f"BUY EXECUTED @ Price: {order.executed.price:.5f}, Size: {order.executed.size}")
             elif order.issell():
@@ -146,7 +151,7 @@ class StableSMAStrategy(bt.Strategy):
     def stop(self):
         print("\n--- Strategy execution finished. Final report will be generated. ---")
 
-# --- Cerebro Execution (Unchanged) ---
+# --- Cerebro Execution  ---
 if __name__ == '__main__':
     cerebro = bt.Cerebro(runonce=False)
     cerebro.addstrategy(StableSMAStrategy)
@@ -155,6 +160,7 @@ if __name__ == '__main__':
         dataname=str(DATA_PATH), dtformat=('%Y%m%d'), tmformat=('%H:%M:%S'),
         datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6,
         timeframe=bt.TimeFrame.Minutes, compression=5)
+    
     cerebro.adddata(data)
     
     start_cash = 100000.0
@@ -175,7 +181,7 @@ if __name__ == '__main__':
     
     the_strategy = results[0] 
     
-    # --- CORRECTED: Use the explicitly tracked variables ---
+    # --- Use the explicitly tracked variables ---
     total_trades_opened = the_strategy.total_trades_opened
     total_closed_trades = the_strategy.num_closed_trades
     won_trades = the_strategy.num_won_trades
