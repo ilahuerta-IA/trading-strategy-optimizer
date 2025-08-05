@@ -35,7 +35,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     MODELS_DIR = PROJECT_ROOT / 'src' / 'ml_models'
-    DATA_PATH = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Mon.csv'
+    DATA_PATH = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Mon.csv'  # Example data file
+    #'EURUSD_5m_2Mon.csv' #USDCHF_5m_1Yea.csv
     
     if not DATA_PATH.exists():
         print(f"FATAL: Data file not found at {DATA_PATH}")
@@ -174,7 +175,7 @@ class TransformerSignalStrategy(bt.Strategy):
         ('sma_short_term_period', 5),    # Short-term SMA period
         
         # Entry signal filters
-        ('min_angle_for_entry', 85.0),   # Minimum angle (degrees) for entry signal
+        ('min_angle_for_entry', 75.0),   # Minimum angle (degrees) for entry signal
         ('max_abs_divergence_entry', 10.0),  # Max divergence between prediction/price angles
         
         # Risk management
@@ -261,7 +262,10 @@ class TransformerSignalStrategy(bt.Strategy):
         abs_divergence = abs(self.angle_prediction[0] - self.angle_price[0])
         is_bullish_filter = (self.sma_long_term[0] < self.prediction[0] and 
                            self.sma_momentum[0] < self.prediction[0])
-        is_strong_momentum = self.smoothed_prediction[0] > self.smoothed_prediction[-1]
+        is_strong_momentum = (self.smoothed_prediction[0] > self.smoothed_prediction[-1] and 
+                             self.sma_short_term[0] > self.sma_short_term[-1] and
+                             self.sma_long_term[0] > self.sma_long_term[-1] and
+                             self.sma_momentum[0] > self.sma_momentum[-1])
         is_crossover_signal = self.smooth_cross_momentum[0] > 0
         is_steep_angle = self.angle_prediction[0] > self.p.min_angle_for_entry
         is_coherent_signal = abs_divergence < self.p.max_abs_divergence_entry
@@ -275,13 +279,21 @@ class TransformerSignalStrategy(bt.Strategy):
             if size <= 0: 
                 return
 
+            # VALIDATION: Double-check angle at execution time to prevent timing issues
+            current_angle = self.angle_prediction[0]
+            if current_angle <= self.p.min_angle_for_entry:
+                print(f"--- ENTRY REJECTED @ {self.data.datetime.date(0)}: Angle dropped to {current_angle:.2f}° (need >{self.p.min_angle_for_entry}°) ---")
+                return
+
             print(f"--- ATTEMPTING BUY @ {self.data.datetime.date(0)} (Size: {size}, Stop: {stop_price:.5f}) ---")
+            print(f"  Entry Validation: Angle={current_angle:.2f}°, Divergence={abs_divergence:.2f}°")
+            
             # Simple buy order (no brackets)
             self.buy(size=size)
             self.order_pending = True
             
-            # Store entry data for reporting
-            self.entry_angle = self.angle_prediction[0]
+            # Store entry data for reporting (store the VALIDATED values when signal was generated)
+            self.entry_angle = current_angle
             self.entry_divergence = abs_divergence
 
     def notify_order(self, order):
@@ -349,7 +361,9 @@ class TransformerSignalStrategy(bt.Strategy):
 
     def stop(self):
         """Called when the strategy stops. Final cleanup if needed."""
-        pass
+        print(f"\n=== STRATEGY STOPPED ===")
+        print(f"Total trades executed: {self.num_closed_trades}")
+        print("=== END OF EXECUTION ===\n")
 
 # --- STRATEGY EXECUTION ---
 
