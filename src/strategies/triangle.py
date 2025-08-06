@@ -38,7 +38,8 @@ DEFAULT_PARAMS = {
     'sma_fast_period': 7,               # Fast SMA period (shortest)
     'sma_medium_period': 9,             # Medium SMA period
     'sma_slow_period': 11,               # Slow SMA period (longest)
-    'min_angle_for_long_entry': 80.0,   # Minimum angle (degrees) for long entry
+    'min_angle_for_long_entry': 60.0,   # Minimum angle (degrees) for long entry
+    'max_angle_divergence': 2.0,       # Max angle divergence between SMAs (degrees)
     'enable_long_entries': True,         # Flag to enable long entries
     'risk_percent': 0.005,               # Portfolio risk per trade (0.5%)
     'stop_loss_pips': 10.0,             # Stop-loss distance in pips
@@ -49,6 +50,7 @@ DEFAULT_PARAMS = {
 # Optimization Parameters (used when OPTIMIZATION_MODE = True)
 OPTIMIZATION_PARAMS = {
     'min_angle_for_long_entry': range(55, 85, 5),      # Test: 55, 60, 65, 70, 75, 80
+    'max_angle_divergence': range(10, 21, 5),          # Test: 10, 15, 20
     'risk_percent': [0.005, 0.01],              # Test different risk levels
 }
 
@@ -119,6 +121,7 @@ class TriangleStrategy(bt.Strategy):
         ('sma_medium_period', DEFAULT_PARAMS['sma_medium_period']),
         ('sma_slow_period', DEFAULT_PARAMS['sma_slow_period']),
         ('min_angle_for_long_entry', DEFAULT_PARAMS['min_angle_for_long_entry']),
+        ('max_angle_divergence', DEFAULT_PARAMS['max_angle_divergence']),
         ('enable_long_entries', DEFAULT_PARAMS['enable_long_entries']),
         ('risk_percent', DEFAULT_PARAMS['risk_percent']),
         ('stop_loss_pips', DEFAULT_PARAMS['stop_loss_pips']),
@@ -156,6 +159,7 @@ class TriangleStrategy(bt.Strategy):
         self.total_gross_profit = 0.0
         self.total_gross_loss = 0.0
         self.entry_angles = None            # Store entry angles for reporting
+        self.entry_divergences = None       # Store angle divergences for reporting
         
         # --- Optimization Mode Detection ---
         self.verbose = self.p.verbose  # Use parameter to control verbosity
@@ -168,7 +172,8 @@ class TriangleStrategy(bt.Strategy):
             print(f"Strategy parameters:")
             print(f"  SMAs: Fast={self.p.sma_fast_period}, Medium={self.p.sma_medium_period}, Slow={self.p.sma_slow_period}")
             print(f"  Entry angle threshold: {self.p.min_angle_for_long_entry}°")
-            print(f"  Entry conditions: All angles > threshold + Fast SMA crosses above Medium SMA")
+            print(f"  Max angle divergence: {self.p.max_angle_divergence}°")
+            print(f"  Entry conditions: All angles > threshold + Fast SMA crosses above Medium SMA + Angle coherence")
             print(f"  Risk per trade: {self.p.risk_percent*100}%")
             print(f"  Stop-loss: {self.p.stop_loss_pips} pips")
             print(f"  Exit condition: Fast SMA crosses below Medium SMA (simple crossover)")
@@ -232,12 +237,18 @@ class TriangleStrategy(bt.Strategy):
         angle_medium = self.angle_medium[0]
         angle_slow = self.angle_slow[0]
         
+        # Calculate angle divergences (coherence check)
+        divergence_fast_medium = abs(angle_fast - angle_medium)
+        divergence_medium_slow = abs(angle_medium - angle_slow)
+        
         # --- LONG ENTRY CONDITIONS (ONLY) ---
         if (self.p.enable_long_entries and 
             angle_fast > self.p.min_angle_for_long_entry and
             angle_medium > self.p.min_angle_for_long_entry and
             angle_slow > self.p.min_angle_for_long_entry and
-            self.fast_cross_medium[0] > 0):  # Fast crosses above Medium (bullish signal)
+            self.fast_cross_medium[0] > 0 and  # Fast crosses above Medium (bullish signal)
+            divergence_fast_medium < self.p.max_angle_divergence and  # Coherent angles
+            divergence_medium_slow < self.p.max_angle_divergence):    # Coherent angles
             
             stop_price = self.data.close[0] - (self.p.stop_loss_pips * self.p.pip_value)
             size = self.calculate_order_size(stop_price)
@@ -248,22 +259,26 @@ class TriangleStrategy(bt.Strategy):
             # VALIDATION: Double-check angles at execution time
             if (angle_fast <= self.p.min_angle_for_long_entry or 
                 angle_medium <= self.p.min_angle_for_long_entry or 
-                angle_slow <= self.p.min_angle_for_long_entry):
+                angle_slow <= self.p.min_angle_for_long_entry or
+                divergence_fast_medium >= self.p.max_angle_divergence or
+                divergence_medium_slow >= self.p.max_angle_divergence):
                 if self.verbose:
-                    print(f"--- ENTRY REJECTED @ {self.data.datetime.date(0)}: Angles weakened ---")
+                    print(f"--- ENTRY REJECTED @ {self.data.datetime.date(0)}: Angles/divergences weakened ---")
                 return
             
             if self.verbose:
                 print(f"--- ATTEMPTING LONG @ {self.data.datetime.date(0)} (Size: {size}, Stop: {stop_price:.5f}) ---")
                 print(f"  Triangle Angles: Fast={angle_fast:.2f}°, Medium={angle_medium:.2f}°, Slow={angle_slow:.2f}°")
+                print(f"  Angle Divergences: Fast-Med={divergence_fast_medium:.2f}°, Med-Slow={divergence_medium_slow:.2f}°")
                 print(f"  SMA Values: Fast={self.sma_fast[0]:.5f}, Med={self.sma_medium[0]:.5f}, Slow={self.sma_slow[0]:.5f}")
-                print(f"  Entry Validation: All angles > {self.p.min_angle_for_long_entry}° threshold + Fast crossed above Medium")
+                print(f"  Entry Validation: All angles > {self.p.min_angle_for_long_entry}° + Divergences < {self.p.max_angle_divergence}° + Crossover")
                 print(f"  Crossover Signal: {self.fast_cross_medium[0]} (1=bullish crossover, 0=no crossover, -1=bearish crossover)")
             
             # Simple buy order (following angle_smas approach)
             self.buy(size=size)
             self.order_pending = True
             self.entry_angles = (angle_fast, angle_medium, angle_slow)
+            self.entry_divergences = (divergence_fast_medium, divergence_medium_slow)
 
     def notify_order(self, order):
         """Handle order status notifications."""
@@ -331,18 +346,23 @@ class TriangleStrategy(bt.Strategy):
             
             # Format reporting strings
             angles_str = "N/A"
+            divergences_str = "N/A"
             if self.entry_angles:
                 angles_str = f"Fast={self.entry_angles[0]:.1f}°, Med={self.entry_angles[1]:.1f}°, Slow={self.entry_angles[2]:.1f}°"
+            if self.entry_divergences:
+                divergences_str = f"F-M={self.entry_divergences[0]:.1f}°, M-S={self.entry_divergences[1]:.1f}°"
             
             # Print trade summary (only in verbose mode)
             if self.verbose:
                 print(f"--- TRADE CLOSED #{self.num_closed_trades} ---")
                 print(f"  PnL: ${pnl:.2f}, PnL (pips): {pnl_pips:.1f}")
                 print(f"  Entry Angles: {angles_str}")
+                print(f"  Entry Divergences: {divergences_str}")
                 print("-" * 50)
             
             # Reset entry data
             self.entry_angles = None
+            self.entry_divergences = None
             self.buy_price = None
             self.sell_price = None
 
@@ -370,6 +390,7 @@ if __name__ == '__main__':
         cerebro.optstrategy(
             TriangleStrategy,
             min_angle_for_long_entry=OPTIMIZATION_PARAMS['min_angle_for_long_entry'],
+            max_angle_divergence=OPTIMIZATION_PARAMS['max_angle_divergence'],
             risk_percent=OPTIMIZATION_PARAMS['risk_percent'],
             verbose=[False]  # Silent during optimization
         )
@@ -400,7 +421,7 @@ if __name__ == '__main__':
 
     # Run backtest based on mode
     if OPTIMIZATION_MODE:
-        print(f"Testing {len(OPTIMIZATION_PARAMS['min_angle_for_long_entry']) * len(OPTIMIZATION_PARAMS['risk_percent'])} parameter combinations...")
+        print(f"Testing {len(OPTIMIZATION_PARAMS['min_angle_for_long_entry']) * len(OPTIMIZATION_PARAMS['max_angle_divergence']) * len(OPTIMIZATION_PARAMS['risk_percent'])} parameter combinations...")
         
         # Run optimization
         optimization_results = cerebro.run()
@@ -428,6 +449,7 @@ if __name__ == '__main__':
 
                 final_results_list.append({
                     'long_angle': params.min_angle_for_long_entry,
+                    'max_divergence': params.max_angle_divergence,
                     'risk_pct': params.risk_percent,
                     'profit_factor': profit_factor,
                     'total_trades': total_trades,
@@ -438,10 +460,10 @@ if __name__ == '__main__':
         sorted_results = sorted(final_results_list, key=lambda x: x['profit_factor'], reverse=True)
         
         print("\n--- Top Parameter Combinations by Profit Factor ---")
-        print(f"{'LongAngle':<10} {'Risk%':<6} {'P.Factor':<9} {'Trades':<7} {'Final Value':<12}")
-        print("-" * 54)
+        print(f"{'LongAngle':<10} {'MaxDiv':<7} {'Risk%':<6} {'P.Factor':<9} {'Trades':<7} {'Final Value':<12}")
+        print("-" * 60)
         for res in sorted_results:
-            print(f"{res['long_angle']:<10.0f} {res['risk_pct']:<6.3f} {res['profit_factor']:<9.2f} {res['total_trades']:<7} {res['final_value']:<12.2f}")
+            print(f"{res['long_angle']:<10.0f} {res['max_divergence']:<7.0f} {res['risk_pct']:<6.3f} {res['profit_factor']:<9.2f} {res['total_trades']:<7} {res['final_value']:<12.2f}")
         
     else:
         print("--- Running Triangle Strategy Backtest ---")
