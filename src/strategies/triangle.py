@@ -1,11 +1,13 @@
 # -----------------------------------------------------------------------------
-# ANGLE SMA TRADING STRATEGY
+# TRIANGLE TRADING STRATEGY
 # -----------------------------------------------------------------------------
-# A technical analysis-based trading strategy that combines:
-# - Multiple SMA (Simple Moving Average) filters for trend confirmation
-# - Custom angle indicators for momentum analysis
-# - Robust stop-loss and exit signal management
-# - Risk-based position sizing
+# A technical analysis-based trading strategy that uses 3 SMAs forming a "triangle"
+# of trend analysis to determine entry conditions based on angle momentum.
+# 
+# Strategy Concept:
+# - 3 SMAs: Fast (7), Medium (9), Slow (11) periods
+# - All 3 angles must exceed minimum thresholds for long entry
+# - Long-only strategy with crossover exit signals
 # 
 # DISCLAIMER:
 # This software is for educational and research purposes only.
@@ -25,7 +27,7 @@ import math
 # All configuration parameters in one place for easy modification
 
 # Data Configuration
-DATA_FILE = 'EURUSD_5m_2Yea.csv'  # Select data file to use
+DATA_FILE = 'EURUSD_5m_2Yea.csv'  # Select data file to use (2 months of data)
 # Alternative files: 'XAUUSD_5m_1Yea(new).csv', 'GBPUSD_5m_2Mon.csv', 'EURUSD_5m_2Yea.csv', 'EURUSD_5m_8Yea.csv', 'USDCHF_5m_1Yea.csv'
 
 # Execution Mode Configuration
@@ -33,24 +35,21 @@ OPTIMIZATION_MODE = False  # Set to True to enable parameter optimization
 
 # Strategy Default Parameters (used when OPTIMIZATION_MODE = False)
 DEFAULT_PARAMS = {
-    'pred_smooth_period': 5,        # SMA period for smoothing predictions
-    'sma_momentum_period': 20,      # Momentum SMA period (adjusted for 5m)
-    'sma_long_term_period': 60,     # Long-term trend SMA period (adjusted for 5m)
-    'sma_short_term_period': 7,     # Short-term SMA period
-    'min_angle_for_entry': 70.0,    # Minimum angle (degrees) for entry signal (less strict)
-    'max_abs_divergence_entry': 9.0,  # Max divergence between prediction/price angles (less strict)
-    'risk_percent': 0.01,           # Portfolio risk per trade (1%)
-    'stop_loss_pips': 10.0,         # Stop-loss distance in pips
-    'pip_value': 0.0001,            # Pip value for EUR/USD (0.0001)
-    'cooldown_period': 5,           # Bars to wait after trade closure
+    'sma_fast_period': 7,               # Fast SMA period (shortest)
+    'sma_medium_period': 9,             # Medium SMA period
+    'sma_slow_period': 11,               # Slow SMA period (longest)
+    'min_angle_for_long_entry': 80.0,   # Minimum angle (degrees) for long entry
+    'enable_long_entries': True,         # Flag to enable long entries
+    'risk_percent': 0.005,               # Portfolio risk per trade (0.5%)
+    'stop_loss_pips': 10.0,             # Stop-loss distance in pips
+    'pip_value': 0.0001,                # Pip value for EUR/USD (0.0001)
+    'cooldown_period': 5,               # Bars to wait after trade closure
 }
 
 # Optimization Parameters (used when OPTIMIZATION_MODE = True)
 OPTIMIZATION_PARAMS = {
-    'sma_momentum_period': [20, 30],      # Test: 20, 30, 40
-    'sma_long_term_period': range(60, 101, 20),    # Test: 60, 80, 100
-    'min_angle_for_entry': range(55, 80, 5),       # Test: 55, 60, 65, 70, 75, 80
-    'max_abs_divergence_entry': range(9, 11, 1),   # Test: 5, 10
+    'min_angle_for_long_entry': range(55, 85, 5),      # Test: 55, 60, 65, 70, 75, 80
+    'risk_percent': [0.005, 0.01],              # Test different risk levels
 }
 
 # Broker Configuration
@@ -99,30 +98,28 @@ class AngleIndicator(bt.Indicator):
 
 # --- MAIN TRADING STRATEGY ---
 
-class StableSMAStrategy(bt.Strategy):
+class TriangleStrategy(bt.Strategy):
     """
-    Technical analysis-based trading strategy using multiple SMA filters and angle indicators.
+    Triangle trading strategy using 3 SMAs with angle-based entry conditions.
     
     Strategy Logic:
-    1. Entry: Uses multiple SMA confirmation signals with angle-based momentum analysis
-    2. Exit: Implements both stop-loss orders and crossover-based exit signals
-    3. Risk Management: Position sizing based on portfolio risk percentage and stop-loss distance
+    1. Calculate angles for 3 SMAs (Fast, Medium, Slow periods)
+    2. Long Entry: All angles > min_angle_for_long_entry
+    3. Exit: Stop-loss orders and crossover exit signals
     
     Key Features:
-    - Multiple moving average filters for trend confirmation
-    - Angle-based momentum analysis for entry timing
-    - Robust order management with cooldown periods
-    - Detailed trade reporting with pip-based PnL calculation
+    - 3 SMA triangle analysis for trend confirmation
+    - Angle-based momentum analysis for long entries only
+    - Risk-based position sizing with stop-loss protection
     """
     
     params = (
         # Strategy parameters - defaults from configuration section
-        ('pred_smooth_period', DEFAULT_PARAMS['pred_smooth_period']),
-        ('sma_momentum_period', DEFAULT_PARAMS['sma_momentum_period']),
-        ('sma_long_term_period', DEFAULT_PARAMS['sma_long_term_period']),
-        ('sma_short_term_period', DEFAULT_PARAMS['sma_short_term_period']),
-        ('min_angle_for_entry', DEFAULT_PARAMS['min_angle_for_entry']),
-        ('max_abs_divergence_entry', DEFAULT_PARAMS['max_abs_divergence_entry']),
+        ('sma_fast_period', DEFAULT_PARAMS['sma_fast_period']),
+        ('sma_medium_period', DEFAULT_PARAMS['sma_medium_period']),
+        ('sma_slow_period', DEFAULT_PARAMS['sma_slow_period']),
+        ('min_angle_for_long_entry', DEFAULT_PARAMS['min_angle_for_long_entry']),
+        ('enable_long_entries', DEFAULT_PARAMS['enable_long_entries']),
         ('risk_percent', DEFAULT_PARAMS['risk_percent']),
         ('stop_loss_pips', DEFAULT_PARAMS['stop_loss_pips']),
         ('pip_value', DEFAULT_PARAMS['pip_value']),
@@ -132,15 +129,18 @@ class StableSMAStrategy(bt.Strategy):
 
     def __init__(self):
         """Initialize strategy indicators and state management variables."""
-        # --- Technical Indicators (IDENTICAL to transformer strategy) ---
-        self.prediction = self.data.close  # Use close price as "prediction" for comparison
-        self.smoothed_prediction = bt.indicators.SMA(self.prediction, period=self.p.pred_smooth_period)
-        self.sma_short_term = bt.indicators.SMA(self.data.close, period=self.p.sma_short_term_period)
-        self.sma_long_term = bt.indicators.SMA(self.data.close, period=self.p.sma_long_term_period)
-        self.sma_momentum = bt.indicators.SMA(self.data.close, period=self.p.sma_momentum_period)
-        self.smooth_cross_momentum = bt.indicators.CrossOver(self.smoothed_prediction, self.sma_momentum)
-        self.angle_prediction = AngleIndicator(self.smoothed_prediction, angle_lookback=self.p.pred_smooth_period)
-        self.angle_price = AngleIndicator(self.sma_short_term, angle_lookback=self.p.sma_short_term_period)
+        # --- Technical Indicators (Triangle SMAs) ---
+        self.sma_fast = bt.indicators.SMA(self.data.close, period=self.p.sma_fast_period)
+        self.sma_medium = bt.indicators.SMA(self.data.close, period=self.p.sma_medium_period)
+        self.sma_slow = bt.indicators.SMA(self.data.close, period=self.p.sma_slow_period)
+        
+        # --- Angle Indicators for each SMA ---
+        self.angle_fast = AngleIndicator(self.sma_fast, angle_lookback=self.p.sma_fast_period)
+        self.angle_medium = AngleIndicator(self.sma_medium, angle_lookback=self.p.sma_medium_period)
+        self.angle_slow = AngleIndicator(self.sma_slow, angle_lookback=self.p.sma_slow_period)
+        
+        # --- Simple Crossover Exit Signal (like angle_smas.py) ---
+        self.fast_cross_medium = bt.indicators.CrossOver(self.sma_fast, self.sma_medium)
         
         # --- State Management Variables ---
         self.cooldown_counter = 0           # Prevents immediate re-entry after trade closure
@@ -150,21 +150,35 @@ class StableSMAStrategy(bt.Strategy):
         self.sell_price = None              # Exit price for PnL calculation
         
         # --- Performance Tracking ---
-        self.total_gross_profit = 0.0
-        self.total_gross_loss = 0.0
         self.num_closed_trades = 0
         self.num_won_trades = 0
         self.num_lost_trades = 0
-        self.entry_angle = None             # Store entry angle for reporting
-        self.entry_divergence = None        # Store entry divergence for reporting
+        self.total_gross_profit = 0.0
+        self.total_gross_loss = 0.0
+        self.entry_angles = None            # Store entry angles for reporting
         
         # --- Optimization Mode Detection ---
-        # Check if we're in optimization mode by detecting multiple strategy instances
-        self.verbose = self.p.verbose  # Use parameter to control verbosity 
+        self.verbose = self.p.verbose  # Use parameter to control verbosity
+
+    def start(self):
+        """Called when the strategy starts."""
+        if self.verbose:
+            print(f"=== TRIANGLE STRATEGY STARTED ===")
+            print(f"Data start date: {self.data.datetime.date(0)}")
+            print(f"Strategy parameters:")
+            print(f"  SMAs: Fast={self.p.sma_fast_period}, Medium={self.p.sma_medium_period}, Slow={self.p.sma_slow_period}")
+            print(f"  Entry angle threshold: {self.p.min_angle_for_long_entry}°")
+            print(f"  Entry conditions: All angles > threshold + Fast SMA crosses above Medium SMA")
+            print(f"  Risk per trade: {self.p.risk_percent*100}%")
+            print(f"  Stop-loss: {self.p.stop_loss_pips} pips")
+            print(f"  Exit condition: Fast SMA crosses below Medium SMA (simple crossover)")
+            print(f"  Long entries: {'Enabled' if self.p.enable_long_entries else 'Disabled'}")
+            print("========================\n")
 
     def calculate_order_size(self, stop_price):
         """
         Calculate position size based on risk percentage and stop-loss distance.
+        (Following angle_smas.py approach)
         
         Args:
             stop_price: The stop-loss price level
@@ -193,12 +207,14 @@ class StableSMAStrategy(bt.Strategy):
 
         # --- Exit Logic ---
         if self.position:
-            # Check for crossover exit signal
-            if self.smooth_cross_momentum[0] < 0:
+            # Simple crossover exit: fast crosses below medium (bearish signal)
+            if self.fast_cross_medium[0] < 0:
                 if self.verbose:
-                    print(f"--- EXIT SIGNAL @ {self.data.datetime.date(0)}: Crossover exit ---")
-                # Cancel pending stop-loss first
+                    print(f"--- EXIT SIGNAL @ {self.data.datetime.date(0)}: Fast SMA crossed below Medium SMA ---")
+                # Cancel pending stop-loss first (critical fix like angle_smas)
                 if self.stop_order:
+                    if self.verbose:
+                        print(f"CANCELING STOP-LOSS ORDER")
                     self.cancel(self.stop_order)
                     self.stop_order = None
                 # Then close position
@@ -207,48 +223,47 @@ class StableSMAStrategy(bt.Strategy):
 
         # --- Entry Logic ---
         # Skip if angle indicators have invalid values
-        if np.isnan(self.angle_prediction[0]) or np.isnan(self.angle_price[0]): 
+        if (np.isnan(self.angle_fast[0]) or np.isnan(self.angle_medium[0]) or 
+            np.isnan(self.angle_slow[0])): 
             return
         
-        # Calculate entry conditions
-        abs_divergence = abs(self.angle_prediction[0] - self.angle_price[0])
-        is_bullish_filter = (self.sma_long_term[0] < self.prediction[0] and 
-                           self.sma_momentum[0] < self.prediction[0])
-        is_strong_momentum = (self.smoothed_prediction[0] > self.smoothed_prediction[-1] and 
-                             self.sma_short_term[0] > self.sma_short_term[-1] and
-                             self.sma_long_term[0] > self.sma_long_term[-1] and
-                             self.sma_momentum[0] > self.sma_momentum[-1])
-        is_crossover_signal = self.smooth_cross_momentum[0] > 0
-        is_steep_angle = self.angle_prediction[0] > self.p.min_angle_for_entry
-        is_coherent_signal = abs_divergence < self.p.max_abs_divergence_entry
-
-        # Enter position if all conditions are met
-        if (is_bullish_filter and is_strong_momentum and is_crossover_signal and 
-            is_steep_angle and is_coherent_signal):
+        # Get current angles
+        angle_fast = self.angle_fast[0]
+        angle_medium = self.angle_medium[0]
+        angle_slow = self.angle_slow[0]
+        
+        # --- LONG ENTRY CONDITIONS (ONLY) ---
+        if (self.p.enable_long_entries and 
+            angle_fast > self.p.min_angle_for_long_entry and
+            angle_medium > self.p.min_angle_for_long_entry and
+            angle_slow > self.p.min_angle_for_long_entry and
+            self.fast_cross_medium[0] > 0):  # Fast crosses above Medium (bullish signal)
             
             stop_price = self.data.close[0] - (self.p.stop_loss_pips * self.p.pip_value)
             size = self.calculate_order_size(stop_price)
-            if size <= 0: 
-                return
-
-            # VALIDATION: Double-check angle at execution time to prevent timing issues
-            current_angle = self.angle_prediction[0]
-            if current_angle <= self.p.min_angle_for_entry:
-                if self.verbose:
-                    print(f"--- ENTRY REJECTED @ {self.data.datetime.date(0)}: Angle dropped to {current_angle:.2f}° (need >{self.p.min_angle_for_entry}°) ---")
-                return
-
-            if self.verbose:
-                print(f"--- ATTEMPTING BUY @ {self.data.datetime.date(0)} (Size: {size}, Stop: {stop_price:.5f}) ---")
-                print(f"  Entry Validation: Angle={current_angle:.2f}°, Divergence={abs_divergence:.2f}°")
             
-            # Simple buy order (no brackets)
+            if size <= 0:
+                return
+            
+            # VALIDATION: Double-check angles at execution time
+            if (angle_fast <= self.p.min_angle_for_long_entry or 
+                angle_medium <= self.p.min_angle_for_long_entry or 
+                angle_slow <= self.p.min_angle_for_long_entry):
+                if self.verbose:
+                    print(f"--- ENTRY REJECTED @ {self.data.datetime.date(0)}: Angles weakened ---")
+                return
+            
+            if self.verbose:
+                print(f"--- ATTEMPTING LONG @ {self.data.datetime.date(0)} (Size: {size}, Stop: {stop_price:.5f}) ---")
+                print(f"  Triangle Angles: Fast={angle_fast:.2f}°, Medium={angle_medium:.2f}°, Slow={angle_slow:.2f}°")
+                print(f"  SMA Values: Fast={self.sma_fast[0]:.5f}, Med={self.sma_medium[0]:.5f}, Slow={self.sma_slow[0]:.5f}")
+                print(f"  Entry Validation: All angles > {self.p.min_angle_for_long_entry}° threshold + Fast crossed above Medium")
+                print(f"  Crossover Signal: {self.fast_cross_medium[0]} (1=bullish crossover, 0=no crossover, -1=bearish crossover)")
+            
+            # Simple buy order (following angle_smas approach)
             self.buy(size=size)
             self.order_pending = True
-            
-            # Store entry data for reporting (store the VALIDATED values when signal was generated)
-            self.entry_angle = current_angle
-            self.entry_divergence = abs_divergence
+            self.entry_angles = (angle_fast, angle_medium, angle_slow)
 
     def notify_order(self, order):
         """Handle order status notifications."""
@@ -259,7 +274,7 @@ class StableSMAStrategy(bt.Strategy):
             if order.isbuy():
                 self.buy_price = order.executed.price
                 if self.verbose:
-                    print(f"BUY EXECUTED @ {order.executed.price:.5f} (Size: {order.executed.size})")
+                    print(f"LONG EXECUTED @ {order.executed.price:.5f} (Size: {order.executed.size})")
                 # Place stop-loss order after buy execution
                 if not self.stop_order:
                     stop_price = self.buy_price - (self.p.stop_loss_pips * self.p.pip_value)
@@ -271,14 +286,19 @@ class StableSMAStrategy(bt.Strategy):
                     if self.verbose:
                         print(f"STOP-LOSS PLACED @ {stop_price:.5f}")
             elif order.issell():
-                self.sell_price = order.executed.price  # Store sell price for PnL calculation
+                # This is a sell exit (closing long position)
+                self.sell_price = order.executed.price
                 if self.verbose:
                     print(f"SELL EXECUTED @ {order.executed.price:.5f}")
-                self.stop_order = None  # Clear stop order reference
+                # CRITICAL FIX: Clear stop order reference when any sell executes
+                self.stop_order = None
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             if self.verbose:
                 print(f"ORDER FAILED/CANCELED: {order.getstatusname()}")
+            # CRITICAL FIX: Clear stop order reference when order is canceled
+            if order == self.stop_order:
+                self.stop_order = None
 
         # Clear pending flag regardless of outcome
         self.order_pending = False
@@ -300,33 +320,39 @@ class StableSMAStrategy(bt.Strategy):
             # Apply cooldown after trade closure to prevent immediate re-entry
             self.cooldown_counter = self.p.cooldown_period
             
-            # Calculate PnL in pips using the stored entry and exit prices
+            # Calculate PnL in pips using the stored entry and exit prices (long-only)
             if (hasattr(self, 'buy_price') and self.buy_price is not None and 
                 hasattr(self, 'sell_price') and self.sell_price is not None):
-                price_diff = self.sell_price - self.buy_price  # Exit price - Entry price
+                # For LONG positions: Exit price - Entry price
+                price_diff = self.sell_price - self.buy_price
                 pnl_pips = price_diff / self.p.pip_value
             else:
                 pnl_pips = 0.0
             
             # Format reporting strings
-            angle_str = f"{self.entry_angle:.2f}°" if self.entry_angle is not None else "N/A"
-            divergence_str = f"{self.entry_divergence:.2f}°" if self.entry_divergence is not None else "N/A"
+            angles_str = "N/A"
+            if self.entry_angles:
+                angles_str = f"Fast={self.entry_angles[0]:.1f}°, Med={self.entry_angles[1]:.1f}°, Slow={self.entry_angles[2]:.1f}°"
             
             # Print trade summary (only in verbose mode)
             if self.verbose:
                 print(f"--- TRADE CLOSED #{self.num_closed_trades} ---")
                 print(f"  PnL: ${pnl:.2f}, PnL (pips): {pnl_pips:.1f}")
-                print(f"  Entry Angle: {angle_str}, Entry Divergence: {divergence_str}")
+                print(f"  Entry Angles: {angles_str}")
                 print("-" * 50)
             
             # Reset entry data
-            self.entry_angle, self.entry_divergence = None, None
+            self.entry_angles = None
+            self.buy_price = None
+            self.sell_price = None
 
     def stop(self):
         """Called when the strategy stops. Final cleanup if needed."""
         if self.verbose:
             print(f"\n=== STRATEGY STOPPED ===")
             print(f"Total trades executed: {self.num_closed_trades}")
+            print(f"Data range: {self.data.datetime.date(0)} (last date)")
+            print(f"Total bars processed: {len(self.data)}")
             print("=== END OF EXECUTION ===\n")
 
 # --- STRATEGY EXECUTION ---
@@ -340,24 +366,22 @@ if __name__ == '__main__':
         print("=== OPTIMIZATION MODE ENABLED ===")
         print("Running parameter optimization...")
         
-        # Add strategy with parameter ranges for optimization (simple approach like reference)
+        # Add strategy with parameter ranges for optimization
         cerebro.optstrategy(
-            StableSMAStrategy,
-            sma_momentum_period=OPTIMIZATION_PARAMS['sma_momentum_period'],
-            sma_long_term_period=OPTIMIZATION_PARAMS['sma_long_term_period'],
-            min_angle_for_entry=OPTIMIZATION_PARAMS['min_angle_for_entry'],
-            max_abs_divergence_entry=OPTIMIZATION_PARAMS['max_abs_divergence_entry'],
+            TriangleStrategy,
+            min_angle_for_long_entry=OPTIMIZATION_PARAMS['min_angle_for_long_entry'],
+            risk_percent=OPTIMIZATION_PARAMS['risk_percent'],
             verbose=[False]  # Silent during optimization
         )
         
-        # Add analyzers for performance metrics (like reference file)
+        # Add analyzers for performance metrics
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
         cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
         
     else:
         print("=== STANDARD MODE ===")
-        # Add strategy with default parameters (current behavior)
-        cerebro.addstrategy(StableSMAStrategy)
+        # Add strategy with default parameters
+        cerebro.addstrategy(TriangleStrategy)
     
     # Load and configure data feed
     data = bt.feeds.GenericCSVData(
@@ -376,12 +400,12 @@ if __name__ == '__main__':
 
     # Run backtest based on mode
     if OPTIMIZATION_MODE:
-        print(f"Testing {len(OPTIMIZATION_PARAMS['sma_momentum_period']) * len(OPTIMIZATION_PARAMS['sma_long_term_period']) * len(OPTIMIZATION_PARAMS['min_angle_for_entry']) * len(OPTIMIZATION_PARAMS['max_abs_divergence_entry'])} parameter combinations...")
+        print(f"Testing {len(OPTIMIZATION_PARAMS['min_angle_for_long_entry']) * len(OPTIMIZATION_PARAMS['risk_percent'])} parameter combinations...")
         
-        # Run optimization (like reference file)
+        # Run optimization
         optimization_results = cerebro.run()
         
-        # Process and Print the Results (adapted from reference file)
+        # Process and Print the Results
         final_results_list = []
         for single_run_results in optimization_results:
             for strategy_result in single_run_results:
@@ -403,13 +427,10 @@ if __name__ == '__main__':
                         profit_factor = total_won / total_lost
 
                 final_results_list.append({
-                    'mom_sma': params.sma_momentum_period,
-                    'long_sma': params.sma_long_term_period,
-                    'min_angle': params.min_angle_for_entry,
-                    'max_divergence': params.max_abs_divergence_entry,
+                    'long_angle': params.min_angle_for_long_entry,
+                    'risk_pct': params.risk_percent,
                     'profit_factor': profit_factor,
                     'total_trades': total_trades,
-                    # The final portfolio value from returns analyzer
                     'final_value': return_analysis.get('rtot', 1) * cerebro.broker.startingcash
                 })
 
@@ -417,16 +438,16 @@ if __name__ == '__main__':
         sorted_results = sorted(final_results_list, key=lambda x: x['profit_factor'], reverse=True)
         
         print("\n--- Top Parameter Combinations by Profit Factor ---")
-        print(f"{'Mom.SMA':<8} {'Long.SMA':<9} {'MinAngle':<9} {'MaxDiv':<7} {'P.Factor':<9} {'Trades':<7} {'Final Value':<12}")
-        print("-" * 70)
+        print(f"{'LongAngle':<10} {'Risk%':<6} {'P.Factor':<9} {'Trades':<7} {'Final Value':<12}")
+        print("-" * 54)
         for res in sorted_results:
-            print(f"{res['mom_sma']:<8} {res['long_sma']:<9} {res['min_angle']:<9.0f} {res['max_divergence']:<7} {res['profit_factor']:<9.2f} {res['total_trades']:<7} {res['final_value']:<12.2f}")
+            print(f"{res['long_angle']:<10.0f} {res['risk_pct']:<6.3f} {res['profit_factor']:<9.2f} {res['total_trades']:<7} {res['final_value']:<12.2f}")
         
     else:
-        print("--- Running Angle SMA Strategy Backtest ---")
+        print("--- Running Triangle Strategy Backtest ---")
         results = cerebro.run()
         
-        # Generate detailed performance report (current behavior)
+        # Generate detailed performance report
         the_strategy = results[0]
         print("\n" + "=" * 60)
         print("--- FINAL BACKTEST REPORT ---")

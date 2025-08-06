@@ -35,7 +35,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     MODELS_DIR = PROJECT_ROOT / 'src' / 'ml_models'
-    DATA_PATH = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Mon.csv'  # Example data file
+    DATA_PATH = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Yea.csv'  # Example data file
     #'EURUSD_5m_2Mon.csv' #USDCHF_5m_1Yea.csv
     
     if not DATA_PATH.exists():
@@ -170,13 +170,13 @@ class TransformerSignalStrategy(bt.Strategy):
     params = (
         # Indicator periods
         ('pred_smooth_period', 5),       # SMA period for smoothing predictions
-        ('sma_momentum_period', 50),     # Momentum SMA period
-        ('sma_long_term_period', 100),   # Long-term trend SMA period
+        ('sma_momentum_period', 20),     # Momentum SMA period #50
+        ('sma_long_term_period', 60),   # Long-term trend SMA period #100
         ('sma_short_term_period', 5),    # Short-term SMA period
         
         # Entry signal filters
-        ('min_angle_for_entry', 75.0),   # Minimum angle (degrees) for entry signal
-        ('max_abs_divergence_entry', 10.0),  # Max divergence between prediction/price angles
+        ('min_angle_for_entry', 70.0),   # Minimum angle (degrees) for entry signal #75
+        ('max_abs_divergence_entry', 9.0),  # Max divergence between prediction/price angles #10
         
         # Risk management
         ('risk_percent', 0.01),          # Portfolio risk per trade (1%)
