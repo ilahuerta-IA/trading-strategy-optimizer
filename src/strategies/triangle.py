@@ -40,6 +40,7 @@ DEFAULT_PARAMS = {
     'sma_slow_period': 11,               # Slow SMA period (longest)
     'min_angle_for_long_entry': 60.0,   # Minimum angle (degrees) for long entry
     'max_angle_divergence': 2.0,       # Max angle divergence between SMAs (degrees)
+    'angle_persistence_bars': 2,        # Bars angles must stay above threshold (persistence)
     'enable_long_entries': True,         # Flag to enable long entries
     'risk_percent': 0.005,               # Portfolio risk per trade (0.5%)
     'stop_loss_pips': 10.0,             # Stop-loss distance in pips
@@ -51,6 +52,7 @@ DEFAULT_PARAMS = {
 OPTIMIZATION_PARAMS = {
     'min_angle_for_long_entry': range(55, 85, 5),      # Test: 55, 60, 65, 70, 75, 80
     'max_angle_divergence': range(10, 21, 5),          # Test: 10, 15, 20
+    'angle_persistence_bars': [1, 2, 3],               # Test: 1, 2, 3 bars persistence
     'risk_percent': [0.005, 0.01],              # Test different risk levels
 }
 
@@ -122,6 +124,7 @@ class TriangleStrategy(bt.Strategy):
         ('sma_slow_period', DEFAULT_PARAMS['sma_slow_period']),
         ('min_angle_for_long_entry', DEFAULT_PARAMS['min_angle_for_long_entry']),
         ('max_angle_divergence', DEFAULT_PARAMS['max_angle_divergence']),
+        ('angle_persistence_bars', DEFAULT_PARAMS['angle_persistence_bars']),
         ('enable_long_entries', DEFAULT_PARAMS['enable_long_entries']),
         ('risk_percent', DEFAULT_PARAMS['risk_percent']),
         ('stop_loss_pips', DEFAULT_PARAMS['stop_loss_pips']),
@@ -173,7 +176,8 @@ class TriangleStrategy(bt.Strategy):
             print(f"  SMAs: Fast={self.p.sma_fast_period}, Medium={self.p.sma_medium_period}, Slow={self.p.sma_slow_period}")
             print(f"  Entry angle threshold: {self.p.min_angle_for_long_entry}°")
             print(f"  Max angle divergence: {self.p.max_angle_divergence}°")
-            print(f"  Entry conditions: All angles > threshold + Fast SMA crosses above Medium SMA + Angle coherence")
+            print(f"  Angle persistence: {self.p.angle_persistence_bars} consecutive bars")
+            print(f"  Entry conditions: All angles > threshold + Fast SMA crosses above Medium SMA + Angle coherence + Persistence")
             print(f"  Risk per trade: {self.p.risk_percent*100}%")
             print(f"  Stop-loss: {self.p.stop_loss_pips} pips")
             print(f"  Exit condition: Fast SMA crosses below Medium SMA (simple crossover)")
@@ -200,6 +204,42 @@ class TriangleStrategy(bt.Strategy):
             
         position_size = risked_value / pnl_per_unit
         return math.floor(position_size)
+
+    def check_angle_persistence(self, angle_fast, angle_medium, angle_slow):
+        """
+        Check if all angles have been above threshold for the required consecutive bars.
+        
+        Args:
+            angle_fast: Current fast angle
+            angle_medium: Current medium angle  
+            angle_slow: Current slow angle
+            
+        Returns:
+            bool: True if all angles have persistence, False otherwise
+        """
+        # Check if we have enough historical data
+        if len(self.angle_fast.lines.angle) < self.p.angle_persistence_bars:
+            return False
+            
+        # Check each required consecutive bar
+        for i in range(self.p.angle_persistence_bars):
+            lookback = -i  # 0, -1, -2, etc. (current bar to past bars)
+            
+            # Get historical angles for this bar
+            try:
+                hist_fast = self.angle_fast.lines.angle[lookback]
+                hist_medium = self.angle_medium.lines.angle[lookback]
+                hist_slow = self.angle_slow.lines.angle[lookback]
+            except IndexError:
+                return False  # Not enough data
+                
+            # Check if any angle was below threshold on this historical bar
+            if (hist_fast <= self.p.min_angle_for_long_entry or
+                hist_medium <= self.p.min_angle_for_long_entry or
+                hist_slow <= self.p.min_angle_for_long_entry):
+                return False
+                
+        return True
 
     def next(self):
         """Main strategy logic executed on each bar."""
@@ -241,6 +281,9 @@ class TriangleStrategy(bt.Strategy):
         divergence_fast_medium = abs(angle_fast - angle_medium)
         divergence_medium_slow = abs(angle_medium - angle_slow)
         
+        # Check angle persistence (complex condition)
+        has_persistence = self.check_angle_persistence(angle_fast, angle_medium, angle_slow)
+        
         # --- LONG ENTRY CONDITIONS (ONLY) ---
         if (self.p.enable_long_entries and 
             angle_fast > self.p.min_angle_for_long_entry and
@@ -248,7 +291,8 @@ class TriangleStrategy(bt.Strategy):
             angle_slow > self.p.min_angle_for_long_entry and
             self.fast_cross_medium[0] > 0 and  # Fast crosses above Medium (bullish signal)
             divergence_fast_medium < self.p.max_angle_divergence and  # Coherent angles
-            divergence_medium_slow < self.p.max_angle_divergence):    # Coherent angles
+            divergence_medium_slow < self.p.max_angle_divergence and    # Coherent angles
+            has_persistence):  # NEW: Angle persistence check
             
             stop_price = self.data.close[0] - (self.p.stop_loss_pips * self.p.pip_value)
             size = self.calculate_order_size(stop_price)
@@ -256,22 +300,24 @@ class TriangleStrategy(bt.Strategy):
             if size <= 0:
                 return
             
-            # VALIDATION: Double-check angles at execution time
+            # VALIDATION: Double-check angles and persistence at execution time
             if (angle_fast <= self.p.min_angle_for_long_entry or 
                 angle_medium <= self.p.min_angle_for_long_entry or 
                 angle_slow <= self.p.min_angle_for_long_entry or
                 divergence_fast_medium >= self.p.max_angle_divergence or
-                divergence_medium_slow >= self.p.max_angle_divergence):
+                divergence_medium_slow >= self.p.max_angle_divergence or
+                not has_persistence):
                 if self.verbose:
-                    print(f"--- ENTRY REJECTED @ {self.data.datetime.date(0)}: Angles/divergences weakened ---")
+                    print(f"--- ENTRY REJECTED @ {self.data.datetime.date(0)}: Angles/divergences/persistence weakened ---")
                 return
             
             if self.verbose:
                 print(f"--- ATTEMPTING LONG @ {self.data.datetime.date(0)} (Size: {size}, Stop: {stop_price:.5f}) ---")
                 print(f"  Triangle Angles: Fast={angle_fast:.2f}°, Medium={angle_medium:.2f}°, Slow={angle_slow:.2f}°")
                 print(f"  Angle Divergences: Fast-Med={divergence_fast_medium:.2f}°, Med-Slow={divergence_medium_slow:.2f}°")
+                print(f"  Angle Persistence: {self.p.angle_persistence_bars} bars ✓")
                 print(f"  SMA Values: Fast={self.sma_fast[0]:.5f}, Med={self.sma_medium[0]:.5f}, Slow={self.sma_slow[0]:.5f}")
-                print(f"  Entry Validation: All angles > {self.p.min_angle_for_long_entry}° + Divergences < {self.p.max_angle_divergence}° + Crossover")
+                print(f"  Entry Validation: All angles > {self.p.min_angle_for_long_entry}° + Divergences < {self.p.max_angle_divergence}° + Crossover + Persistence")
                 print(f"  Crossover Signal: {self.fast_cross_medium[0]} (1=bullish crossover, 0=no crossover, -1=bearish crossover)")
             
             # Simple buy order (following angle_smas approach)
@@ -391,6 +437,7 @@ if __name__ == '__main__':
             TriangleStrategy,
             min_angle_for_long_entry=OPTIMIZATION_PARAMS['min_angle_for_long_entry'],
             max_angle_divergence=OPTIMIZATION_PARAMS['max_angle_divergence'],
+            angle_persistence_bars=OPTIMIZATION_PARAMS['angle_persistence_bars'],
             risk_percent=OPTIMIZATION_PARAMS['risk_percent'],
             verbose=[False]  # Silent during optimization
         )
@@ -421,7 +468,7 @@ if __name__ == '__main__':
 
     # Run backtest based on mode
     if OPTIMIZATION_MODE:
-        print(f"Testing {len(OPTIMIZATION_PARAMS['min_angle_for_long_entry']) * len(OPTIMIZATION_PARAMS['max_angle_divergence']) * len(OPTIMIZATION_PARAMS['risk_percent'])} parameter combinations...")
+        print(f"Testing {len(OPTIMIZATION_PARAMS['min_angle_for_long_entry']) * len(OPTIMIZATION_PARAMS['max_angle_divergence']) * len(OPTIMIZATION_PARAMS['angle_persistence_bars']) * len(OPTIMIZATION_PARAMS['risk_percent'])} parameter combinations...")
         
         # Run optimization
         optimization_results = cerebro.run()
@@ -450,6 +497,7 @@ if __name__ == '__main__':
                 final_results_list.append({
                     'long_angle': params.min_angle_for_long_entry,
                     'max_divergence': params.max_angle_divergence,
+                    'persistence_bars': params.angle_persistence_bars,
                     'risk_pct': params.risk_percent,
                     'profit_factor': profit_factor,
                     'total_trades': total_trades,
@@ -460,10 +508,10 @@ if __name__ == '__main__':
         sorted_results = sorted(final_results_list, key=lambda x: x['profit_factor'], reverse=True)
         
         print("\n--- Top Parameter Combinations by Profit Factor ---")
-        print(f"{'LongAngle':<10} {'MaxDiv':<7} {'Risk%':<6} {'P.Factor':<9} {'Trades':<7} {'Final Value':<12}")
-        print("-" * 60)
+        print(f"{'LongAngle':<10} {'MaxDiv':<7} {'Persist':<8} {'Risk%':<6} {'P.Factor':<9} {'Trades':<7} {'Final Value':<12}")
+        print("-" * 68)
         for res in sorted_results:
-            print(f"{res['long_angle']:<10.0f} {res['max_divergence']:<7.0f} {res['risk_pct']:<6.3f} {res['profit_factor']:<9.2f} {res['total_trades']:<7} {res['final_value']:<12.2f}")
+            print(f"{res['long_angle']:<10.0f} {res['max_divergence']:<7.0f} {res['persistence_bars']:<8} {res['risk_pct']:<6.3f} {res['profit_factor']:<9.2f} {res['total_trades']:<7} {res['final_value']:<12.2f}")
         
     else:
         print("--- Running Triangle Strategy Backtest ---")
