@@ -27,8 +27,8 @@ import math
 # All configuration parameters in one place for easy modification
 
 # Data Configuration
-DATA_FILE = 'EURUSD_5m_2Yea.csv'  # Select data file to use (2 months of data)
-# Alternative files: 'XAUUSD_5m_1Yea(new).csv', 'GBPUSD_5m_2Mon.csv', 'EURUSD_5m_2Yea.csv', 'EURUSD_5m_8Yea.csv', 'USDCHF_5m_1Yea.csv'
+DATA_FILE = 'EURUSD_5m_8Yea.csv'  # Select data file to use (2 years of data)
+# Alternative files: 'GBPUSD_5m_2Mon.csv', 'EURUSD_5m_2Yea.csv', 'EURUSD_5m_8Yea.csv', 'USDCHF_5m_2Yea.csv' , 'USDCHF_5m_8Yea.csv'
 
 # Execution Mode Configuration
 OPTIMIZATION_MODE = False  # Set to True to enable parameter optimization
@@ -38,11 +38,11 @@ DEFAULT_PARAMS = {
     'sma_fast_period': 7,               # Fast SMA period (shortest)
     'sma_medium_period': 9,             # Medium SMA period
     'sma_slow_period': 11,               # Slow SMA period (longest)
-    'min_angle_for_long_entry': 60.0,   # Minimum angle (degrees) for long entry
+    'min_angle_for_long_entry': 80.0,   # Minimum angle (degrees) for long entry
     'max_angle_divergence': 2.0,       # Max angle divergence between SMAs (degrees)
-    'angle_persistence_bars': 2,        # Bars angles must stay above threshold (persistence)
+    'angle_persistence_bars': 1,        # Bars angles must stay above threshold (persistence)
     'enable_long_entries': True,         # Flag to enable long entries
-    'risk_percent': 0.005,               # Portfolio risk per trade (0.5%)
+    'risk_percent': 0.01,               # Portfolio risk per trade (1%)
     'stop_loss_pips': 10.0,             # Stop-loss distance in pips
     'pip_value': 0.0001,                # Pip value for EUR/USD (0.0001)
     'cooldown_period': 5,               # Bars to wait after trade closure
@@ -50,8 +50,8 @@ DEFAULT_PARAMS = {
 
 # Optimization Parameters (used when OPTIMIZATION_MODE = True)
 OPTIMIZATION_PARAMS = {
-    'min_angle_for_long_entry': range(55, 85, 5),      # Test: 55, 60, 65, 70, 75, 80
-    'max_angle_divergence': range(10, 21, 5),          # Test: 10, 15, 20
+    'min_angle_for_long_entry': range(60, 85, 5),      # Test: 55, 60, 65, 70, 75, 80
+    'max_angle_divergence': range(1, 5, 1),          # Test: 1, 2, 3, 4, 5
     'angle_persistence_bars': [1, 2, 3],               # Test: 1, 2, 3 bars persistence
     'risk_percent': [0.005, 0.01],              # Test different risk levels
 }
