@@ -29,7 +29,7 @@ import math
 # All configuration parameters in one place for easy modification
 
 # Data Configuration
-DATA_FILE = 'EURUSD_15m_5Yea.csv'  # Select data file to use (5 years of data)
+DATA_FILE = 'GBPUSD_5m_8Yea.csv'  # Select data file to use (8 years of data)
 # Alternative files: 'GBPUSD_5m_2Mon.csv', 'EURUSD_5m_2Yea.csv', 'EURUSD_5m_8Yea.csv', 'USDCHF_5m_2Yea.csv', 'USDCHF_5m_8Yea.csv'
 
 # Execution Mode Configuration
@@ -38,16 +38,16 @@ OPTIMIZATION_MODE = False  # Set to True to enable parameter optimization
 # Strategy Default Parameters (used when OPTIMIZATION_MODE = False)
 DEFAULT_PARAMS = {
     # Primary EMAs (Entry Analysis) - Based on Median Price (H+L)/2
-    'ema_fast_period': 5,               # Fast EMA period (shortest)
-    'ema_medium_period': 7,             # Medium EMA period
-    'ema_slow_period': 9,               # Slow EMA period (longest)
-    
+    'ema_fast_period': 7,               # Fast EMA period (shortest) #5
+    'ema_medium_period': 9,             # Medium EMA period #7
+    'ema_slow_period': 11,               # Slow EMA period (longest) #9
+
     # Exit EMAs (Exit Analysis) - Based on Median Price (H+L)/2
     'exit_ema1_period': 5,             # First exit EMA period
     'exit_ema2_period': 14,             # Second exit EMA period
     # Entry threshold EMA (all EMAs must be above this for a valid long entry)
-    'entry_ema_period': 14,
-    
+    'entry_ema_period': 12,           # Entry EMA period #14
+
     # Angle Analysis Parameters
     'min_angle_threshold': 45.0,        # Minimum angle (degrees) for EMA entry validation
     # Max angle divergences (degrees) treated separately for F-M and M-S
@@ -64,8 +64,8 @@ DEFAULT_PARAMS = {
     # Exit Options Control
     'enable_stop_loss': True,           # Enable stop-loss exit
     'enable_take_profit': True,         # Enable take-profit exit
-    'enable_ema_exit': True,            # Enable EMA crossover exit
-    
+    'enable_ema_exit': False,            # Enable EMA crossover exit
+
     # General Parameters
     'enable_long_entries': True,        # Flag to enable long entries
     'cooldown_period': 3,               # Bars to wait after trade closure
