@@ -29,8 +29,11 @@ import math
 # All configuration parameters in one place for easy modification
 
 # Data Configuration
-DATA_FILE = 'GBPUSD_5m_8Yea.csv'  # Select data file to use (8 years of data)
-# Alternative files: 'GBPUSD_5m_2Mon.csv', 'EURUSD_5m_2Yea.csv', 'EURUSD_5m_8Yea.csv', 'USDCHF_5m_2Yea.csv', 'USDCHF_5m_8Yea.csv'
+DATA_FILE = 'GBPUSD_5m_8Yea.csv'  # Select data file to use (10 years of data)
+# Alternative files: 
+# 'GBPUSD_5m_2Mon.csv', 'GBPUSD_5m_8Yea.csv'
+# 'EURUSD_5m_2Yea.csv', 'EURUSD_5m_8Yea.csv', 'EURUSD_15m_5Yea.csv'
+# 'USDCHF_5m_2Yea.csv', 'USDCHF_5m_8Yea.csv', 'USDCHF_15m_10Yea.csv'
 
 # Execution Mode Configuration
 OPTIMIZATION_MODE = False  # Set to True to enable parameter optimization
