@@ -1,19 +1,12 @@
-"""Sunrise Strategy (clean version with USD PnL)
+"""Sunrise Strategy (no CLI) with trailing stop and USD PnL logging.
 
-Implements:
- - Entry: EMA confirm crosses above any of trend EMAs (+ optional ordering)
- - Filters: previous bullish candle, price above filter EMA, angle threshold
- - Risk: ATR based SL/TP, optional percent equity risk sizing (contract notionals)
- - Exits: TP / SL via brackets, optional bar-count, optional EMA crossover exit
- - Logging: Entry risk in USD, Exit PnL in price, pips, USD
+Trailing logic (green candle only): trail stop to open + (close-open)*factor
+where factor = trailing_body_factor (0 < f <= 1). For f=1 we nudge just below
+close. Initial SL/TP still ATR-based; only dynamic trails use body fraction.
+
+Edit configuration at bottom of the file to change data path, dates, capital
+or override strategy parameters. All previous CLI flags removed.
 """
-# -----------------------------------------------------------------------------
-# DISCLAIMER:
-# This software is for educational and research purposes only.
-# It is not intended for live trading or financial advice.
-# Trading in financial markets involves substantial risk of loss.
-# Use at your own risk. The author assumes no liability for any losses.
-# -----------------------------------------------------------------------------
 
 import math
 import backtrader as bt
@@ -21,12 +14,12 @@ import backtrader as bt
 
 class Sunrise(bt.Strategy):
     params = dict(
-        ema_fast_length=7, # fast EMA for trend 16
-        ema_medium_length=9, # medium EMA for trend 18
-        ema_slow_length=11, # slow EMA for trend 20
+        ema_fast_length=16,
+        ema_medium_length=18,
+        ema_slow_length=20,
         ema_confirm_length=1,
         atr_length=20,
-        atr_sl_multiplier=1.0,
+        atr_sl_multiplier=1.5,
         atr_tp_multiplier=3.5,
         bar_count_exit=7,
         ema_filter_price_length=50,
@@ -38,11 +31,13 @@ class Sunrise(bt.Strategy):
         use_angle_filter=True,
         use_bar_count_exit=True,
         use_ema_crossover_exit=True,
+        use_trailing_stop=False,
+        trailing_body_factor=0.5,  # 0<f<=1 fraction of body
         print_signals=True,
         size=1,
         pip_value=0.0001,
-        contract_size=100000,  # notional units per contract
-        enable_risk_sizing=False,
+        contract_size=100000,
+        enable_risk_sizing=True,
         risk_percent=0.01,
     )
 
@@ -84,10 +79,59 @@ class Sunrise(bt.Strategy):
         self._entry_price = None
         self._exit_price = None
         self._entry_size = 0
+        self.current_stop_price = None
+        self.initial_stop_price = None
 
     def next(self):
+        # Manage open position (trailing / time / ema exits)
         if self.position:
             self.holding_bars += 1
+
+            # Trailing stop adjustment (BODY FRACTION method)
+            # new_stop = open + (close-open)*factor ensures it remains within the candle body for 0<factor<1
+            if self.p.use_trailing_stop and self.stop_order and not self.order_pending:
+                if self.data.close[0] > self.data.open[0]:  # only trail on green candle
+                    factor = max(0.0, min(1.0, float(self.p.trailing_body_factor)))  # clamp
+                    if factor <= 0.0:
+                        # nothing to do (factor disabled)
+                        pass
+                    else:
+                        body_price = self.data.open[0] + (self.data.close[0] - self.data.open[0]) * factor
+                        # If factor == 1.0 body_price equals close; nudge below close to remain valid stop
+                        if body_price >= self.data.close[0]:
+                            # use a small epsilon based on pip_value (fallback to 1e-6)
+                            eps = self.p.pip_value * 0.1 if self.p.pip_value else 1e-6
+                            body_price = self.data.close[0] - eps
+                        new_stop = body_price
+                        # Conditions to accept new stop
+                        cond1 = self.current_stop_price is not None
+                        cond2 = new_stop > (self.current_stop_price if cond1 else -float('inf'))
+                        cond3 = new_stop < self.data.close[0]  # must stay below current close
+                        if cond1 and cond2 and cond3:
+                            try:
+                                self.cancel(self.stop_order)
+                            except Exception:
+                                pass
+                            self.stop_order = self.sell(exectype=bt.Order.Stop,
+                                                        price=new_stop,
+                                                        size=self.position.size)
+                            if self.p.print_signals:
+                                dt = bt.num2date(self.data.datetime[0])
+                                print(f"TRAIL {dt:%Y-%m-%d %H:%M} stop_raise {self.current_stop_price:.5f} -> {new_stop:.5f} (factor={factor:.2f})")
+                            self.current_stop_price = new_stop
+                        elif self.p.print_signals:
+                            # Debug why trailing not applied
+                            dt = bt.num2date(self.data.datetime[0])
+                            reason_parts = []
+                            if not cond1:
+                                reason_parts.append('no_current_stop')
+                            if cond1 and not cond2:
+                                reason_parts.append('not_higher')
+                            if not cond3:
+                                reason_parts.append('>=close')
+                            reasons = ','.join(reason_parts) if reason_parts else 'unknown'
+                            print(f"TRAIL_SKIP {dt:%Y-%m-%d %H:%M} candidate={new_stop:.5f} curr_stop={self.current_stop_price} close={self.data.close[0]:.5f} factor={factor:.2f} reasons={reasons}")
+
             trigger = False
             reason = None
             if self.p.use_bar_count_exit and self.holding_bars >= self.p.bar_count_exit:
@@ -109,6 +153,7 @@ class Sunrise(bt.Strategy):
         if self.order_pending or self.position:
             return
 
+        # Entry filters
         try:
             prev_bull = self.data.close[-1] > self.data.open[-1]
         except IndexError:
@@ -136,29 +181,28 @@ class Sunrise(bt.Strategy):
         stop_price = entry - atr_now * self.p.atr_sl_multiplier
         take_price = entry + atr_now * self.p.atr_tp_multiplier
 
+        # Position sizing
         if self.p.enable_risk_sizing:
-            raw_price_risk = entry - stop_price
-            if raw_price_risk <= 0:
+            raw_risk = entry - stop_price
+            if raw_risk <= 0:
                 return
             equity = self.broker.get_value()
-            risk_value = equity * self.p.risk_percent
-            risk_per_contract_usd = raw_price_risk * self.p.contract_size
-            if risk_per_contract_usd <= 0:
+            risk_val = equity * self.p.risk_percent
+            risk_per_contract = raw_risk * self.p.contract_size
+            if risk_per_contract <= 0:
                 return
-            size = max(int(risk_value / risk_per_contract_usd), 1)
+            contracts = max(int(risk_val / risk_per_contract), 1)
         else:
-            size = int(self.p.size)
-        if size <= 0:
+            contracts = int(self.p.size)
+        if contracts <= 0:
             return
-
-        # Convert logical contracts to actual backtrader size (notional units)
-        bt_size = size * self.p.contract_size
+        bt_size = contracts * self.p.contract_size
 
         if self.p.print_signals:
             rr = (take_price - entry) / (entry - stop_price) if (entry - stop_price) > 0 else float('nan')
             dt = bt.num2date(self.data.datetime[0])
             usd_risk = (entry - stop_price) * bt_size if (entry - stop_price) > 0 else float('nan')
-            print(f"ENTRY {dt:%Y-%m-%d %H:%M} price={entry:.5f} contracts={size} bt_size={bt_size} SL={stop_price:.5f} TP={take_price:.5f} angle={ang:.1f} RR={rr:.2f} risk_usd={usd_risk:.2f}")
+            print(f"ENTRY {dt:%Y-%m-%d %H:%M} price={entry:.5f} contracts={contracts} bt_size={bt_size} SL={stop_price:.5f} TP={take_price:.5f} angle={ang:.1f} RR={rr:.2f} risk_usd={usd_risk:.2f}")
 
         parent, stop_o, limit_o = self.buy_bracket(size=bt_size, stopprice=stop_price, limitprice=take_price)
         self.stop_order, self.tp_order = stop_o, limit_o
@@ -168,6 +212,8 @@ class Sunrise(bt.Strategy):
         self._entry_price = entry
         self._exit_price = None
         self._entry_size = bt_size
+        self.current_stop_price = stop_price
+        self.initial_stop_price = stop_price
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -178,17 +224,24 @@ class Sunrise(bt.Strategy):
                 self.holding_bars = 0
             elif order.issell():
                 if order == self.stop_order and not self.exit_reason:
-                    self.exit_reason = 'STOP'
+                    if (self.p.use_trailing_stop and self.initial_stop_price is not None and
+                            self.current_stop_price is not None and
+                            self.current_stop_price > self.initial_stop_price + 1e-10):
+                        self.exit_reason = 'TRAIL_STOP'
+                    else:
+                        self.exit_reason = 'STOP'
                 elif order == self.tp_order and not self.exit_reason:
                     self.exit_reason = 'TP'
                 self._exit_price = order.executed.price
+                self.current_stop_price = None
+                self.initial_stop_price = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.order_pending = False
 
     def notify_trade(self, trade):
         if trade.isclosed:
             self.trades += 1
-            pnl_usd = trade.pnlcomm  # now in account currency (USD)
+            pnl_usd = trade.pnlcomm
             if pnl_usd > 0:
                 self.wins += 1; self.gross_profit += pnl_usd
             else:
@@ -197,7 +250,6 @@ class Sunrise(bt.Strategy):
             entry_price = self._entry_price if self._entry_price is not None else exit_price
             diff = exit_price - entry_price
             pips = diff / self.p.pip_value if self.p.pip_value > 0 else float('nan')
-            pnl_price = diff  # raw price move
             if self.p.print_signals:
                 dt = bt.num2date(self.data.datetime[0])
                 print(f"EXIT  {dt:%Y-%m-%d %H:%M} pnl_usd={pnl_usd:.2f} ({pips:.1f} pips) reason={self.exit_reason or 'UNKNOWN'} hold_bars={self.holding_bars} entry={entry_price:.5f} exit={exit_price:.5f} diff_price={diff:.5f}")
@@ -216,9 +268,24 @@ class Sunrise(bt.Strategy):
 
 
 if __name__ == '__main__':
-    import argparse
     from pathlib import Path
     from datetime import datetime
+
+    # ---------------- Configuration (edit here) -----------------
+    from pathlib import Path as _Path
+    _BASE_DIR = _Path(__file__).resolve().parent.parent.parent  # project root
+    DATA_FILE = str((_BASE_DIR / 'data' / 'EURUSD_15m_2Mon.csv').resolve())  # absolute path
+    FROMDATE = '2025-06-02'  # None
+    TODATE = '2025-08-17'  # optional
+    STARTING_CASH = 100000.0
+    STRAT_KWARGS = dict(
+        # Example overrides (uncomment/edit):
+        # trailing_body_factor=0.9,
+        # print_signals=False,
+        # enable_risk_sizing=True,
+        # risk_percent=0.01,
+    )
+    # -----------------------------------------------------------
 
     def parse_date(s):
         if not s:
@@ -228,23 +295,7 @@ if __name__ == '__main__':
         except Exception:
             return None
 
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--data', default='data/EURUSD_5m_5Yea.csv')
-    ap.add_argument('--fromdate', default=None)
-    ap.add_argument('--todate', default=None)
-    ap.add_argument('--no-price-filter', action='store_true')
-    ap.add_argument('--use-ema-order', action='store_true')
-    ap.add_argument('--use-angle-filter', action='store_true')
-    ap.add_argument('--bar-exit-off', action='store_true')
-    ap.add_argument('--use-ema-exit', action='store_true')
-    ap.add_argument('--cash', type=float, default=100000)
-    ap.add_argument('--size', type=int, default=1)
-    ap.add_argument('--risk-sizing', action='store_true')
-    ap.add_argument('--risk-percent', type=float, default=0.01)
-    ap.add_argument('--quiet', action='store_true')
-    args = ap.parse_args()
-
-    path = Path(args.data)
+    path = Path(DATA_FILE)
     if not path.exists():
         print(f"Data file not found: {path}")
         raise SystemExit(1)
@@ -253,26 +304,15 @@ if __name__ == '__main__':
         datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6,
         timeframe=bt.TimeFrame.Minutes, compression=5,
     )
-    fd = parse_date(args.fromdate); td = parse_date(args.todate)
+    fd = parse_date(FROMDATE); td = parse_date(TODATE)
     if fd: feed_kwargs['fromdate'] = fd
     if td: feed_kwargs['todate'] = td
     data = bt.feeds.GenericCSVData(**feed_kwargs)
     cerebro = bt.Cerebro()
     cerebro.adddata(data)
-    cerebro.broker.setcash(args.cash)
+    cerebro.broker.setcash(STARTING_CASH)
     cerebro.broker.setcommission(leverage=30.0)
-    cerebro.addstrategy(
-        Sunrise,
-        use_price_filter_ema=not args.no_price_filter,
-        use_ema_order_condition=args.use_ema_order,
-        use_angle_filter=args.use_angle_filter,
-        use_bar_count_exit=not args.bar_exit_off,
-        use_ema_crossover_exit=args.use_ema_exit,
-        size=args.size,
-        enable_risk_sizing=args.risk_sizing,
-        risk_percent=args.risk_percent,
-        print_signals=not args.quiet,
-    )
-    print("=== RUNNING SUNRISE ===")
+    cerebro.addstrategy(Sunrise, **STRAT_KWARGS)
+    print("=== RUNNING SUNRISE (config section) ===")
     cerebro.run()
     print(f"Final Value: {cerebro.broker.getvalue():,.2f}")
