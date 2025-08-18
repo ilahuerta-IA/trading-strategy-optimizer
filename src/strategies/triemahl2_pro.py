@@ -9,6 +9,11 @@
 #   - use_sma_entry: replace entry EMA with SMA for baseline filter
 #   - enable_angle_divergence_limits: enforce max angle divergence thresholds
 # All new flags default to True (matching original behaviour) except use_sma_entry.
+# DISCLAIMER:
+# This software is for educational and research purposes only.
+# It is not intended for live trading or financial advice.
+# Trading in financial markets involves substantial risk of loss.
+# Use at your own risk. The author assumes no liability for any losses.
 # -----------------------------------------------------------------------------
 
 import backtrader as bt
@@ -17,18 +22,18 @@ from pathlib import Path
 import math
 
 # === CONFIGURATION SECTION (same defaults as original) ===
-DATA_FILE =  'GBPUSD_5m_8Yea.csv' #'GBPUSD_5m_8Yea.csv'#'GBPUSD_5m_2Mon.csv' GBPUSD_5m_8Yea.csv
+DATA_FILE =  'EURUSD_5m_8Yea.csv' #'GBPUSD_5m_8Yea.csv'#'GBPUSD_5m_2Mon.csv' GBPUSD_5m_8Yea.csv
 OPTIMIZATION_MODE = False
 
 DEFAULT_PARAMS = {
-    'ema_fast_period': 7,
+    'ema_fast_period': 7, 
     'ema_medium_period': 9,
     'ema_slow_period': 11,
-    'exit_ema1_period': 5,
+    'exit_ema1_period': 5, 
     'exit_ema2_period': 14,
     'entry_ema_period': 12,
     # Improved momentum threshold / divergence limits
-    'min_angle_threshold': 48.0,          # tuned by grid: improves PF and entries
+    'min_angle_threshold': 48.0,          # tuned by grid: improves PF and entries 48
     'max_angle_divergence_fm': 3.0,       # was 4.0
     'max_angle_divergence_ms': 6.0,       # was 8.0
     'angle_validation_periods': 1,
