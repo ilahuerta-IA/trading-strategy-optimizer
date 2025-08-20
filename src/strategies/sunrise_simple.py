@@ -1,7 +1,26 @@
 """Simplified Sunrise Strategy
 =================================
 
-Clean, minimal Backtrader port of the Pine Script logic you supplied.  The goal
+Clean, min        # Filters / angles 
+        use_ema_order_condition=True,
+        use_price_filter_ema=True,
+        use_angle_filter=True,
+        min_angle=65.0,
+        angle_scale_factor=10000.0,
+        # Security window after exit
+        use_security_window=True,
+        security_window_bars=15,  
+        # Limited price filter 
+        use_limited_price_filter=True,
+        entry_price_filter_window=30,
+        # Exits 
+        use_bar_count_exit=True,
+        bar_count_exit=8,
+        use_ema_crossover_exit=True,  
+        # Trailing
+        use_trailing_stop=True,
+        close_on_new_entry=True,t of the Pine    FROMDATE = '2025-07-21'               # Inclusive start date (YYYY-MM-DD)
+    TODATE = '2025-07-25'                 # Inclusive end datecript logic you supplied.  The goal
 here is clarity and easy mapping to the TradingView code – NOT feature
 explosion.  Only the essential ideas remain:
 
@@ -11,7 +30,14 @@ ENTRY (long only)
 2. Previous candle bullish (close[1] > open[1]).
 3. Optional ordering filter (confirmation EMA above all other EMAs).
 4. Optional price filter (close > filter EMA).
-5. Optional angle filter (arctangent of EMA slope * scale > min_angle).
+5. Optional angle filte        # Use stored exit reason from notify_order
+        exit_reason = getattr(self, 'last_exit_reason', "UNKNOWN")
+        
+        if self.p.print_signals:
+            print(f"  DEBUG notify_trade: last_exit_reason={exit_reason} (hasattr={hasattr(self, 'last_exit_reason')})")
+                
+        # Store exit reason for notify_trade
+        self.last_exit_reason = exit_reasonngent of EMA slope * scale > min_angle).
 6. Optional SECURITY WINDOW: forbid a *new* entry for N bars AFTER THE LAST EXIT (matches Pine: ventana de seguridad tras la última salida; NOT after the last entry).
 7. Optional entry price filter: during next `entry_price_filter_window` bars after an entry require close > last_entry_price.
 
@@ -63,32 +89,32 @@ class SunriseSimple(bt.Strategy):
         ema_medium_length=18,
         ema_slow_length=24,
         ema_confirm_length=1,
-        ema_filter_price_length=100,
-        ema_exit_length=25,
-        # ATR / targets (from Pine Script code - EXACT VALUES)
+        ema_filter_price_length=50, #¡¡
+        ema_exit_length=25, #??
+        # ATR / targets 
         atr_length=20,
         atr_sl_multiplier=2.5,
         atr_tp_multiplier=12.0,
         atr_trailing_multiplier=2.5,
-        # Filters / angles (from Pine Script code - EXACT VALUES)
-        use_ema_order_condition=True,
-        use_price_filter_ema=True,
-        use_angle_filter=True,
-        min_angle=65.0,  # RESTORE ORIGINAL PINE SCRIPT VALUE
+        # Filters / angles 
+        use_ema_order_condition=False, #??
+        use_price_filter_ema=True, #¡¡
+        use_angle_filter=True, #¡¡
+        min_angle=65.0, #¡¡
         angle_scale_factor=10000.0,
-        # Security window after exit (Pine Script logic: ventana_seguridad - EXACT VALUE)
-        use_security_window=True,
-        security_window_bars=17,  # RESTORE ORIGINAL PINE SCRIPT VALUE
-        # Limited price filter (Pine Script logic: filtro_precio_entrada - EXACT VALUE)
-        use_limited_price_filter=False,  # DISABLE AS IN ORIGINAL PINE SCRIPT
-        entry_price_filter_window=60,
-        # Exits (from Pine Script code - EXACT VALUES FROM PDF)
-        use_bar_count_exit=False,  # CORRECTED: Unchecked in original Pine Script settings
-        bar_count_exit=8,
-        use_ema_crossover_exit=False,  # CORRECTED: Also unchecked in original
+        # Security window after exit
+        use_security_window=True, #?
+        security_window_bars=15,  
+        # Limited price filter 
+        use_limited_price_filter=False,  #??
+        entry_price_filter_window=30,  # Back to smaller window for comparison
+        # EXITS 
+        use_bar_count_exit=True, #¡¡ # Test different exit methods
+        bar_count_exit=10,  
+        use_ema_crossover_exit=False, #??
         # Trailing
-        use_trailing_stop=True,
-        close_on_new_entry=True,
+        use_trailing_stop=False, #?? 
+        close_on_new_entry=False, #??
         # Sizing / logging
         size=1,
         enable_risk_sizing=True,
@@ -120,9 +146,6 @@ class SunriseSimple(bt.Strategy):
             # Pine Script crossover logic: current > AND previous <=
             crossover = (current_a > current_b) and (previous_a <= previous_b)
             
-            if crossover:
-                print(f"DEBUG CROSSOVER: {current_a:.6f} > {current_b:.6f} (prev: {previous_a:.6f} <= {previous_b:.6f})")
-            
             return crossover
         except (IndexError, ValueError, TypeError):
             return False
@@ -141,10 +164,6 @@ class SunriseSimple(bt.Strategy):
             rise = (current_ema - previous_ema) * self.p.angle_scale_factor
             angle_radians = math.atan(rise)  # run = 1 (1 bar)
             angle_degrees = math.degrees(angle_radians)
-            
-            # Debug angle calculation occasionally
-            if len(self) % 100 == 0:  # Every 100 bars
-                print(f"DEBUG ANGLE: rise={rise:.8f} angle={angle_degrees:.2f}° (threshold={self.p.min_angle}°)")
             
             return angle_degrees
         except (IndexError, ValueError, TypeError, ZeroDivisionError):
@@ -175,17 +194,14 @@ class SunriseSimple(bt.Strategy):
             self.last_entry_price = None
             # Track initial stop level to distinguish STOP vs TRAIL_STOP on execution
             self.initial_stop_level = None
+            self.stop_has_been_trailed = False  # Track if stop has moved up from initial level
             
             # PINE SCRIPT EQUIVALENT: Track trade history for ta.barssince() logic
             self.trade_exit_bars = []  # Store bars where trades closed (ta.barssince equivalent)
             
             # PINE SCRIPT BEHAVIOR: Prevent entry and exit on same bar
             self.exit_this_bar = False  # Flag to prevent entry on exit bar
-            self.last_exit_bar_current = None  # Track if we exited this specific bar
-            
-            # CROSSOVER NOISE FILTER: Prevent multiple signals in short timeframes
-            self.last_crossover_bar = None  # Track last crossover to filter noise
-            self.min_bars_between_signals = 3  # Minimum bars between crossover signals #3
+            self.last_exit_bar_current = None  # Track if we exited this specific bar #3
 
             # Basic stats
             self.trades = 0
@@ -193,6 +209,9 @@ class SunriseSimple(bt.Strategy):
             self.losses = 0
             self.gross_profit = 0.0
             self.gross_loss = 0.0
+            
+            # Track exit reason for notify_trade
+            self.last_exit_reason = "UNKNOWN"
 
     def next(self):
         # RESET exit flag at start of each new bar (Pine Script behavior)
@@ -228,15 +247,14 @@ class SunriseSimple(bt.Strategy):
             if orders_canceled > 0 and self.p.print_signals:
                 print(f"CLEANUP: Canceled {orders_canceled} phantom orders")
 
-        # Check if we have pending orders first
-        if self.order or self.stop_order or self.limit_order:
-            return  # Wait for orders to complete before doing anything else
+        # Check if we have pending ENTRY orders (but allow protective orders)
+        if self.order:
+            return  # Wait for entry order to complete before doing anything else
 
         dt = bt.num2date(self.data.datetime[0])
 
         # POSITION MANAGEMENT
         if self.position:
-            # PINE SCRIPT TRAILING STOP LOGIC - Update on EVERY bar when in position
             # Pine Script: if usar_trailing_stop and strategy.position_size > 0
             #              if close > open  // Solo en velas alcistas
             #                  new_stop_level = low - (atr_value * atr_multiplier_sl)
@@ -259,15 +277,28 @@ class SunriseSimple(bt.Strategy):
                         elif new_stop_level > self.stop_level:
                             old_stop = self.stop_level
                             self.stop_level = new_stop_level
-                            if self.p.print_signals:
-                                print(f"TRAIL {dt:%Y-%m-%d %H:%M} {old_stop:.5f} -> {new_stop_level:.5f}")
+                            self.stop_has_been_trailed = True  # Mark that stop has been trailed up
+                            
+                            # UPDATE THE ACTUAL STOP ORDER WITH NEW LEVEL
+                            if self.stop_order:
+                                try:
+                                    self.cancel(self.stop_order)
+                                    self.stop_order = self.sell(
+                                        size=self.position.size,
+                                        exectype=bt.Order.Stop,
+                                        price=self.stop_level
+                                    )
+                                    if self.p.print_signals:
+                                        print(f"TRAIL {dt:%Y-%m-%d %H:%M} {old_stop:.5f} -> {new_stop_level:.5f}")
+                                except Exception as e:
+                                    print(f"ERROR updating trailing stop: {e}")
             
             # Check exit conditions
             bars_since_entry = len(self) - self.last_entry_bar if self.last_entry_bar is not None else 0
             
             # Timed exit (Pine Script logic: barsSinceEntry >= barras_salida)
             if self.p.use_bar_count_exit and bars_since_entry >= self.p.bar_count_exit and not self.exit_this_bar:
-                print(f"BAR_EXIT at {dt:%Y-%m-%d %H:%M} after {bars_since_entry} bars")
+                print(f"BAR_EXIT at {dt:%Y-%m-%d %H:%M} after {bars_since_entry} bars (target: {self.p.bar_count_exit})")
                 self.order = self.close()
                 self.exit_this_bar = True  # Mark exit action taken
                 return
@@ -302,15 +333,11 @@ class SunriseSimple(bt.Strategy):
         if self.p.use_security_window and self.trade_exit_bars:
             bars_since_last_exit = len(self) - self.trade_exit_bars[-1]
             if bars_since_last_exit < int(self.p.security_window_bars):
-                if self.p.print_signals:
-                    print(f"SKIP entry: security window {bars_since_last_exit}/{self.p.security_window_bars} bars since last exit")
                 return
 
         # Entry signal evaluation
         if not self._full_entry_signal():
             return
-
-        print(f"DEBUG: ATTEMPTING ENTRY at {dt:%Y-%m-%d %H:%M} position={self.position.size if self.position else 0}")
 
         # Calculate position size and create buy order
         atr_now = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
@@ -323,25 +350,21 @@ class SunriseSimple(bt.Strategy):
         self.stop_level = bar_low - atr_now * self.p.atr_sl_multiplier
         self.take_level = bar_high + atr_now * self.p.atr_tp_multiplier
         self.initial_stop_level = self.stop_level
+        self.stop_has_been_trailed = False  # Reset trailing flag for new trade
 
         # Position sizing (Pine Script equivalent calculation)
         if self.p.enable_risk_sizing:
             raw_risk = entry_price - self.stop_level
             if raw_risk <= 0:
-                print(f"DEBUG SIZE: Invalid risk {raw_risk:.5f}, skipping entry")
                 return
             equity = self.broker.get_value()
             risk_val = equity * self.p.risk_percent
             risk_per_contract = raw_risk * self.p.contract_size
             if risk_per_contract <= 0:
-                print(f"DEBUG SIZE: Invalid risk_per_contract {risk_per_contract:.2f}, skipping entry") 
                 return
             contracts = max(int(risk_val / risk_per_contract), 1)
-            
-            print(f"DEBUG SIZE: equity={equity:.2f} risk_val={risk_val:.2f} raw_risk={raw_risk:.5f} contracts={contracts}")
         else:
             contracts = int(self.p.size)
-            print(f"DEBUG SIZE: Fixed sizing contracts={contracts}")
         
         if contracts <= 0:
             return
@@ -353,7 +376,6 @@ class SunriseSimple(bt.Strategy):
             print(f"ENTRY {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
         
         # MANUAL ORDER MANAGEMENT: Replace buy_bracket with simple buy + manual stop/limit
-        print(f"DEBUG ORDER PLACEMENT: Creating manual orders size={bt_size} stop={self.stop_level:.5f} limit={self.take_level:.5f}")
         
         # 1. Place market buy order
         self.order = self.buy(size=bt_size)
@@ -380,28 +402,13 @@ class SunriseSimple(bt.Strategy):
         cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
         cross_any = cross_fast or cross_medium or cross_slow
         
-        # CROSSOVER NOISE FILTER: Prevent multiple signals in short timeframes
-        current_bar = len(self)
         if cross_any:
-            if self.last_crossover_bar is not None:
-                bars_since_last_cross = current_bar - self.last_crossover_bar
-                if bars_since_last_cross < self.min_bars_between_signals:
-                    if self.p.print_signals:
-                        print(f"SKIP entry: crossover noise filter {bars_since_last_cross}/{self.min_bars_between_signals} bars")
-                    return False
-            
-            # Record this crossover
-            self.last_crossover_bar = current_bar
-            
             cross_type = []
             if cross_fast: cross_type.append("FAST")
             if cross_medium: cross_type.append("MEDIUM") 
             if cross_slow: cross_type.append("SLOW")
-            print(f"DEBUG ENTRY {dt:%Y-%m-%d %H:%M}: EMA crossover detected ({','.join(cross_type)})")
         
         if not (prev_bull and cross_any):
-            if self.p.print_signals:
-                print(f"SKIP entry: prev_bull={prev_bull} cross_any={cross_any}")
             return False
 
         # 3. EMA order condition
@@ -412,16 +419,12 @@ class SunriseSimple(bt.Strategy):
                 self.ema_confirm[0] > self.ema_slow[0]
             )
             if not ema_order_ok:
-                if self.p.print_signals:
-                    print(f"SKIP entry: EMA order condition failed (confirm={self.ema_confirm[0]:.5f} vs fast={self.ema_fast[0]:.5f})")
                 return False
 
         # 4. Price filter EMA
         if self.p.use_price_filter_ema:
             price_above_filter = self.data.close[0] > self.ema_filter_price[0]
             if not price_above_filter:
-                if self.p.print_signals:
-                    print(f"SKIP entry: price below filter EMA ({self.data.close[0]:.5f} <= {self.ema_filter_price[0]:.5f})")
                 return False
 
         # 5. Angle filter
@@ -429,12 +432,43 @@ class SunriseSimple(bt.Strategy):
             current_angle = self._angle()
             angle_ok = current_angle > self.p.min_angle
             if not angle_ok:
-                if self.p.print_signals:
-                    print(f"SKIP entry: angle below threshold ({current_angle:.2f}° <= {self.p.min_angle}°)")
                 return False
 
+        # 6. Limited price filter - DEBUG VERSION
+        if self.p.use_limited_price_filter:
+            if self.p.print_signals:
+                print(f"DEBUG LIMITED_PRICE_FILTER: enabled={self.p.use_limited_price_filter}, last_entry_bar={self.last_entry_bar}")
+            
+            if self.last_entry_bar is not None:
+                bars_since_last_entry = len(self) - self.last_entry_bar
+                if self.p.print_signals:
+                    print(f"DEBUG LIMITED_PRICE_FILTER: bars_since_last_entry={bars_since_last_entry}, window={self.p.entry_price_filter_window}")
+                
+                if bars_since_last_entry < self.p.entry_price_filter_window:
+                    # Within filter window - require close > last entry price
+                    if self.last_entry_price is not None:
+                        price_above_last_entry = self.data.close[0] > self.last_entry_price
+                        if self.p.print_signals:
+                            print(f"DEBUG PRICE_FILTER: close={self.data.close[0]:.5f} vs last_entry={self.last_entry_price:.5f}, above={price_above_last_entry}")
+                        
+                        if not price_above_last_entry:
+                            if self.p.print_signals:
+                                print(f"SKIP entry: price filter - close {self.data.close[0]:.5f} <= last_entry {self.last_entry_price:.5f} (bars since: {bars_since_last_entry})")
+                            return False
+                    else:
+                        if self.p.print_signals:
+                            print(f"DEBUG LIMITED_PRICE_FILTER: last_entry_price is None")
+                else:
+                    if self.p.print_signals:
+                        print(f"DEBUG LIMITED_PRICE_FILTER: Outside window - {bars_since_last_entry} >= {self.p.entry_price_filter_window}")
+            else:
+                if self.p.print_signals:
+                    print(f"DEBUG LIMITED_PRICE_FILTER: No previous entry (last_entry_bar is None)")
+        else:
+            if self.p.print_signals:
+                print(f"DEBUG LIMITED_PRICE_FILTER: DISABLED")
+
         # All filters passed
-        print(f"DEBUG ENTRY {dt:%Y-%m-%d %H:%M}: ALL FILTERS PASSED!")
         return True
 
     def _temp_new_entry_signal(self):
@@ -472,7 +506,7 @@ class SunriseSimple(bt.Strategy):
         return True
 
     def notify_order(self, order):
-        """Enhanced order notification with manual stop/limit management"""
+        """Enhanced order notification with detailed exit reporting and PnL calculation"""
         dt = bt.num2date(self.data.datetime[0])
         
         if order.status in [order.Submitted, order.Accepted]:
@@ -481,9 +515,10 @@ class SunriseSimple(bt.Strategy):
 
         if order.status == order.Completed:
             if order.isbuy():
+                self.last_entry_price = order.executed.price
+                self.last_entry_bar = len(self)
                 if self.p.print_signals:
                     print(f"BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
-                self.last_entry_bar = len(self)
                 
                 # MANUAL STOP/LIMIT: Place protective orders after buy execution
                 if self.stop_level and self.take_level:
@@ -511,9 +546,35 @@ class SunriseSimple(bt.Strategy):
                 if self.order == order:
                     self.order = None
                     
-            else:  # SELL order
+            else:  # SELL order - Just report execution, let notify_trade handle PnL
+                exit_price = order.executed.price
+                
+                # Debug: Identify which order triggered the exit and determine reason
+                order_type = "UNKNOWN"
+                exit_reason = "UNKNOWN"
+                if self.stop_order == order:
+                    order_type = "STOP_ORDER"
+                    # Distinguish between initial STOP_LOSS and TRAILING_STOP
+                    if self.stop_has_been_trailed:
+                        exit_reason = "TRAILING_STOP"
+                    else:
+                        exit_reason = "STOP_LOSS"
+                elif self.limit_order == order:
+                    order_type = "LIMIT_ORDER"
+                    exit_reason = "TAKE_PROFIT"
+                elif self.order == order:
+                    order_type = "MANUAL_ORDER"
+                    exit_reason = "MANUAL_CLOSE"
+                
+                # Store exit reason for notify_trade
+                self.last_exit_reason = exit_reason
+                
                 if self.p.print_signals:
-                    print(f"SELL EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
+                    sl_text = f"{self.stop_level:.5f}" if self.stop_level else "None"
+                    tp_text = f"{self.take_level:.5f}" if self.take_level else "None"
+                    print(f"SELL EXECUTED at {exit_price:.5f} size={order.executed.size} type={order_type}")
+                    print(f"  Exit reason stored: {exit_reason}")
+                    print(f"  Current levels: SL={sl_text} TP={tp_text}")
                 
                 # Clean up order references
                 if self.stop_order == order:
@@ -522,18 +583,40 @@ class SunriseSimple(bt.Strategy):
                     if self.limit_order:
                         try:
                             self.cancel(self.limit_order)
-                            self.limit_order = None
                         except:
                             pass
+                        self.limit_order = None
+                        
                 elif self.limit_order == order:
                     self.limit_order = None
                     # Cancel remaining stop order
                     if self.stop_order:
                         try:
                             self.cancel(self.stop_order)
-                            self.stop_order = None
                         except:
                             pass
+                        self.stop_order = None
+                        
+                elif self.order == order:
+                    self.order = None
+                    # Cancel all protective orders on manual close
+                    if self.stop_order:
+                        try:
+                            self.cancel(self.stop_order)
+                        except:
+                            pass
+                        self.stop_order = None
+                    if self.limit_order:
+                        try:
+                            self.cancel(self.limit_order)
+                        except:
+                            pass
+                        self.limit_order = None
+                
+                # Reset levels after any exit
+                self.stop_level = None
+                self.take_level = None
+                self.initial_stop_level = None
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             if self.p.print_signals:
@@ -548,14 +631,45 @@ class SunriseSimple(bt.Strategy):
                 self.limit_order = None
 
     def notify_trade(self, trade):
-        """Standard Backtrader trade notification"""
+        """Use Backtrader's proper trade notification for accurate PnL tracking"""
+        
         if not trade.isclosed:
             return
 
         dt = bt.num2date(self.data.datetime[0])
-        self.trades += 1
         
+        # Get accurate PnL from Backtrader
         pnl = trade.pnlcomm
+        
+        # Calculate entry and exit prices from PnL and trade data
+        # PnL = (exit_price - entry_price) * size - commission
+        # For long trades: exit_price = entry_price + (pnl / size)
+        
+        entry_price = self.last_entry_price if self.last_entry_price else 0
+        if entry_price > 0 and trade.size != 0:
+            # Calculate exit price from PnL: exit = entry + (pnl / size)
+            exit_price = entry_price + (pnl / trade.size)
+        else:
+            # Fallback to trade.price (might be average or exit price)
+            exit_price = trade.price
+            if exit_price == entry_price:
+                # Last resort: estimate from current data
+                exit_price = float(self.data.close[0])
+        
+        # Use stored exit reason from notify_order (more reliable than price comparison)
+        exit_reason = getattr(self, 'last_exit_reason', 'UNKNOWN')
+        
+        # Fallback: If no stored reason, try price comparison
+        if exit_reason == 'UNKNOWN':
+            if self.stop_level and abs(exit_price - self.stop_level) < 0.0002:
+                exit_reason = "TRAILING_STOP"
+            elif self.take_level and abs(exit_price - self.take_level) < 0.0002:
+                exit_reason = "TAKE_PROFIT"
+            else:
+                exit_reason = "MANUAL_CLOSE"
+        
+        # Update statistics
+        self.trades += 1
         if pnl > 0:
             self.wins += 1
             self.gross_profit += pnl
@@ -578,15 +692,15 @@ class SunriseSimple(bt.Strategy):
         self.last_exit_bar = current_bar
 
         if self.p.print_signals:
-            if self.p.pip_value:
-                pips = (trade.price - trade.history[0].event.price) / self.p.pip_value if trade.history else 0
-            else:
-                pips = 0
-            print(f"TRADE CLOSED {dt:%Y-%m-%d %H:%M} PnL={pnl:.2f} Pips={pips:.1f}")
+            pips = (exit_price - entry_price) / self.p.pip_value if self.p.pip_value and entry_price > 0 else 0
+            print(f"TRADE CLOSED {dt:%Y-%m-%d %H:%M} reason={exit_reason} PnL={pnl:.2f} Pips={pips:.1f}")
+            print(f"  Entry: {entry_price:.5f} -> Exit: {exit_price:.5f} | Size: {trade.size}")
 
         # Reset levels
         self.stop_level = None
         self.take_level = None
+        self.initial_stop_level = None
+        self.stop_has_been_trailed = False
 
     def stop(self):
         wr = (self.wins / self.trades * 100.0) if self.trades else 0.0
@@ -600,7 +714,7 @@ if __name__ == '__main__':
     # RUNTIME FLAGS (edit here – no CLI / argparse as requested)
     # =============================================================
     DATA_FILENAME = 'EURUSD_5m_5Yea.csv'  # CSV inside data/
-    FROMDATE = '2025-07-21'               # Inclusive start date (YYYY-MM-DD)
+    FROMDATE = '2023-07-21'               # Inclusive start date (YYYY-MM-DD)
     TODATE = '2025-08-17'                 # Inclusive end date
     STARTING_CASH = 100000.0
     QUICK_TEST = False                    # If True: auto-reduce to last 10 days
