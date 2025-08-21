@@ -1,26 +1,7 @@
 """Simplified Sunrise Strategy
 =================================
 
-Clean, min        # Filters / angles 
-        use_ema_order_condition=True,
-        use_price_filter_ema=True,
-        use_angle_filter=True,
-        min_angle=65.0,
-        angle_scale_factor=10000.0,
-        # Security window after exit
-        use_security_window=True,
-        security_window_bars=15,  
-        # Limited price filter 
-        use_limited_price_filter=True,
-        entry_price_filter_window=30,
-        # Exits 
-        use_bar_count_exit=True,
-        bar_count_exit=8,
-        use_ema_crossover_exit=True,  
-        # Trailing
-        use_trailing_stop=True,
-        close_on_new_entry=True,t of the Pine    FROMDATE = '2025-07-21'               # Inclusive start date (YYYY-MM-DD)
-    TODATE = '2025-07-25'                 # Inclusive end datecript logic you supplied.  The goal
+Clean, minimal implementation of the Pine Script logic you supplied.  The goal
 here is clarity and easy mapping to the TradingView code – NOT feature
 explosion.  Only the essential ideas remain:
 
@@ -32,12 +13,6 @@ ENTRY (long only)
 4. Optional price filter (close > filter EMA).
 5. Optional angle filte        # Use stored exit reason from notify_order
         exit_reason = getattr(self, 'last_exit_reason', "UNKNOWN")
-        
-        if self.p.print_signals:
-            print(f"  DEBUG notify_trade: last_exit_reason={exit_reason} (hasattr={hasattr(self, 'last_exit_reason')})")
-                
-        # Store exit reason for notify_trade
-        self.last_exit_reason = exit_reasonngent of EMA slope * scale > min_angle).
 6. Optional SECURITY WINDOW: forbid a *new* entry for N bars AFTER THE LAST EXIT (matches Pine: ventana de seguridad tras la última salida; NOT after the last entry).
 7. Optional entry price filter: during next `entry_price_filter_window` bars after an entry require close > last_entry_price.
 
@@ -92,24 +67,29 @@ class SunriseSimple(bt.Strategy):
         ema_filter_price_length=50, #¡¡
         ema_exit_length=25, #??
         # ATR / targets 
-        atr_length=20,
+        atr_length=14,
         atr_sl_multiplier=2.5,
         atr_tp_multiplier=12.0,
         atr_trailing_multiplier=2.5,
         # Filters / angles 
-        use_ema_order_condition=False, #??
-        use_price_filter_ema=True, #¡¡
-        use_angle_filter=True, #¡¡
-        min_angle=65.0, #¡¡
+        use_ema_order_condition=False,
+        use_price_filter_ema=True,
+        use_angle_filter=True,
+        min_angle=65.0,
         angle_scale_factor=10000.0,
         # Security window after exit
-        use_security_window=True, #?
+        use_security_window=False,
         security_window_bars=15,  
         # Limited price filter 
-        use_limited_price_filter=False,  #??
+        use_limited_price_filter=False,
         entry_price_filter_window=30,  # Back to smaller window for comparison
+        # Pullback entry system
+        use_pullback_entry=True,  # Restore pullback mode
+        pullback_max_candles=1,  # Balanced - original 3 red candles
+        entry_window_periods=10,  # Balanced - original 5 periods
+        entry_pip_offset=2.0,  # Balanced - original 1.0 pips
         # EXITS 
-        use_bar_count_exit=True, #¡¡ # Test different exit methods
+        use_bar_count_exit=False, #¡¡ # Test different exit methods
         bar_count_exit=10,  
         use_ema_crossover_exit=False, #??
         # Trailing
@@ -202,6 +182,13 @@ class SunriseSimple(bt.Strategy):
             # PINE SCRIPT BEHAVIOR: Prevent entry and exit on same bar
             self.exit_this_bar = False  # Flag to prevent entry on exit bar
             self.last_exit_bar_current = None  # Track if we exited this specific bar #3
+            
+            # PULLBACK ENTRY STATE MACHINE
+            self.pullback_state = "NORMAL"  # States: NORMAL, WAITING_PULLBACK, WAITING_BREAKOUT
+            self.pullback_red_count = 0  # Count of consecutive red candles
+            self.first_red_high = None  # High of first red candle in pullback
+            self.entry_window_start = None  # Bar when entry window opened
+            self.breakout_target = None  # Price target for entry breakout
 
             # Basic stats
             self.trades = 0
@@ -246,6 +233,10 @@ class SunriseSimple(bt.Strategy):
                     
             if orders_canceled > 0 and self.p.print_signals:
                 print(f"CLEANUP: Canceled {orders_canceled} phantom orders")
+            
+            # Reset pullback state when no position (fresh start)
+            if self.p.use_pullback_entry and orders_canceled > 0:
+                self._reset_pullback_state()
 
         # Check if we have pending ENTRY orders (but allow protective orders)
         if self.order:
@@ -387,16 +378,26 @@ class SunriseSimple(bt.Strategy):
         """Return True if ALL *full* entry constraints pass.
 
         Mirrors the Pine Script required + optional filters.
+        Includes optional pullback entry logic.
         """
         dt = bt.num2date(self.data.datetime[0])
         
+        # PULLBACK ENTRY SYSTEM STATE MACHINE
+        if self.p.use_pullback_entry:
+            return self._handle_pullback_entry(dt)
+        
+        # STANDARD ENTRY LOGIC (when pullback is disabled)
+        return self._standard_entry_signal(dt)
+    
+    def _standard_entry_signal(self, dt):
+        """Standard entry logic without pullback system"""
         # 1. Previous candle bullish check
         try:
             prev_bull = self.data.close[-1] > self.data.open[-1]
         except IndexError:
             return False
 
-        # 2. EMA crossover check (ANY of the three) - WITH NOISE FILTER
+        # 2. EMA crossover check (ANY of the three)
         cross_fast = self._cross_above(self.ema_confirm, self.ema_fast)
         cross_medium = self._cross_above(self.ema_confirm, self.ema_medium) 
         cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
@@ -434,7 +435,7 @@ class SunriseSimple(bt.Strategy):
             if not angle_ok:
                 return False
 
-        # 6. Limited price filter - DEBUG VERSION
+        # 6. Limited price filter
         if self.p.use_limited_price_filter:
             if self.p.print_signals:
                 print(f"DEBUG LIMITED_PRICE_FILTER: enabled={self.p.use_limited_price_filter}, last_entry_bar={self.last_entry_bar}")
@@ -470,6 +471,130 @@ class SunriseSimple(bt.Strategy):
 
         # All filters passed
         return True
+    
+    def _handle_pullback_entry(self, dt):
+        """Pullback entry state machine logic"""
+        current_bar = len(self)
+        current_close = float(self.data.close[0])
+        current_open = float(self.data.open[0])
+        current_high = float(self.data.high[0])
+        
+        # Check if current candle is red (bearish)
+        is_red_candle = current_close < current_open
+        
+        # STATE MACHINE LOGIC
+        if self.pullback_state == "NORMAL":
+            # Check for initial entry conditions (1 & 2)
+            if self._basic_entry_conditions():
+                self.pullback_state = "WAITING_PULLBACK"
+                self.pullback_red_count = 0
+                self.first_red_high = None
+                return False  # Don't enter yet, wait for pullback
+            return False
+            
+        elif self.pullback_state == "WAITING_PULLBACK":
+            if is_red_candle:
+                self.pullback_red_count += 1
+                
+                # Store high of first red candle
+                if self.pullback_red_count == 1:
+                    self.first_red_high = current_high
+                
+                # Check if we exceeded max red candles
+                if self.pullback_red_count > self.p.pullback_max_candles:
+                    self._reset_pullback_state()
+                    return False
+                    
+            else:  # Green candle - pullback ended
+                if self.pullback_red_count > 0:
+                    # Pullback phase complete, start entry window
+                    self.pullback_state = "WAITING_BREAKOUT"
+                    self.entry_window_start = current_bar
+                    self.breakout_target = self.first_red_high + (self.p.entry_pip_offset * self.p.pip_value)
+                else:
+                    # No pullback occurred, reset
+                    self._reset_pullback_state()
+            return False
+            
+        elif self.pullback_state == "WAITING_BREAKOUT":
+            # Check if entry window expired
+            bars_in_window = current_bar - self.entry_window_start
+            if bars_in_window >= self.p.entry_window_periods:
+                self._reset_pullback_state()
+                return False
+            
+            # Check for breakout above target
+            if current_high >= self.breakout_target:
+                # Breakout detected! Check all other entry conditions
+                if self._validate_all_entry_filters():
+                    if self.p.print_signals:
+                        print(f"BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}")
+                    self._reset_pullback_state()  # Reset for next setup
+                    return True
+            return False
+        
+        return False
+    
+    def _basic_entry_conditions(self):
+        """Check basic entry conditions 1 & 2 for pullback system"""
+        # 1. Previous candle bullish check
+        try:
+            prev_bull = self.data.close[-1] > self.data.open[-1]
+        except IndexError:
+            return False
+
+        # 2. EMA crossover check (ANY of the three)
+        cross_fast = self._cross_above(self.ema_confirm, self.ema_fast)
+        cross_medium = self._cross_above(self.ema_confirm, self.ema_medium) 
+        cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
+        cross_any = cross_fast or cross_medium or cross_slow
+        
+        return prev_bull and cross_any
+    
+    def _validate_all_entry_filters(self):
+        """Validate all entry filters (3-6) for pullback entry"""
+        # 3. EMA order condition
+        if self.p.use_ema_order_condition:
+            ema_order_ok = (
+                self.ema_confirm[0] > self.ema_fast[0] and
+                self.ema_confirm[0] > self.ema_medium[0] and
+                self.ema_confirm[0] > self.ema_slow[0]
+            )
+            if not ema_order_ok:
+                return False
+
+        # 4. Price filter EMA
+        if self.p.use_price_filter_ema:
+            price_above_filter = self.data.close[0] > self.ema_filter_price[0]
+            if not price_above_filter:
+                return False
+
+        # 5. Angle filter
+        if self.p.use_angle_filter:
+            current_angle = self._angle()
+            angle_ok = current_angle > self.p.min_angle
+            if not angle_ok:
+                return False
+
+        # 6. Limited price filter (simplified for pullback)
+        if self.p.use_limited_price_filter:
+            if self.last_entry_bar is not None:
+                bars_since_last_entry = len(self) - self.last_entry_bar
+                if bars_since_last_entry < self.p.entry_price_filter_window:
+                    if self.last_entry_price is not None:
+                        price_above_last_entry = self.data.close[0] > self.last_entry_price
+                        if not price_above_last_entry:
+                            return False
+
+        return True
+    
+    def _reset_pullback_state(self):
+        """Reset pullback state machine to initial state"""
+        self.pullback_state = "NORMAL"
+        self.pullback_red_count = 0
+        self.first_red_high = None
+        self.entry_window_start = None
+        self.breakout_target = None
 
     def _temp_new_entry_signal(self):
         """Light version of entry check used ONLY to decide close-on-new-entry.
@@ -701,12 +826,70 @@ class SunriseSimple(bt.Strategy):
         self.take_level = None
         self.initial_stop_level = None
         self.stop_has_been_trailed = False
+        
+        # Reset pullback state after trade completion
+        if self.p.use_pullback_entry:
+            self._reset_pullback_state()
 
     def stop(self):
+        # Close any open positions at strategy end and manually process the trade
+        if self.position:
+            current_price = self.data.close[0]
+            entry_price = self.position.price
+            position_size = self.position.size
+            
+            # Calculate unrealized PnL correctly (position.size is already in currency units)
+            price_diff = current_price - entry_price
+            unrealized_pnl = position_size * price_diff
+            
+            if self.p.print_signals:
+                print(f"STRATEGY END: Closing open position.")
+                print(f"  Size: {position_size}, Entry: {entry_price:.5f}, Current: {current_price:.5f}")
+                print(f"  Unrealized PnL: {unrealized_pnl:+.2f}")
+            
+            # Manually update statistics for the open trade before closing
+            self.trades += 1
+            if unrealized_pnl > 0:
+                self.wins += 1
+                self.gross_profit += unrealized_pnl
+            else:
+                self.losses += 1
+                self.gross_loss += abs(unrealized_pnl)
+            
+            # Close the position
+            self.order = self.close()
+            
+            # Cancel any remaining protective orders
+            if self.stop_order:
+                self.cancel(self.stop_order)
+                self.stop_order = None
+            if self.limit_order:
+                self.cancel(self.limit_order)
+                self.limit_order = None
+        
+        # Enhanced summary calculation
+        print("=== SUNRISE SIMPLE SUMMARY ===")
+        
+        # Calculate metrics
         wr = (self.wins / self.trades * 100.0) if self.trades else 0.0
         pf = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
-        print("=== SUNRISE SIMPLE SUMMARY ===")
+        
+        # Backtrader portfolio value
+        final_value = self.broker.get_value()
+        starting_cash = 100000.0  # Known starting value
+        total_pnl = final_value - starting_cash
+        
         print(f"Trades: {self.trades} Wins: {self.wins} Losses: {self.losses} WinRate: {wr:.2f}% PF: {pf:.2f}")
+        print(f"Final Value: {final_value:,.2f} | Total PnL: {total_pnl:+,.2f}")
+        
+        # Validation
+        calculated_pnl = self.gross_profit - self.gross_loss
+        pnl_diff = abs(calculated_pnl - total_pnl)
+        if pnl_diff > 10.0:  # Allow for small rounding/fee differences
+            print(f"INFO: PnL difference: {pnl_diff:.2f} (calculated: {calculated_pnl:+.2f})")
+
+        if self.p.use_pullback_entry:
+            self._reset_pullback_state()
 
 
 if __name__ == '__main__':
@@ -714,8 +897,8 @@ if __name__ == '__main__':
     # RUNTIME FLAGS (edit here – no CLI / argparse as requested)
     # =============================================================
     DATA_FILENAME = 'EURUSD_5m_5Yea.csv'  # CSV inside data/
-    FROMDATE = '2023-07-21'               # Inclusive start date (YYYY-MM-DD)
-    TODATE = '2025-08-17'                 # Inclusive end date
+    FROMDATE = '2022-07-10'               # Extended test period
+    TODATE = '2025-07-25'                 # Extended test period
     STARTING_CASH = 100000.0
     QUICK_TEST = False                    # If True: auto-reduce to last 10 days
     LIMIT_BARS = 0                        # >0 = stop after N bars processed
@@ -786,5 +969,5 @@ if __name__ == '__main__':
     results = cerebro.run()
     print(f"Final Value: {cerebro.broker.getvalue():,.2f}")
     if results and getattr(results[0].p, 'plot_result', False) and ENABLE_PLOT:
-        try: cerebro.plot(style='lines')
+        try: cerebro.plot(style='candlestick')
         except Exception as e: print(f"Plot error: {e}")
