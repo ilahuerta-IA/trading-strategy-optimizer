@@ -21,21 +21,13 @@ EXIT
 1. Initial ATR based stop & take profit (anchored to ENTRY BAR low/high like the Pine script):
          stop  = entry_bar_low  - ATR * atr_sl_multiplier
          take  = entry_bar_high + ATR * atr_tp_multiplier
-2. Trailing stop (if enabled): On EACH bullish candle only, propose
-         candidate = low - ATR * atr_sl_multiplier
-     If candidate > current stop_level (only move upwards) => replace stop.
-3. Optional bar-count exit (close after N bars in position).
-4. Optional EMA crossover exit (exit EMA crossing above confirm EMA).
-5. Optional close-on-new-entry: if a *fresh* entry signal appears while in a
-     trade, we close the current position; a new trade may start NEXT bar.
+2. Optional bar-count exit (close after N bars in position).
+3. Optional EMA crossover exit (exit EMA crossing above confirm EMA).
 
 IMPLEMENTATION NOTES
 --------------------
-* Manual independent stop & limit orders (no bracket) so that replacing the
-    stop does NOT auto-cancel the TP (Backtrader bracket would do that).
-* No re-entry / ROLL logic – explicitly removed per request (the original simplified
-    version accidentally mixed entry-based cooldown semantics, now corrected to exit-based).
-    "NEW_ENTRY" here simply means we closed because a fresh signal appeared while holding.
+* Manual independent stop & limit orders (no bracket).
+* No re-entry / ROLL logic – explicitly removed per request.
 * Minimal state: only what's strictly needed for the logic.
 * Extensive inline comments explaining every critical step.
 
@@ -67,46 +59,105 @@ class SunriseSimple(bt.Strategy):
         ema_filter_price_length=50, #¡¡
         ema_exit_length=25, #??
         # ATR / targets 
-        atr_length=14,
+        atr_length=10,
         atr_sl_multiplier=2.5,
         atr_tp_multiplier=12.0,
-        atr_trailing_multiplier=2.5,
         # Filters / angles 
         use_ema_order_condition=False,
         use_price_filter_ema=True,
         use_angle_filter=True,
-        min_angle=65.0,
+        min_angle=75.0,
         angle_scale_factor=10000.0,
         # Security window after exit
-        use_security_window=False,
-        security_window_bars=15,  
-        # Limited price filter 
-        use_limited_price_filter=False,
-        entry_price_filter_window=30,  # Back to smaller window for comparison
+        use_security_window=True,
+        security_window_bars=60,  
         # Pullback entry system
         use_pullback_entry=True,  # Restore pullback mode
         pullback_max_candles=1,  # Balanced - original 3 red candles
         entry_window_periods=10,  # Balanced - original 5 periods
         entry_pip_offset=2.0,  # Balanced - original 1.0 pips
-        # EXITS 
+        # EXITS 5
         use_bar_count_exit=False, #¡¡ # Test different exit methods
-        bar_count_exit=10,  
+        bar_count_exit=5,  
         use_ema_crossover_exit=False, #??
-        # Trailing
-        use_trailing_stop=False, #?? 
-        close_on_new_entry=False, #??
         # Sizing / logging
         size=1,
-        enable_risk_sizing=True,
-        risk_percent=0.01,
+        enable_risk_sizing=True, #¡¡
+        risk_percent=0.01,  # Reduced from 0.01 (1%) to 0.005 (0.5%) for safer forex trading
         contract_size=100000,
         print_signals=True,
+        # Forex-specific settings for multiple instruments
+        use_forex_position_calc=True,    # Enable forex-specific calculations
+        forex_instrument='AUTO',          # Instrument type: AUTO, XAUUSD, EURUSD, USDJPY, USDCHF, AUDUSD, EURJPY, GBPUSD
+        forex_base_currency='AUTO',       # Base currency (auto-detected from instrument)
+        forex_quote_currency='AUTO',      # Quote currency (auto-detected from instrument)
+        forex_pip_value=0.0001,           # Standard pip value (auto-adjusted for JPY pairs)
+        forex_pip_decimal_places=4,       # Standard decimal places (auto-adjusted for JPY pairs)
+        forex_lot_size=100000,            # Standard lot size (100,000 units of base currency)
+        forex_micro_lot_size=0.01,        # Micro lot size (0.01 standard lots)
+        forex_spread_pips=2.0,            # Typical spread in pips
+        forex_margin_required=3.33,       # Margin requirement as percentage (3.33% = 30:1 leverage)
+        # Account settings for forex calculations
+        account_currency='USD',           # Account denomination
+        account_leverage=30.0,            # Account leverage (matches broker setting)
         # Plotting
         plot_result=True,
         buy_sell_plotdist=0.0005,
         plot_sltp_lines=True,
         pip_value=0.0001,
     )
+
+    def _init_debug_logging(self):
+        """Initialize comprehensive debug logging to file"""
+        from datetime import datetime
+        import os
+        
+        # Create debug directory if it doesn't exist
+        debug_dir = Path(__file__).resolve().parent.parent.parent / 'debug'
+        debug_dir.mkdir(exist_ok=True)
+        
+        # Create timestamped debug file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        debug_filename = f"entry_debug_{timestamp}.log"
+        debug_path = debug_dir / debug_filename
+        
+        try:
+            self.debug_file = open(debug_path, 'w', encoding='utf-8')
+            self.debug_file.write(f"=== SUNRISE ENTRY DEBUG LOG ===\n")
+            self.debug_file.write(f"Started: {datetime.now()}\n")
+            self.debug_file.write(f"Data File: {self._data_filename}\n")
+            self.debug_file.write(f"Forex Mode: {self.p.use_forex_position_calc}\n")
+            self.debug_file.write(f"Pullback Mode: {self.p.use_pullback_entry}\n")
+            self.debug_file.write("=" * 50 + "\n\n")
+            self.debug_file.flush()
+            print(f"📝 DEBUG LOGGING: {debug_path}")
+        except Exception as e:
+            print(f"WARNING: Could not create debug file: {e}")
+            self.debug_file = None
+    
+    def _log_debug(self, message):
+        """Log debug message to file and console"""
+        if self.debug_file:
+            try:
+                self.debug_file.write(f"{message}\n")
+                self.debug_file.flush()
+            except:
+                pass
+        if self.p.print_signals:
+            print(f"DEBUG: {message}")
+    
+    def _close_debug_logging(self):
+        """Close debug file"""
+        if self.debug_file:
+            try:
+                self.debug_file.write(f"\n=== DEBUG SESSION ENDED ===\n")
+                self.debug_file.write(f"Total Signals: {self.entry_signal_count}\n")
+                self.debug_file.write(f"Blocked: {self.blocked_entry_count}\n")
+                self.debug_file.write(f"Successful: {self.successful_entry_count}\n")
+                self.debug_file.close()
+            except:
+                pass
+            self.debug_file = None
 
     @staticmethod
     def _cross_above(a, b):
@@ -148,6 +199,314 @@ class SunriseSimple(bt.Strategy):
             return angle_degrees
         except (IndexError, ValueError, TypeError, ZeroDivisionError):
             return float('nan')
+    
+    def _calculate_forex_position_size(self, entry_price, stop_loss_price):
+        """Calculate optimal position size for forex trading with proper risk management.
+        
+        Args:
+            entry_price: Entry price level
+            stop_loss_price: Stop loss price level
+            
+        Returns:
+            tuple: (lot_size, contracts, margin_required, pip_risk, position_value)
+        """
+        if not self.p.use_forex_position_calc:
+            return None, None, None, None, None
+            
+        # Calculate risk in pips
+        price_difference = abs(entry_price - stop_loss_price)
+        pip_risk = price_difference / self.p.forex_pip_value
+        
+        # Account equity and risk amount
+        account_equity = self.broker.get_value()
+        risk_amount = account_equity * self.p.risk_percent
+        
+        # Calculate value per pip for different lot sizes
+        # For most pairs: 1 standard lot (100,000 units) = $10 per pip (0.0001 price move)
+        # For JPY pairs: 1 standard lot (100,000 units) = $10 per pip (0.01 price move)
+        # For gold: 1 standard lot (100 oz) = $1 per pip (0.01 price move)
+        
+        if self.p.forex_quote_currency == 'JPY':
+            value_per_pip_per_lot = 10.0  # Standard for JPY pairs
+        elif self.p.forex_instrument.startswith('XAU'):
+            value_per_pip_per_lot = self.p.forex_lot_size * self.p.forex_pip_value  # Gold specific
+        else:
+            if self.p.forex_quote_currency == 'USD':
+                value_per_pip_per_lot = (self.p.forex_pip_value * self.p.forex_lot_size)
+            else:
+                value_per_pip_per_lot = 10.0  # Cross currency pairs
+        
+        # Calculate optimal lot size
+        if pip_risk > 0:
+            optimal_lots = risk_amount / (pip_risk * value_per_pip_per_lot)
+            optimal_lots = max(self.p.forex_micro_lot_size, 
+                             round(optimal_lots / self.p.forex_micro_lot_size) * self.p.forex_micro_lot_size)
+        else:
+            return None, None, None, None, None
+        
+        # REMOVE RESTRICTIVE LIMITS: Let user control their own risk
+        # Only apply absolute minimum safety to prevent system errors
+        
+        # Minimum position size check (very minimal)
+        min_lots = 0.01  # Minimum 0.01 lots
+        if optimal_lots < min_lots:
+            optimal_lots = min_lots
+            
+        # Maximum absolute limit (very high - 500 lots)
+        max_absolute_lots = 500.0
+        if optimal_lots > max_absolute_lots:
+            optimal_lots = max_absolute_lots
+            
+        # Calculate position value and margin required
+        position_value = optimal_lots * self.p.forex_lot_size * entry_price
+        margin_required = position_value * (self.p.forex_margin_required / 100.0)
+        
+        # Convert to Backtrader contracts (FIXED: Use lot size directly, not underlying units)
+        if self.p.forex_instrument.startswith('XAU'):
+            # For gold: Use lot size directly (1 contract = 1 lot)
+            contracts = max(1, int(optimal_lots * 100))  # Scale lots to reasonable contract size
+            print(f"DEBUG_POSITION_SIZE: optimal_lots={optimal_lots:.2f}, contracts={contracts}")
+        else:
+            # For forex pairs: Use lot size directly 
+            contracts = max(1, int(optimal_lots * 100))  # Scale lots to reasonable contract size
+            print(f"DEBUG_POSITION_SIZE: optimal_lots={optimal_lots:.2f}, contracts={contracts}")
+        
+        return optimal_lots, contracts, margin_required, pip_risk, position_value
+    
+    def _format_forex_trade_info(self, entry_price, stop_loss, take_profit, lot_size, pip_risk, position_value, margin_required):
+        """Format comprehensive forex trade information for logging.
+        
+        Args:
+            entry_price: Entry price
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+            lot_size: Position size in lots
+            pip_risk: Risk in pips
+            position_value: Total position value
+            margin_required: Margin requirement
+            
+        Returns:
+            str: Formatted trade information
+        """
+        if not self.p.use_forex_position_calc:
+            return ""
+            
+        # Calculate potential profit in pips
+        if take_profit and entry_price:
+            profit_pips = abs(take_profit - entry_price) / self.p.forex_pip_value
+            risk_reward = profit_pips / pip_risk if pip_risk > 0 else 0
+        else:
+            profit_pips = 0
+            risk_reward = 0
+            
+        # Calculate monetary values based on instrument type
+        if self.p.forex_quote_currency == 'JPY':
+            # JPY pairs: $10 per pip for standard lot
+            pip_value_per_lot = 10.0
+        elif self.p.forex_instrument.startswith('XAU'):
+            # Gold: pip value from configuration
+            pip_value_per_lot = self.p.forex_lot_size * self.p.forex_pip_value
+        else:
+            # Standard USD pairs: $10 per pip for standard lot
+            pip_value_per_lot = 10.0
+            
+        risk_amount = pip_risk * lot_size * pip_value_per_lot
+        profit_potential = profit_pips * lot_size * pip_value_per_lot
+        spread_cost = self.p.forex_spread_pips * lot_size * pip_value_per_lot
+        
+        # Format units based on instrument
+        if self.p.forex_instrument.startswith('XAU'):
+            units_desc = f"{lot_size * self.p.forex_lot_size:.0f} oz"
+        else:
+            units_desc = f"{lot_size * self.p.forex_lot_size:,.0f} {self.p.forex_base_currency}"
+        
+        # Format prices based on decimal places
+        price_format = f"{{:.{self.p.forex_pip_decimal_places}f}}"
+        
+        return (f"\n--- FOREX TRADE DETAILS ({self.p.forex_instrument}) ---\n"
+                f"Position Size: {lot_size:.2f} lots ({units_desc})\n"
+                f"Position Value: ${position_value:,.2f}\n"
+                f"Margin Required: ${margin_required:,.2f} ({self.p.forex_margin_required}%)\n"
+                f"Entry: {price_format.format(entry_price)} | SL: {price_format.format(stop_loss)} | TP: {price_format.format(take_profit)}\n"
+                f"Risk: {pip_risk:.1f} pips (${risk_amount:.2f}) | Profit: {profit_pips:.1f} pips (${profit_potential:.2f})\n"
+                f"Risk/Reward: 1:{risk_reward:.2f} | Spread Cost: ${spread_cost:.2f}\n"
+                f"Account Leverage: {self.p.account_leverage:.0f}:1 | Account: {self.p.account_currency}")
+    
+    def _validate_forex_setup(self):
+        """Validate forex configuration against data file.
+        
+        Returns:
+            bool: True if configuration is valid for current data
+        """
+        if not self.p.use_forex_position_calc:
+            return True
+            
+        # Check if data filename suggests XAUUSD
+        data_filename = getattr(self, '_data_filename', '')
+        if 'XAUUSD' not in data_filename.upper() and self.p.forex_instrument == 'XAUUSD':
+            print(f"WARNING: Forex instrument set to {self.p.forex_instrument} but data file is {data_filename}")
+            
+        # Validate price ranges (XAUUSD typically trades between 1000-3000)
+        if hasattr(self.data, 'close') and len(self.data.close) > 0:
+            current_price = float(self.data.close[0])
+            if self.p.forex_instrument == 'XAUUSD' and (current_price < 500 or current_price > 5000):
+                print(f"WARNING: Price {current_price} seems unusual for XAUUSD")
+                
+        # Check pip value consistency
+        if self.p.forex_instrument == 'XAUUSD' and self.p.forex_pip_value != 0.01:
+            print(f"INFO: XAUUSD typically uses pip value of 0.01, current setting: {self.p.forex_pip_value}")
+            
+        return True
+    
+    def _get_forex_instrument_config(self, instrument_name=None):
+        """Get forex configuration for specific instrument.
+        
+        Args:
+            instrument_name: Override instrument name, otherwise use data filename
+            
+        Returns:
+            dict: Configuration dictionary for the instrument
+        """
+        # Auto-detect instrument from data filename if not specified
+        if instrument_name is None or instrument_name == 'AUTO':
+            data_filename = getattr(self, '_data_filename', '').upper()
+            
+            # Try to detect instrument from filename
+            if 'XAUUSD' in data_filename:
+                instrument_name = 'XAUUSD'
+            elif 'EURUSD' in data_filename:
+                instrument_name = 'EURUSD'
+            elif 'USDJPY' in data_filename:
+                instrument_name = 'USDJPY'
+            elif 'USDCHF' in data_filename:
+                instrument_name = 'USDCHF'
+            elif 'AUDUSD' in data_filename:
+                instrument_name = 'AUDUSD'
+            elif 'EURJPY' in data_filename:
+                instrument_name = 'EURJPY'
+            elif 'GBPUSD' in data_filename:
+                instrument_name = 'GBPUSD'
+            else:
+                instrument_name = 'DEFAULT'
+        
+        # Forex instrument configurations
+        configs = {
+            'XAUUSD': {  # Gold vs USD
+                'base_currency': 'XAU',
+                'quote_currency': 'USD',
+                'pip_value': 0.01,           # 1 pip = $0.01 for gold
+                'pip_decimal_places': 2,
+                'lot_size': 100,             # 100 oz
+                'margin_required': 0.5,      # 0.5% (higher margin for commodities)
+                'typical_spread': 2.0
+            },
+            'EURUSD': {  # Euro vs USD
+                'base_currency': 'EUR',
+                'quote_currency': 'USD',
+                'pip_value': 0.0001,         # 1 pip = $0.0001
+                'pip_decimal_places': 4,
+                'lot_size': 100000,          # 100,000 EUR
+                'margin_required': 3.33,     # 3.33% (30:1 leverage)
+                'typical_spread': 1.5
+            },
+            'USDJPY': {  # USD vs Japanese Yen
+                'base_currency': 'USD',
+                'quote_currency': 'JPY',
+                'pip_value': 0.01,           # 1 pip = 0.01 JPY (special case for JPY)
+                'pip_decimal_places': 2,     # JPY pairs quoted to 2 decimal places
+                'lot_size': 100000,          # 100,000 USD
+                'margin_required': 3.33,     # 3.33% (30:1 leverage)
+                'typical_spread': 1.8
+            },
+            'USDCHF': {  # USD vs Swiss Franc
+                'base_currency': 'USD',
+                'quote_currency': 'CHF',
+                'pip_value': 0.0001,         # 1 pip = $0.0001
+                'pip_decimal_places': 4,
+                'lot_size': 100000,          # 100,000 USD
+                'margin_required': 3.33,     # 3.33% (30:1 leverage)
+                'typical_spread': 2.2
+            },
+            'AUDUSD': {  # Australian Dollar vs USD
+                'base_currency': 'AUD',
+                'quote_currency': 'USD',
+                'pip_value': 0.0001,         # 1 pip = $0.0001
+                'pip_decimal_places': 4,
+                'lot_size': 100000,          # 100,000 AUD
+                'margin_required': 3.33,     # 3.33% (30:1 leverage)
+                'typical_spread': 1.9
+            },
+            'EURJPY': {  # Euro vs Japanese Yen
+                'base_currency': 'EUR',
+                'quote_currency': 'JPY',
+                'pip_value': 0.01,           # 1 pip = 0.01 JPY (special case for JPY)
+                'pip_decimal_places': 2,     # JPY pairs quoted to 2 decimal places
+                'lot_size': 100000,          # 100,000 EUR
+                'margin_required': 3.33,     # 3.33% (30:1 leverage)
+                'typical_spread': 2.5
+            },
+            'GBPUSD': {  # British Pound vs USD
+                'base_currency': 'GBP',
+                'quote_currency': 'USD',
+                'pip_value': 0.0001,         # 1 pip = $0.0001
+                'pip_decimal_places': 4,
+                'lot_size': 100000,          # 100,000 GBP
+                'margin_required': 3.33,     # 3.33% (30:1 leverage)
+                'typical_spread': 2.0
+            },
+            'DEFAULT': {  # Default configuration
+                'base_currency': 'BASE',
+                'quote_currency': 'QUOTE',
+                'pip_value': 0.0001,
+                'pip_decimal_places': 4,
+                'lot_size': 100000,
+                'margin_required': 3.33,
+                'typical_spread': 2.0
+            }
+        }
+        
+        return configs.get(instrument_name, configs['DEFAULT'])
+    
+    def _apply_forex_config(self):
+        """Apply forex configuration based on instrument detection."""
+        if not self.p.use_forex_position_calc:
+            return
+            
+        # Get configuration for detected/specified instrument
+        config = self._get_forex_instrument_config(self.p.forex_instrument)
+        
+        # Update parameters with detected configuration
+        if self.p.forex_base_currency == 'AUTO':
+            self.p.forex_base_currency = config['base_currency']
+        if self.p.forex_quote_currency == 'AUTO':
+            self.p.forex_quote_currency = config['quote_currency']
+        
+        # Store detected instrument for logging
+        self._detected_instrument = 'DEFAULT'
+        data_filename = getattr(self, '_data_filename', '').upper()
+        for instrument in ['XAUUSD', 'EURUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'EURJPY', 'GBPUSD']:
+            if instrument in data_filename:
+                self._detected_instrument = instrument
+                break
+                
+        # Apply detected configuration (override defaults if AUTO)
+        if self.p.forex_instrument == 'AUTO':
+            self.p.forex_pip_value = config['pip_value']
+            self.p.forex_pip_decimal_places = config['pip_decimal_places']
+            self.p.forex_lot_size = config['lot_size']
+            self.p.forex_margin_required = config['margin_required']
+            self.p.forex_spread_pips = config['typical_spread']
+            # Update the instrument parameter with detected value
+            self.p.forex_instrument = self._detected_instrument
+                
+        # Log forex configuration
+        if self.p.forex_instrument == 'AUTO':
+            print(f"🔍 AUTO-DETECTED: {self._detected_instrument} from filename: {data_filename}")
+        else:
+            print(f"🎯 MANUAL CONFIG: {self.p.forex_instrument}")
+            
+        print(f"💱 Forex Config: {self.p.forex_base_currency}/{self.p.forex_quote_currency}")
+        print(f"📏 Pip Value: {self.p.forex_pip_value} | Lot Size: {self.p.forex_lot_size:,} | Margin: {self.p.forex_margin_required}%")
 
     def __init__(self):
             d = self.data
@@ -164,6 +523,7 @@ class SunriseSimple(bt.Strategy):
             self.order = None  # Track current pending order
             self.stop_order = None  # Track stop loss order
             self.limit_order = None  # Track take profit order
+            self.pending_close = False  # Flag to prevent new entries while closing position
             
             # Current protective price levels (float) for plotting / decisions
             self.stop_level = None
@@ -172,9 +532,8 @@ class SunriseSimple(bt.Strategy):
             self.last_entry_bar = None
             self.last_exit_bar = None
             self.last_entry_price = None
-            # Track initial stop level to distinguish STOP vs TRAIL_STOP on execution
+            # Track initial stop level
             self.initial_stop_level = None
-            self.stop_has_been_trailed = False  # Track if stop has moved up from initial level
             
             # PINE SCRIPT EQUIVALENT: Track trade history for ta.barssince() logic
             self.trade_exit_bars = []  # Store bars where trades closed (ta.barssince equivalent)
@@ -199,10 +558,56 @@ class SunriseSimple(bt.Strategy):
             
             # Track exit reason for notify_trade
             self.last_exit_reason = "UNKNOWN"
+            
+            # EXHAUSTIVE DEBUGGING - Track all entry signals and blocking reasons
+            self.debug_file = None
+            self.entry_signal_count = 0
+            self.blocked_entry_count = 0
+            self.successful_entry_count = 0
+            
+            # Store data filename for forex validation
+            self._data_filename = getattr(self.data._dataname, 'name', 
+                                        getattr(self.data, '_dataname', ''))
+            if isinstance(self._data_filename, str):
+                self._data_filename = Path(self._data_filename).name
+            
+            # Apply forex configuration based on instrument detection
+            if self.p.use_forex_position_calc:
+                self._apply_forex_config()
+                self._validate_forex_setup()
+                
+            # Initialize debug logging
+            self._init_debug_logging()
 
     def next(self):
         # RESET exit flag at start of each new bar (Pine Script behavior)
         self.exit_this_bar = False
+        
+        # CHECK for pending close operation - skip all logic if waiting for close
+        if hasattr(self, 'pending_close') and self.pending_close:
+            if not self.position:
+                # Position closed successfully, clear flag
+                self.pending_close = False
+                print("DEBUG: Close operation completed, clearing pending_close flag")
+            else:
+                # Still waiting for close to complete
+                return
+        
+        # EXHAUSTIVE DEBUG LOGGING - Track every bar
+        dt = bt.num2date(self.data.datetime[0])
+        current_bar = len(self)
+        current_close = float(self.data.close[0])
+        
+        # DISABLED: Log basic bar info every 100 bars or when position changes
+        # if current_bar % 100 == 0 or (self.position and not hasattr(self, '_was_in_position')) or (not self.position and hasattr(self, '_was_in_position')):
+        #     position_status = f"POSITION: {self.position.size} lots" if self.position else "NO_POSITION"
+        #     self._log_debug(f"Bar {current_bar} | {dt:%Y-%m-%d %H:%M} | Close: {current_close:.5f} | {position_status}")
+        
+        # Track position state changes
+        if self.position:
+            self._was_in_position = True
+        elif hasattr(self, '_was_in_position'):
+            delattr(self, '_was_in_position')
         
         # CANCEL ALL PENDING ORDERS when we have no position (cleanup phantom orders)
         if not self.position:
@@ -211,6 +616,7 @@ class SunriseSimple(bt.Strategy):
                 try:
                     self.cancel(self.order)
                     orders_canceled += 1
+                    self._log_debug(f"CANCELED pending entry order: {self.order.ref}")
                 except:
                     pass
                 self.order = None
@@ -219,6 +625,7 @@ class SunriseSimple(bt.Strategy):
                 try:
                     self.cancel(self.stop_order)
                     orders_canceled += 1
+                    self._log_debug(f"CANCELED stop order: {self.stop_order.ref}")
                 except:
                     pass
                 self.stop_order = None
@@ -227,12 +634,15 @@ class SunriseSimple(bt.Strategy):
                 try:
                     self.cancel(self.limit_order)
                     orders_canceled += 1
+                    self._log_debug(f"CANCELED limit order: {self.limit_order.ref}")
                 except:
                     pass
                 self.limit_order = None
                     
-            if orders_canceled > 0 and self.p.print_signals:
-                print(f"CLEANUP: Canceled {orders_canceled} phantom orders")
+            if orders_canceled > 0:
+                self._log_debug(f"CLEANUP: Canceled {orders_canceled} phantom orders at bar {current_bar}")
+                if self.p.print_signals:
+                    print(f"CLEANUP: Canceled {orders_canceled} phantom orders")
             
             # Reset pullback state when no position (fresh start)
             if self.p.use_pullback_entry and orders_canceled > 0:
@@ -240,50 +650,13 @@ class SunriseSimple(bt.Strategy):
 
         # Check if we have pending ENTRY orders (but allow protective orders)
         if self.order:
+            self._log_debug(f"SKIP: Pending entry order {self.order.ref} at bar {current_bar}")
             return  # Wait for entry order to complete before doing anything else
 
         dt = bt.num2date(self.data.datetime[0])
 
         # POSITION MANAGEMENT
         if self.position:
-            # Pine Script: if usar_trailing_stop and strategy.position_size > 0
-            #              if close > open  // Solo en velas alcistas
-            #                  new_stop_level = low - (atr_value * atr_multiplier_sl)
-            #                  stop_level := math.max(stop_level, new_stop_level)
-            if self.p.use_trailing_stop:
-                current_close = float(self.data.close[0])
-                current_open = float(self.data.open[0])
-                current_low = float(self.data.low[0])
-                
-                # Pine Script: Solo actualizar trailing en velas alcistas (close > open)
-                if current_close > current_open:
-                    atr_now = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-                    if atr_now > 0:
-                        # Pine Script: new_stop_level = low - (atr_value * atr_multiplier_sl)
-                        new_stop_level = current_low - (atr_now * self.p.atr_sl_multiplier)
-                        
-                        # Pine Script: stop_level := math.max(stop_level, new_stop_level)
-                        if self.stop_level is None:
-                            self.stop_level = new_stop_level
-                        elif new_stop_level > self.stop_level:
-                            old_stop = self.stop_level
-                            self.stop_level = new_stop_level
-                            self.stop_has_been_trailed = True  # Mark that stop has been trailed up
-                            
-                            # UPDATE THE ACTUAL STOP ORDER WITH NEW LEVEL
-                            if self.stop_order:
-                                try:
-                                    self.cancel(self.stop_order)
-                                    self.stop_order = self.sell(
-                                        size=self.position.size,
-                                        exectype=bt.Order.Stop,
-                                        price=self.stop_level
-                                    )
-                                    if self.p.print_signals:
-                                        print(f"TRAIL {dt:%Y-%m-%d %H:%M} {old_stop:.5f} -> {new_stop_level:.5f}")
-                                except Exception as e:
-                                    print(f"ERROR updating trailing stop: {e}")
-            
             # Check exit conditions
             bars_since_entry = len(self) - self.last_entry_bar if self.last_entry_bar is not None else 0
             
@@ -301,13 +674,6 @@ class SunriseSimple(bt.Strategy):
                 self.exit_this_bar = True  # Mark exit action taken
                 return
 
-            # Close-on-new-entry
-            if self.p.close_on_new_entry and self._temp_new_entry_signal() and not self.exit_this_bar:
-                print(f"NEW_ENTRY_EXIT at {dt:%Y-%m-%d %H:%M}")
-                self.order = self.close()
-                self.exit_this_bar = True  # Mark exit action taken
-                return
-
             # Continue holding - no new entry logic when in position
             return
 
@@ -315,6 +681,7 @@ class SunriseSimple(bt.Strategy):
         
         # Pine Script prevention: No entry if exit was taken on same bar
         if self.exit_this_bar:
+            self._log_debug(f"BLOCK_EXIT_SAME_BAR: Exit action already taken this bar {current_bar}")
             if self.p.print_signals:
                 print(f"SKIP entry: exit action already taken this bar")
             return
@@ -322,12 +689,23 @@ class SunriseSimple(bt.Strategy):
         # Security window check (Pine Script ta.barssince equivalent)
         # Pine Script: ta.barssince(strategy.closedtrades.exit_time changed)
         if self.p.use_security_window and self.trade_exit_bars:
-            bars_since_last_exit = len(self) - self.trade_exit_bars[-1]
+            bars_since_last_exit = current_bar - self.trade_exit_bars[-1]
             if bars_since_last_exit < int(self.p.security_window_bars):
+                # Silent debug logging to avoid terminal spam - only log to file
+                if self.debug_file:
+                    try:
+                        self.debug_file.write(f"BLOCK_SECURITY_WINDOW: {bars_since_last_exit} < {self.p.security_window_bars} bars since last exit\n")
+                        self.debug_file.flush()
+                    except:
+                        pass
                 return
 
-        # Entry signal evaluation
-        if not self._full_entry_signal():
+        # DETAILED ENTRY SIGNAL ANALYSIS
+        self.entry_signal_count += 1
+        entry_result = self._full_entry_signal_with_debug(current_bar, dt)
+        
+        if not entry_result:
+            self.blocked_entry_count += 1
             return
 
         # Calculate position size and create buy order
@@ -341,7 +719,6 @@ class SunriseSimple(bt.Strategy):
         self.stop_level = bar_low - atr_now * self.p.atr_sl_multiplier
         self.take_level = bar_high + atr_now * self.p.atr_tp_multiplier
         self.initial_stop_level = self.stop_level
-        self.stop_has_been_trailed = False  # Reset trailing flag for new trade
 
         # Position sizing (Pine Script equivalent calculation)
         if self.p.enable_risk_sizing:
@@ -368,11 +745,110 @@ class SunriseSimple(bt.Strategy):
         
         # MANUAL ORDER MANAGEMENT: Replace buy_bracket with simple buy + manual stop/limit
         
+        # CRITICAL FIX: Ensure clean state before new entry
+        if self.position:
+            print(f"WARNING: Existing position detected (size={self.position.size}) - closing before new entry")
+            # Cancel all pending orders and close position
+            self._cancel_all_pending_orders()
+            self.order = self.close()
+            self.pending_close = True  # Flag to prevent new entries until close completes
+            return  # Wait for position to close before entering new trade
+        
         # 1. Place market buy order
         self.order = self.buy(size=bt_size)
         
         self.last_entry_price = entry_price
-        self.last_entry_bar = len(self)
+        self.last_entry_bar = current_bar
+
+    def _full_entry_signal_with_debug(self, current_bar, dt):
+        """Detailed entry signal analysis with comprehensive debug logging.
+        
+        This method performs the same logic as _full_entry_signal() but with
+        exhaustive debug logging to identify exactly why entries are blocked.
+        """
+        # PULLBACK ENTRY SYSTEM STATE MACHINE
+        if self.p.use_pullback_entry:
+            result = self._handle_pullback_entry(dt)
+            if not result:
+                # self._log_debug(f"BLOCK_PULLBACK: Pullback entry system rejected signal at bar {current_bar}")
+                pass
+            return result
+        
+        # STANDARD ENTRY LOGIC (when pullback is disabled)
+        self._log_debug(f"EVALUATING_ENTRY: Bar {current_bar} | {dt:%Y-%m-%d %H:%M}")
+        
+        # 1. Previous candle bullish check
+        try:
+            prev_close = self.data.close[-1]
+            prev_open = self.data.open[-1]
+            prev_bull = prev_close > prev_open
+            self._log_debug(f"  1. PREV_BULL: {prev_bull} (close[-1]={prev_close:.5f} > open[-1]={prev_open:.5f})")
+        except IndexError:
+            self._log_debug(f"  1. PREV_BULL: FALSE (IndexError - not enough data)")
+            return False
+
+        # 2. EMA crossover check (ANY of the three)
+        cross_fast = self._cross_above(self.ema_confirm, self.ema_fast)
+        cross_medium = self._cross_above(self.ema_confirm, self.ema_medium) 
+        cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
+        cross_any = cross_fast or cross_medium or cross_slow
+        
+        self._log_debug(f"  2. EMA_CROSS: fast={cross_fast}, medium={cross_medium}, slow={cross_slow}, any={cross_any}")
+        if cross_any:
+            cross_type = []
+            if cross_fast: cross_type.append("FAST")
+            if cross_medium: cross_type.append("MEDIUM") 
+            if cross_slow: cross_type.append("SLOW")
+            self._log_debug(f"     Cross types: {', '.join(cross_type)}")
+        
+        if not (prev_bull and cross_any):
+            self._log_debug(f"  BLOCK_BASIC: prev_bull={prev_bull} AND cross_any={cross_any} = {prev_bull and cross_any}")
+            return False
+
+        # 3. EMA order condition
+        if self.p.use_ema_order_condition:
+            confirm_val = self.ema_confirm[0]
+            fast_val = self.ema_fast[0]
+            medium_val = self.ema_medium[0]
+            slow_val = self.ema_slow[0]
+            
+            ema_order_ok = (confirm_val > fast_val and confirm_val > medium_val and confirm_val > slow_val)
+            self._log_debug(f"  3. EMA_ORDER: {ema_order_ok} (confirm={confirm_val:.5f} > fast={fast_val:.5f} & medium={medium_val:.5f} & slow={slow_val:.5f})")
+            
+            if not ema_order_ok:
+                self._log_debug(f"  BLOCK_EMA_ORDER: Failed order condition")
+                return False
+        else:
+            self._log_debug(f"  3. EMA_ORDER: DISABLED")
+
+        # 4. Price filter EMA
+        if self.p.use_price_filter_ema:
+            current_close = self.data.close[0]
+            filter_val = self.ema_filter_price[0]
+            price_above_filter = current_close > filter_val
+            self._log_debug(f"  4. PRICE_FILTER: {price_above_filter} (close={current_close:.5f} > filter_ema={filter_val:.5f})")
+            
+            if not price_above_filter:
+                self._log_debug(f"  BLOCK_PRICE_FILTER: Price below filter EMA")
+                return False
+        else:
+            self._log_debug(f"  4. PRICE_FILTER: DISABLED")
+
+        # 5. Angle filter
+        if self.p.use_angle_filter:
+            current_angle = self._angle()
+            angle_ok = current_angle > self.p.min_angle
+            self._log_debug(f"  5. ANGLE_FILTER: {angle_ok} (angle={current_angle:.2f} > min={self.p.min_angle})")
+            
+            if not angle_ok:
+                self._log_debug(f"  BLOCK_ANGLE_FILTER: Angle too low")
+                return False
+        else:
+            self._log_debug(f"  5. ANGLE_FILTER: DISABLED")
+
+        # All filters passed
+        self._log_debug(f"  SUCCESS_ALL_FILTERS: All entry conditions satisfied at bar {current_bar}")
+        return True
 
     def _full_entry_signal(self):
         """Return True if ALL *full* entry constraints pass.
@@ -434,40 +910,6 @@ class SunriseSimple(bt.Strategy):
             angle_ok = current_angle > self.p.min_angle
             if not angle_ok:
                 return False
-
-        # 6. Limited price filter
-        if self.p.use_limited_price_filter:
-            if self.p.print_signals:
-                print(f"DEBUG LIMITED_PRICE_FILTER: enabled={self.p.use_limited_price_filter}, last_entry_bar={self.last_entry_bar}")
-            
-            if self.last_entry_bar is not None:
-                bars_since_last_entry = len(self) - self.last_entry_bar
-                if self.p.print_signals:
-                    print(f"DEBUG LIMITED_PRICE_FILTER: bars_since_last_entry={bars_since_last_entry}, window={self.p.entry_price_filter_window}")
-                
-                if bars_since_last_entry < self.p.entry_price_filter_window:
-                    # Within filter window - require close > last entry price
-                    if self.last_entry_price is not None:
-                        price_above_last_entry = self.data.close[0] > self.last_entry_price
-                        if self.p.print_signals:
-                            print(f"DEBUG PRICE_FILTER: close={self.data.close[0]:.5f} vs last_entry={self.last_entry_price:.5f}, above={price_above_last_entry}")
-                        
-                        if not price_above_last_entry:
-                            if self.p.print_signals:
-                                print(f"SKIP entry: price filter - close {self.data.close[0]:.5f} <= last_entry {self.last_entry_price:.5f} (bars since: {bars_since_last_entry})")
-                            return False
-                    else:
-                        if self.p.print_signals:
-                            print(f"DEBUG LIMITED_PRICE_FILTER: last_entry_price is None")
-                else:
-                    if self.p.print_signals:
-                        print(f"DEBUG LIMITED_PRICE_FILTER: Outside window - {bars_since_last_entry} >= {self.p.entry_price_filter_window}")
-            else:
-                if self.p.print_signals:
-                    print(f"DEBUG LIMITED_PRICE_FILTER: No previous entry (last_entry_bar is None)")
-        else:
-            if self.p.print_signals:
-                print(f"DEBUG LIMITED_PRICE_FILTER: DISABLED")
 
         # All filters passed
         return True
@@ -576,16 +1018,6 @@ class SunriseSimple(bt.Strategy):
             if not angle_ok:
                 return False
 
-        # 6. Limited price filter (simplified for pullback)
-        if self.p.use_limited_price_filter:
-            if self.last_entry_bar is not None:
-                bars_since_last_entry = len(self) - self.last_entry_bar
-                if bars_since_last_entry < self.p.entry_price_filter_window:
-                    if self.last_entry_price is not None:
-                        price_above_last_entry = self.data.close[0] > self.last_entry_price
-                        if not price_above_last_entry:
-                            return False
-
         return True
     
     def _reset_pullback_state(self):
@@ -595,40 +1027,6 @@ class SunriseSimple(bt.Strategy):
         self.first_red_high = None
         self.entry_window_start = None
         self.breakout_target = None
-
-    def _temp_new_entry_signal(self):
-        """Light version of entry check used ONLY to decide close-on-new-entry.
-
-        IMPORTANT: This intentionally *ignores* security window & entry price
-        filter just like the Pine logic's temporary re-check.
-        """
-        try: 
-            prev_bull = self.data.close[-1] > self.data.open[-1]
-        except IndexError: 
-            return False
-        
-        cross_any = (
-            self._cross_above(self.ema_confirm, self.ema_fast) or 
-            self._cross_above(self.ema_confirm, self.ema_medium) or 
-            self._cross_above(self.ema_confirm, self.ema_slow)
-        )
-        if not (prev_bull and cross_any): 
-            return False
-            
-        if self.p.use_ema_order_condition and not (
-            self.ema_confirm[0] > self.ema_fast[0] and 
-            self.ema_confirm[0] > self.ema_medium[0] and 
-            self.ema_confirm[0] > self.ema_slow[0]
-        ): 
-            return False
-            
-        if self.p.use_price_filter_ema and not (self.data.close[0] > self.ema_filter_price[0]): 
-            return False
-            
-        if self.p.use_angle_filter and not (self._angle() > self.p.min_angle): 
-            return False
-            
-        return True
 
     def notify_order(self, order):
         """Enhanced order notification with detailed exit reporting and PnL calculation"""
@@ -679,11 +1077,7 @@ class SunriseSimple(bt.Strategy):
                 exit_reason = "UNKNOWN"
                 if self.stop_order == order:
                     order_type = "STOP_ORDER"
-                    # Distinguish between initial STOP_LOSS and TRAILING_STOP
-                    if self.stop_has_been_trailed:
-                        exit_reason = "TRAILING_STOP"
-                    else:
-                        exit_reason = "STOP_LOSS"
+                    exit_reason = "STOP_LOSS"
                 elif self.limit_order == order:
                     order_type = "LIMIT_ORDER"
                     exit_reason = "TAKE_PROFIT"
@@ -787,7 +1181,7 @@ class SunriseSimple(bt.Strategy):
         # Fallback: If no stored reason, try price comparison
         if exit_reason == 'UNKNOWN':
             if self.stop_level and abs(exit_price - self.stop_level) < 0.0002:
-                exit_reason = "TRAILING_STOP"
+                exit_reason = "STOP_LOSS"
             elif self.take_level and abs(exit_price - self.take_level) < 0.0002:
                 exit_reason = "TAKE_PROFIT"
             else:
@@ -825,13 +1219,15 @@ class SunriseSimple(bt.Strategy):
         self.stop_level = None
         self.take_level = None
         self.initial_stop_level = None
-        self.stop_has_been_trailed = False
         
         # Reset pullback state after trade completion
         if self.p.use_pullback_entry:
             self._reset_pullback_state()
 
     def stop(self):
+        # Close debug logging before final summary
+        self._close_debug_logging()
+        
         # Close any open positions at strategy end and manually process the trade
         if self.position:
             current_price = self.data.close[0]
@@ -867,7 +1263,7 @@ class SunriseSimple(bt.Strategy):
                 self.cancel(self.limit_order)
                 self.limit_order = None
         
-        # Enhanced summary calculation
+        # Enhanced summary calculation with debug stats
         print("=== SUNRISE SIMPLE SUMMARY ===")
         
         # Calculate metrics
@@ -882,6 +1278,16 @@ class SunriseSimple(bt.Strategy):
         print(f"Trades: {self.trades} Wins: {self.wins} Losses: {self.losses} WinRate: {wr:.2f}% PF: {pf:.2f}")
         print(f"Final Value: {final_value:,.2f} | Total PnL: {total_pnl:+,.2f}")
         
+        # DEBUG STATISTICS
+        print(f"\n=== ENTRY SIGNAL DEBUG STATS ===")
+        print(f"Total Entry Signals Evaluated: {self.entry_signal_count}")
+        print(f"Blocked Entries: {self.blocked_entry_count}")
+        print(f"Successful Entries: {self.successful_entry_count}")
+        if self.entry_signal_count > 0:
+            block_rate = (self.blocked_entry_count / self.entry_signal_count) * 100
+            success_rate = (self.successful_entry_count / self.entry_signal_count) * 100
+            print(f"Block Rate: {block_rate:.1f}% | Success Rate: {success_rate:.1f}%")
+        
         # Validation
         calculated_pnl = self.gross_profit - self.gross_loss
         pnl_diff = abs(calculated_pnl - total_pnl)
@@ -890,19 +1296,52 @@ class SunriseSimple(bt.Strategy):
 
         if self.p.use_pullback_entry:
             self._reset_pullback_state()
+    
+    def _cancel_all_pending_orders(self):
+        """Cancel all pending orders to ensure clean state"""
+        try:
+            if self.order:
+                self.broker.cancel(self.order)
+                self.order = None
+            if self.stop_order:
+                self.broker.cancel(self.stop_order)
+                self.stop_order = None
+            if self.limit_order:
+                self.broker.cancel(self.limit_order)
+                self.limit_order = None
+            print("DEBUG: All pending orders cancelled")
+        except Exception as e:
+            print(f"Error cancelling orders: {e}")
 
 
 if __name__ == '__main__':
     # =============================================================
     # RUNTIME FLAGS (edit here – no CLI / argparse as requested)
     # =============================================================
-    DATA_FILENAME = 'EURUSD_5m_5Yea.csv'  # CSV inside data/
+    
+    # === EASY INSTRUMENT SELECTION ===
+    # Uncomment ONE line below to test different forex instruments:
+    
+    # DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # Gold vs USD
+    DATA_FILENAME = 'EURUSD_5m_5Yea.csv'       # Euro vs USD (ok)
+    #DATA_FILENAME = 'USDJPY_5m_5Yea.csv'       # USD vs Japanese Yen
+    # DATA_FILENAME = 'USDCHF_5m_1Year.csv'       # USD vs Swiss Franc
+    #DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'       # Australian Dollar vs USD (ok)
+    # DATA_FILENAME = 'EURJPY_5m_1Year.csv'       # Euro vs Japanese Yen
+    #DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'       # British Pound vs USD (ok, PF=1.02)
+    
+    # === GENERAL SETTINGS ===
     FROMDATE = '2022-07-10'               # Extended test period
     TODATE = '2025-07-25'                 # Extended test period
     STARTING_CASH = 100000.0
     QUICK_TEST = False                    # If True: auto-reduce to last 10 days
     LIMIT_BARS = 0                        # >0 = stop after N bars processed
     ENABLE_PLOT = True                    # Plot final result (if matplotlib available)
+    
+    # === FOREX CONFIGURATION ===
+    ENABLE_FOREX_CALC = True              # Enable forex position calculations (AUTO-DETECTS INSTRUMENT)
+    FOREX_INSTRUMENT = 'AUTO'             # AUTO, XAUUSD, EURUSD, USDJPY, USDCHF, AUDUSD, EURJPY, GBPUSD
+    TEST_FOREX_MODE = False               # If True: Quick test with forex calculations
 
     from datetime import datetime, timedelta
 
@@ -925,7 +1364,20 @@ if __name__ == '__main__':
                 self.lines.sl[0] = float('nan'); self.lines.tp[0] = float('nan')
     BASE = Path(__file__).resolve().parent.parent.parent
     DATA_FILE = BASE / 'data' / DATA_FILENAME
-    STRAT_KWARGS = dict(plot_result=ENABLE_PLOT)
+    STRAT_KWARGS = dict(
+        plot_result=ENABLE_PLOT,
+        use_forex_position_calc=ENABLE_FOREX_CALC,
+        forex_instrument=FOREX_INSTRUMENT
+    )
+    
+    if TEST_FOREX_MODE:
+        # Quick test with forex calculations - reduce time period
+        try:
+            td_obj = datetime.strptime(TODATE, '%Y-%m-%d')
+            FROMDATE = (td_obj - timedelta(days=30)).strftime('%Y-%m-%d')
+            print(f"FOREX TEST MODE: Testing period reduced to {FROMDATE} - {TODATE}")
+        except Exception:
+            pass
 
     def parse_date(s):
         if not s: return None
@@ -965,7 +1417,13 @@ if __name__ == '__main__':
             orig_next(self)
         SunriseSimple.next = limited_next
 
-    print(f"=== RUNNING SUNRISE SIMPLE === (from {FROMDATE} to {TODATE})")
+    print(f"=== SUNRISE SIMPLE === (from {FROMDATE} to {TODATE})")
+    if ENABLE_FOREX_CALC:
+        print(f"📊 FOREX MODE ENABLED - Data: {DATA_FILENAME}")
+        print(f"🎯 Instrument Detection: {FOREX_INSTRUMENT} (AUTO-DETECT from filename)")
+    else:
+        print(f"📈 STANDARD MODE - Data: {DATA_FILENAME}")
+    
     results = cerebro.run()
     print(f"Final Value: {cerebro.broker.getvalue():,.2f}")
     if results and getattr(results[0].p, 'plot_result', False) and ENABLE_PLOT:
