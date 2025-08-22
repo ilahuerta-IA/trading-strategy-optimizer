@@ -574,6 +574,7 @@ class SunriseSimple(bt.Strategy):
             # Apply forex configuration based on instrument detection
             if self.p.use_forex_position_calc:
                 self._apply_forex_config()
+                self.p.contract_size = self.p.forex_lot_size  # Sync the contract size with the detected lot size
                 self._validate_forex_setup()
                 
             # Initialize debug logging
@@ -739,12 +740,9 @@ class SunriseSimple(bt.Strategy):
             
         bt_size = contracts * self.p.contract_size
 
-        if self.p.print_signals:
-            rr = (self.take_level - entry_price) / (entry_price - self.stop_level) if (entry_price - self.stop_level) > 0 else float('nan')
-            print(f"ENTRY {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
-        
-        # MANUAL ORDER MANAGEMENT: Replace buy_bracket with simple buy + manual stop/limit
-        
+        # Always recalculate bt_size before placing the order
+        bt_size = contracts * self.p.contract_size
+
         # CRITICAL FIX: Ensure clean state before new entry
         if self.position:
             print(f"WARNING: Existing position detected (size={self.position.size}) - closing before new entry")
@@ -753,10 +751,15 @@ class SunriseSimple(bt.Strategy):
             self.order = self.close()
             self.pending_close = True  # Flag to prevent new entries until close completes
             return  # Wait for position to close before entering new trade
-        
+
         # 1. Place market buy order
         self.order = self.buy(size=bt_size)
-        
+
+        # Only print the entry message AFTER the buy order has been submitted
+        if self.p.print_signals:
+            rr = (self.take_level - entry_price) / (entry_price - self.stop_level) if (entry_price - self.stop_level) > 0 else float('nan')
+            print(f"ENTRY PLACED {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
+
         self.last_entry_price = entry_price
         self.last_entry_bar = current_bar
 
@@ -1029,125 +1032,80 @@ class SunriseSimple(bt.Strategy):
         self.breakout_target = None
 
     def notify_order(self, order):
-        """Enhanced order notification with detailed exit reporting and PnL calculation"""
+        """Enhanced order notification with robust OCA group for SL/TP."""
         dt = bt.num2date(self.data.datetime[0])
-        
+
         if order.status in [order.Submitted, order.Accepted]:
-            # Order submitted/accepted, nothing to do
             return
 
         if order.status == order.Completed:
             if order.isbuy():
+                # BUY order completed - this is our entry
                 self.last_entry_price = order.executed.price
                 self.last_entry_bar = len(self)
                 if self.p.print_signals:
                     print(f"BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
-                
-                # MANUAL STOP/LIMIT: Place protective orders after buy execution
+
+                # --- THE DEFINITIVE FIX: USE AN OCA (ONE-CANCELS-ALL) GROUP ---
                 if self.stop_level and self.take_level:
-                    try:
-                        # Place stop loss order
-                        self.stop_order = self.sell(
-                            size=order.executed.size,
-                            exectype=bt.Order.Stop,
-                            price=self.stop_level
-                        )
-                        
-                        # Place take profit order  
-                        self.limit_order = self.sell(
-                            size=order.executed.size,
-                            exectype=bt.Order.Limit,
-                            price=self.take_level
-                        )
-                        
-                        if self.p.print_signals:
-                            print(f"PROTECTIVE ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
-                    except Exception as e:
-                        print(f"ERROR placing protective orders: {e}")
-                        
-                # Clear main order reference
-                if self.order == order:
-                    self.order = None
-                    
-            else:  # SELL order - Just report execution, let notify_trade handle PnL
+                    # Place the stop and limit sell orders as an OCA group
+                    # This ensures that if one is executed, the broker automatically cancels the other.
+                    # This is the industry-standard way to prevent phantom positions.
+                    self.stop_order = self.sell(
+                        size=order.executed.size,
+                        exectype=bt.Order.Stop,
+                        price=self.stop_level,
+                        oco=self.limit_order  # Link to the other order
+                    )
+                    self.limit_order = self.sell(
+                        size=order.executed.size,
+                        exectype=bt.Order.Limit,
+                        price=self.take_level,
+                        oco=self.stop_order # Link to the other order
+                    )
+                    if self.p.print_signals:
+                        print(f"PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                
+                self.order = None
+
+            else:  # SELL order completed - this is an EXIT
+                # With OCA, we only expect one of these to ever complete.
+                # The other will be automatically Canceled.
                 exit_price = order.executed.price
                 
-                # Debug: Identify which order triggered the exit and determine reason
-                order_type = "UNKNOWN"
                 exit_reason = "UNKNOWN"
-                if self.stop_order == order:
-                    order_type = "STOP_ORDER"
+                if order.exectype == bt.Order.Stop:
                     exit_reason = "STOP_LOSS"
-                elif self.limit_order == order:
-                    order_type = "LIMIT_ORDER"
+                elif order.exectype == bt.Order.Limit:
                     exit_reason = "TAKE_PROFIT"
-                elif self.order == order:
-                    order_type = "MANUAL_ORDER"
+                else:
                     exit_reason = "MANUAL_CLOSE"
                 
-                # Store exit reason for notify_trade
                 self.last_exit_reason = exit_reason
                 
                 if self.p.print_signals:
-                    sl_text = f"{self.stop_level:.5f}" if self.stop_level else "None"
-                    tp_text = f"{self.take_level:.5f}" if self.take_level else "None"
-                    print(f"SELL EXECUTED at {exit_price:.5f} size={order.executed.size} type={order_type}")
-                    print(f"  Exit reason stored: {exit_reason}")
-                    print(f"  Current levels: SL={sl_text} TP={tp_text}")
-                
-                # Clean up order references
-                if self.stop_order == order:
-                    self.stop_order = None
-                    # Cancel remaining limit order
-                    if self.limit_order:
-                        try:
-                            self.cancel(self.limit_order)
-                        except:
-                            pass
-                        self.limit_order = None
-                        
-                elif self.limit_order == order:
-                    self.limit_order = None
-                    # Cancel remaining stop order
-                    if self.stop_order:
-                        try:
-                            self.cancel(self.stop_order)
-                        except:
-                            pass
-                        self.stop_order = None
-                        
-                elif self.order == order:
-                    self.order = None
-                    # Cancel all protective orders on manual close
-                    if self.stop_order:
-                        try:
-                            self.cancel(self.stop_order)
-                        except:
-                            pass
-                        self.stop_order = None
-                    if self.limit_order:
-                        try:
-                            self.cancel(self.limit_order)
-                        except:
-                            pass
-                        self.limit_order = None
-                
-                # Reset levels after any exit
+                    print(f"SELL EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
+
+                # Reset all state variables to ensure a clean slate for the next trade
+                self.stop_order = None
+                self.limit_order = None
+                self.order = None
                 self.stop_level = None
                 self.take_level = None
                 self.initial_stop_level = None
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            if self.p.print_signals:
+            # With OCA, one of the two protective orders will always be canceled
+            # when the other one executes. This is normal and expected.
+            # We only need to log if it's unexpected.
+            is_expected_cancel = (self.stop_order and self.limit_order)
+            if not is_expected_cancel and self.p.print_signals:
                 print(f"Order {order.getstatusname()}: {order.ref}")
-                
-            # Clean up order references
-            if self.order == order:
-                self.order = None
-            elif self.stop_order == order:
-                self.stop_order = None
-            elif self.limit_order == order:
-                self.limit_order = None
+            
+            # Clean up references
+            if self.order and order.ref == self.order.ref: self.order = None
+            if self.stop_order and order.ref == self.stop_order.ref: self.stop_order = None
+            if self.limit_order and order.ref == self.limit_order.ref: self.limit_order = None
 
     def notify_trade(self, trade):
         """Use Backtrader's proper trade notification for accurate PnL tracking"""
@@ -1322,11 +1280,11 @@ if __name__ == '__main__':
     # === EASY INSTRUMENT SELECTION ===
     # Uncomment ONE line below to test different forex instruments:
     
-    # DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # Gold vs USD
-    DATA_FILENAME = 'EURUSD_5m_5Yea.csv'       # Euro vs USD (ok)
+    DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # Gold vs USD (ok, PF=1.09)
+    #DATA_FILENAME = 'EURUSD_5m_5Yea.csv'       # Euro vs USD (ok, PF=1.21)
     #DATA_FILENAME = 'USDJPY_5m_5Yea.csv'       # USD vs Japanese Yen
     # DATA_FILENAME = 'USDCHF_5m_1Year.csv'       # USD vs Swiss Franc
-    #DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'       # Australian Dollar vs USD (ok)
+    #DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'       # Australian Dollar vs USD (ok, PF=1.11)
     # DATA_FILENAME = 'EURJPY_5m_1Year.csv'       # Euro vs Japanese Yen
     #DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'       # British Pound vs USD (ok, PF=1.02)
     
