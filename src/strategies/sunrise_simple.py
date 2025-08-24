@@ -1,43 +1,103 @@
-"""Simplified Sunrise Strategy
-=================================
+"""Advanced Sunrise Strategy - Multi-Asset Trading System
+========================================================
 
+A sophisticated breakout strategy with pullback entry system, designed for 
+forex pairs, precious metals (Gold/Silver), and automatic instrument detection.
+Features comprehensive risk management, position sizing, and debugging capabilities.
 
-ENTRY (long only)
------------------
-1. Confirmation EMA crosses ABOVE ANY of fast / medium / slow (first bullish momentum sign).
-2. Previous candle bullish (close[1] > open[1]).
-3. Optional ordering filter (confirmation EMA above all other EMAs).
-4. Optional price filter (close > filter EMA).
-5. Optional angle filte        # Use stored exit reason from notify_order
-        exit_reason = getattr(self, 'last_exit_reason', "UNKNOWN")
-6. Optional SECURITY WINDOW: forbid a *new* entry for N bars AFTER THE LAST EXIT.
-7. Optional entry price filter: during next `entry_price_filter_window` bars after an entry require close > last_entry_price.
+ENTRY MODES
+-----------
+▶ STANDARD MODE (use_pullback_entry=False):
+  Direct entry when all conditions align simultaneously
 
-EXIT
-----
-1. Initial ATR based stop & take profit:
-         stop  = entry_bar_low  - ATR * atr_sl_multiplier
-         take  = entry_bar_high + ATR * atr_tp_multiplier
-2. Optional bar-count exit (close after N bars in position).
-3. Optional EMA crossover exit (exit EMA crossing above confirm EMA).
+▶ PULLBACK MODE (use_pullback_entry=True) - RECOMMENDED:
+  3-phase entry system for better timing:
+  1. SIGNAL DETECTION: EMA crossover + bullish candle detected
+  2. PULLBACK PHASE: Wait for 1-3 red candles (configurable)
+  3. BREAKOUT ENTRY: Enter when price breaks above first red candle high
 
-IMPLEMENTATION NOTES
---------------------
-* Manual independent stop & limit orders (no bracket).
-* No re-entry / ROLL logic – explicitly removed per request.
-* Minimal state: only what's strictly needed for the logic.
-* Extensive inline comments explaining every critical step.
+ENTRY CONDITIONS (Both Modes)
+-----------------------------
+1. ✅ Confirmation EMA crosses ABOVE any of fast/medium/slow EMAs
+2. ✅ Previous candle bullish (close[1] > open[1])
+3. ⚙️ Optional: EMA ordering filter (confirm > fast & medium & slow)
+4. ⚙️ Optional: Price filter (close > filter EMA)
+5. ⚙️ Optional: Angle filter (EMA slope > minimum degrees)
+6. ⚙️ Optional: ATR volatility filter (minimum ATR + volatility change)
+7. ⚙️ Optional: Security window (no entry for N bars after last exit)
+
+ATR VOLATILITY FILTER
+----------------------
+🌊 PURPOSE: Ensures trades occur during sufficient market volatility
+   • Minimum ATR threshold (default: 0.0004) - volatility floor
+   • ATR change requirement (default: 0.0001) - market momentum
+   • Absolute value used - measures volatility change regardless of direction
+   • Pullback mode: Compares ATR from signal detection to breakout phase
+   • Standard mode: Checks current ATR against minimum threshold
+
+EXIT SYSTEM
+-----------
+🎯 PRIMARY: ATR-based Stop Loss & Take Profit (OCA orders)
+   • Stop Loss  = entry_bar_low - (ATR × sl_multiplier)
+   • Take Profit = entry_bar_high + (ATR × tp_multiplier)
+   
+⚙️ OPTIONAL EXITS:
+   • Time-based: Close after N bars in position
+   • EMA crossover: Exit when exit_EMA crosses above confirm_EMA
+
+MULTI-ASSET SUPPORT
+-------------------
+🥇 PRECIOUS METALS: XAUUSD (Gold), XAGUSD (Silver)
+   • Auto-configured lot sizes (100 oz Gold, 5000 oz Silver)
+   • Proper pip values (0.01 Gold, 0.001 Silver)
+   • Higher margin requirements for commodities
+
+💱 FOREX PAIRS: EURUSD, GBPUSD, AUDUSD, USDCHF
+   • Standard 100K lot sizes
+   • 0.0001 pip values (4 decimal places)
+   • 30:1 leverage with 3.33% margin
+
+🤖 AUTO-DETECTION: Instrument settings detected from filename
+   • Automatic pip values, lot sizes, margin requirements
+   • Price range validation and consistency checks
+
+RISK MANAGEMENT
+---------------
+💰 POSITION SIZING: Risk-based calculation
+   • Fixed risk percentage per trade (default 1%)
+   • Automatic lot size calculation based on stop loss distance
+   • Forex-specific pip value calculations
+
+🛡️ PROTECTIVE ORDERS: One-Cancels-All (OCA) system
+   • Simultaneous stop loss and take profit orders
+   • Automatic order cancellation when one executes
+   • Prevents phantom positions and order conflicts
 
 CONFIGURATION
 -------------
-Parameters live in the Strategy (so you can still pass overrides when adding
-the strategy).  The __main__ block below uses SIMPLE FLAGS (no argparse)
+📍 All settings moved to TOP of file for easy access:
+   • Instrument selection (DATA_FILENAME)
+   • Date ranges, cash, plotting options
+   • Forex calculation toggles
+   
+🔧 Strategy parameters in params dict for runtime overrides
+📊 Comprehensive debug logging to file with entry analysis
+📈 Visual plotting with buy/sell signals and SL/TP lines
+
+PERFORMANCE FEATURES
+-------------------
+⚡ Optimized entry filtering to reduce false signals
+📈 Pullback system improves risk/reward ratios
+🎯 Multiple exit strategies for different market conditions
+🔍 Exhaustive debugging for strategy optimization
+📊 Real-time performance statistics and trade tracking
 
 DISCLAIMER
 ----------
-Educational example ONLY. Not investment advice. Markets involve risk; past
-performance does not guarantee future results. Validate logic & data quality
-before using in any live or simulated trading environment.
+Educational and research purposes ONLY. Not investment advice. 
+Trading involves substantial risk of loss. Past performance does not 
+guarantee future results. Validate all logic and data quality before 
+using in any live or simulated trading environment.
 """
 from __future__ import annotations
 import math
@@ -48,85 +108,105 @@ import backtrader as bt
 # CONFIGURATION PARAMETERS - EASILY EDITABLE AT TOP OF FILE
 # =============================================================
 
-# === EASY INSTRUMENT SELECTION ===
-# Uncomment ONE line below to test different forex instruments:
-DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # Gold vs USD (PF=1.09)
-#DATA_FILENAME = 'XAGUSD_5m_5Yea.csv'     # Silver vs USD (PF=0.89) 
-#DATA_FILENAME = 'EURUSD_5m_5Yea.csv'       # Euro vs USD (PF=1.21)
-#DATA_FILENAME = 'USDCHF_5m_5Yea.csv'       # USD vs Swiss Franc (PF=1.03)
-#DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'       # Australian Dollar vs USD (PF=1.10)
-#DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'       # British Pound vs USD (PF=1.02)
+# === INSTRUMENT SELECTION ===
+# Choose your trading instrument by uncommenting ONE line below.
+# Each includes historical performance factor (PF) for reference:
+#DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # 🥇 Gold vs USD (PF=1.45, ATR=>2.1_0.15) - Commodity
+#DATA_FILENAME = 'XAGUSD_5m_5Yea.csv'     # 🥈 Silver vs USD (PF=0.89) - Commodity
+#DATA_FILENAME = 'EURUSD_5m_5Yea.csv'     # 🇪🇺 Euro vs USD (PF=1.21) - Major Forex
+#DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # 🇨🇭 USD vs Swiss Franc (PF=1.03) - Major Forex  
+#DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'     # 🇦🇺 Australian Dollar vs USD (PF=1.10) - Commodity Currency
+DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'     # 🇬🇧 British Pound vs USD (PF=1.02) - Major Forex
 
-# === GENERAL SETTINGS ===
-FROMDATE = '2022-07-10'               # Extended test period
-TODATE = '2025-07-25'                 # Extended test period
-STARTING_CASH = 100000.0
-QUICK_TEST = False                    # If True: auto-reduce to last 10 days
-LIMIT_BARS = 0                        # >0 = stop after N bars processed
-ENABLE_PLOT = True                    # Plot final result (if matplotlib available)
+# === BACKTEST SETTINGS ===
+FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
+TODATE = '2025-07-25'                 # End date for backtesting (YYYY-MM-DD)
+STARTING_CASH = 100000.0              # Initial account balance in USD
+QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
+LIMIT_BARS = 0                        # >0: Stop after N bars processed (0 = no limit)
+ENABLE_PLOT = True                    # Show final chart with trades (requires matplotlib)
 
-# === FOREX CONFIGURATION ===
-ENABLE_FOREX_CALC = True              # Enable forex position calculations (AUTO-DETECTS INSTRUMENT)
-FOREX_INSTRUMENT = 'AUTO'             # AUTO, XAUUSD, XAGUSD, EURUSD, USDCHF, AUDUSD, GBPUSD
-TEST_FOREX_MODE = False               # If True: Quick test with forex calculations
+# === FOREX/PRECIOUS METALS CONFIGURATION ===
+ENABLE_FOREX_CALC = True              # Enable advanced forex position calculations
+FOREX_INSTRUMENT = 'AUTO'             # AUTO-DETECT or manual: XAUUSD, XAGUSD, EURUSD, etc.
+TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calculations
+
+# === ATR VOLATILITY FILTER ===
+USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for entries
+ATR_MIN_THRESHOLD = 0.00035 #2.1(Gold)            # Minimum ATR value required for entry (volatility floor)
+ATR_INCREMENT_THRESHOLD = 0.000055 #0.15(Gold)      # Required ATR change (absolute) from signal to pullback phase
 
 
 class SunriseSimple(bt.Strategy):
     params = dict(
-        # Indicator lengths
-        ema_fast_length=14,
-        ema_medium_length=18,
-        ema_slow_length=24,
-        ema_confirm_length=1,
-        ema_filter_price_length=50, #¡¡
-        ema_exit_length=25, #??
-        # ATR / targets 
-        atr_length=10,
-        atr_sl_multiplier=2.5,
-        atr_tp_multiplier=12.0,
-        # Filters / angles 
-        use_ema_order_condition=False,
-        use_price_filter_ema=True,
-        use_angle_filter=True,
-        min_angle=75.0,
-        angle_scale_factor=10000.0,
-        # Security window after exit
-        use_security_window=True,
-        security_window_bars=60,  
-        # Pullback entry system
-        use_pullback_entry=True,  # Restore pullback mode
-        pullback_max_candles=1,  # Balanced - original 3 red candles
-        entry_window_periods=10,  # Balanced - original 5 periods
-        entry_pip_offset=2.0,  # Balanced - original 1.0 pips
-        # EXITS 5
-        use_bar_count_exit=False, #¡¡ # Test different exit methods
-        bar_count_exit=5,  
-        use_ema_crossover_exit=False, #??
-        # Sizing / logging
-        size=1,
-        enable_risk_sizing=True, #¡¡
-        risk_percent=0.01,  # Reduced from 0.01 (1%) to 0.005 (0.5%) for safer forex trading
-        contract_size=100000,
-        print_signals=True,
-        # Forex-specific settings for multiple instruments
-        use_forex_position_calc=True,    # Enable forex-specific calculations
-        forex_instrument='AUTO',          # Instrument type: AUTO, XAUUSD, XAGUSD, EURUSD, USDCHF, AUDUSD, GBPUSD
+        # === TECHNICAL INDICATORS ===
+        ema_fast_length=14,               # Fast EMA period for trend detection
+        ema_medium_length=18,             # Medium EMA period for trend confirmation  
+        ema_slow_length=24,               # Slow EMA period for trend strength
+        ema_confirm_length=1,             # Confirmation EMA (usually 1 for immediate response)
+        ema_filter_price_length=50,       # Price filter EMA to avoid counter-trend trades
+        ema_exit_length=25,               # Exit EMA for crossover exit strategy
+        
+        # === ATR RISK MANAGEMENT ===
+        atr_length=10,                    # ATR calculation period
+        atr_sl_multiplier=2.5,            # Stop Loss = entry_low - (ATR × this)
+        atr_tp_multiplier=12.0,           # Take Profit = entry_high + (ATR × this)
+        
+        # === ATR VOLATILITY FILTER ===
+        use_atr_filter=USE_ATR_FILTER,    # Enable ATR-based volatility filtering
+        atr_min_threshold=ATR_MIN_THRESHOLD,  # Minimum ATR for entry (default: 0.0004)
+        atr_increment_threshold=ATR_INCREMENT_THRESHOLD,  # Required ATR change (absolute, default: 0.0001)
+        
+        # === ENTRY FILTERS (OPTIONAL) ===
+        use_ema_order_condition=False,    # Require confirm_EMA > all other EMAs
+        use_price_filter_ema=True,        # Require close > filter_EMA (trend alignment)
+        use_angle_filter=True,            # Require minimum EMA slope angle
+        min_angle=75.0,                   # Minimum angle in degrees for EMA slope
+        angle_scale_factor=10000.0,       # Scaling factor for angle calculation sensitivity
+        
+        # === SECURITY WINDOW ===
+        use_security_window=False,         # Prevent entries after recent exits (True in Gold)
+        security_window_bars=15,          # Bars to wait after exit before next entry
+        
+        # === PULLBACK ENTRY SYSTEM (RECOMMENDED) ===
+        use_pullback_entry=True,          # Enable 3-phase pullback entry system
+        pullback_max_candles=1,           # Max red candles in pullback (1-3 recommended)
+        entry_window_periods=10,          # Bars to wait for breakout after pullback
+        entry_pip_offset=2.0,             # Pips above first red candle high for entry
+        
+        # === EXIT STRATEGIES ===
+        use_bar_count_exit=False,         # Enable time-based exit after N bars
+        bar_count_exit=5,                 # Number of bars to hold position
+        use_ema_crossover_exit=False,     # Enable EMA crossover exit signal
+        
+        # === POSITION SIZING ===
+        size=1,                           # Default position size (used if risk sizing disabled)
+        enable_risk_sizing=True,          # Enable percentage-based risk sizing
+        risk_percent=0.01,                # Risk 1% of account per trade
+        contract_size=100000,             # Base contract size (auto-adjusted per instrument)
+        print_signals=True,               # Print trade signals and debug info to console
+        
+        # === FOREX/PRECIOUS METALS SETTINGS ===
+        use_forex_position_calc=True,     # Enable advanced forex position calculations
+        forex_instrument='AUTO',          # AUTO-DETECT or manual: XAUUSD, XAGUSD, EURUSD, etc.
         forex_base_currency='AUTO',       # Base currency (auto-detected from instrument)
         forex_quote_currency='AUTO',      # Quote currency (auto-detected from instrument)
-        forex_pip_value=0.0001,           # Standard pip value
-        forex_pip_decimal_places=4,       # Standard decimal places
-        forex_lot_size=100000,            # Standard lot size (100,000 units of base currency)
-        forex_micro_lot_size=0.01,        # Micro lot size (0.01 standard lots)
-        forex_spread_pips=2.0,            # Typical spread in pips
-        forex_margin_required=3.33,       # Margin requirement as percentage (3.33% = 30:1 leverage)
-        # Account settings for forex calculations
-        account_currency='USD',           # Account denomination
+        forex_pip_value=0.0001,           # Pip value (auto-adjusted: 0.01 Gold, 0.001 Silver, 0.0001 Forex)
+        forex_pip_decimal_places=4,       # Price decimal places (auto-adjusted per instrument)
+        forex_lot_size=100000,            # Lot size (auto-adjusted: 100 oz Gold, 5000 oz Silver, 100K Forex)
+        forex_micro_lot_size=0.01,        # Minimum lot increment (0.01 standard lots)
+        forex_spread_pips=2.0,            # Typical spread in pips (auto-adjusted per instrument)
+        forex_margin_required=3.33,       # Margin requirement % (auto-adjusted: 0.5% Gold, 1% Silver, 3.33% Forex)
+        
+        # === ACCOUNT SETTINGS ===
+        account_currency='USD',           # Account denomination currency
         account_leverage=30.0,            # Account leverage (matches broker setting)
-        # Plotting
-        plot_result=True,
-        buy_sell_plotdist=0.0005,
-        plot_sltp_lines=True,
-        pip_value=0.0001,
+        
+        # === PLOTTING & VISUALIZATION ===
+        plot_result=True,                 # Enable strategy plotting
+        buy_sell_plotdist=0.0005,         # Distance for buy/sell markers on chart
+        plot_sltp_lines=True,             # Show stop loss and take profit lines
+        pip_value=0.0001,                 # Legacy pip value for compatibility
     )
 
     def _init_debug_logging(self):
@@ -559,6 +639,10 @@ class SunriseSimple(bt.Strategy):
             self.first_red_high = None  # High of first red candle in pullback
             self.entry_window_start = None  # Bar when entry window opened
             self.breakout_target = None  # Price target for entry breakout
+            
+            # ATR VOLATILITY FILTER TRACKING
+            self.signal_detection_atr = None  # ATR value when signal was first detected
+            self.pullback_start_atr = None    # ATR value when pullback phase started
 
             # Basic stats
             self.trades = 0
@@ -925,6 +1009,14 @@ class SunriseSimple(bt.Strategy):
             if not angle_ok:
                 return False
 
+        # 6. ATR volatility filter (standard entry)
+        if self.p.use_atr_filter:
+            current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+            if current_atr < self.p.atr_min_threshold:
+                if self.p.print_signals:
+                    print(f"ATR Filter: Standard entry rejected - ATR {current_atr:.6f} < threshold {self.p.atr_min_threshold:.6f}")
+                return False
+
         # All filters passed
         return True
     
@@ -942,6 +1034,16 @@ class SunriseSimple(bt.Strategy):
         if self.pullback_state == "NORMAL":
             # Check for initial entry conditions (1 & 2)
             if self._basic_entry_conditions():
+                # Store ATR value when signal is detected
+                current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                self.signal_detection_atr = current_atr
+                
+                # Check ATR minimum threshold if filter is enabled
+                if self.p.use_atr_filter and current_atr < self.p.atr_min_threshold:
+                    if self.p.print_signals:
+                        print(f"ATR Filter: Signal rejected - ATR {current_atr:.6f} < threshold {self.p.atr_min_threshold:.6f}")
+                    return False
+                
                 self.pullback_state = "WAITING_PULLBACK"
                 self.pullback_red_count = 0
                 self.first_red_high = None
@@ -963,6 +1065,19 @@ class SunriseSimple(bt.Strategy):
                     
             else:  # Green candle - pullback ended
                 if self.pullback_red_count > 0:
+                    # Store ATR value when pullback phase ends
+                    current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                    self.pullback_start_atr = current_atr
+                    
+                    # Check ATR increment condition if filter is enabled
+                    if self.p.use_atr_filter and self.signal_detection_atr is not None:
+                        atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
+                        if atr_increment < self.p.atr_increment_threshold:
+                            if self.p.print_signals:
+                                print(f"ATR Filter: Pullback rejected - ATR increment {atr_increment:.6f} < threshold {self.p.atr_increment_threshold:.6f}")
+                            self._reset_pullback_state()
+                            return False
+                    
                     # Pullback phase complete, start entry window
                     self.pullback_state = "WAITING_BREAKOUT"
                     self.entry_window_start = current_bar
@@ -984,7 +1099,12 @@ class SunriseSimple(bt.Strategy):
                 # Breakout detected! Check all other entry conditions
                 if self._validate_all_entry_filters():
                     if self.p.print_signals:
-                        print(f"BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}")
+                        current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                        atr_info = ""
+                        if self.p.use_atr_filter and self.signal_detection_atr is not None:
+                            atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
+                            atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: +{atr_increment:.6f})"
+                        print(f"BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}{atr_info}")
                     self._reset_pullback_state()  # Reset for next setup
                     return True
             return False
@@ -1041,6 +1161,9 @@ class SunriseSimple(bt.Strategy):
         self.first_red_high = None
         self.entry_window_start = None
         self.breakout_target = None
+        # Reset ATR tracking variables
+        self.signal_detection_atr = None
+        self.pullback_start_atr = None
 
     def notify_order(self, order):
         """Enhanced order notification with robust OCA group for SL/TP."""
@@ -1360,7 +1483,7 @@ if __name__ == '__main__':
 
     print(f"=== SUNRISE SIMPLE === (from {FROMDATE} to {TODATE})")
     if ENABLE_FOREX_CALC:
-        print(f"📊 FOREX MODE ENABLED - Data: {DATA_FILENAME}")
+        print(f">> FOREX MODE ENABLED - Data: {DATA_FILENAME}")
         print(f"🎯 Instrument Detection: {FOREX_INSTRUMENT} (AUTO-DETECT from filename)")
     else:
         print(f"📈 STANDARD MODE - Data: {DATA_FILENAME}")
