@@ -1,9 +1,6 @@
 """Simplified Sunrise Strategy
 =================================
 
-Clean, minimal implementation of the Pine Script logic you supplied.  The goal
-here is clarity and easy mapping to the TradingView code – NOT feature
-explosion.  Only the essential ideas remain:
 
 ENTRY (long only)
 -----------------
@@ -13,12 +10,12 @@ ENTRY (long only)
 4. Optional price filter (close > filter EMA).
 5. Optional angle filte        # Use stored exit reason from notify_order
         exit_reason = getattr(self, 'last_exit_reason', "UNKNOWN")
-6. Optional SECURITY WINDOW: forbid a *new* entry for N bars AFTER THE LAST EXIT (matches Pine: ventana de seguridad tras la última salida; NOT after the last entry).
+6. Optional SECURITY WINDOW: forbid a *new* entry for N bars AFTER THE LAST EXIT.
 7. Optional entry price filter: during next `entry_price_filter_window` bars after an entry require close > last_entry_price.
 
 EXIT
 ----
-1. Initial ATR based stop & take profit (anchored to ENTRY BAR low/high like the Pine script):
+1. Initial ATR based stop & take profit:
          stop  = entry_bar_low  - ATR * atr_sl_multiplier
          take  = entry_bar_high + ATR * atr_tp_multiplier
 2. Optional bar-count exit (close after N bars in position).
@@ -34,8 +31,7 @@ IMPLEMENTATION NOTES
 CONFIGURATION
 -------------
 Parameters live in the Strategy (so you can still pass overrides when adding
-the strategy).  The __main__ block below uses SIMPLE FLAGS (no argparse) so
-you said: "don't add CLI options, only flags" – just edit constants there.
+the strategy).  The __main__ block below uses SIMPLE FLAGS (no argparse)
 
 DISCLAIMER
 ----------
@@ -48,10 +44,36 @@ import math
 from pathlib import Path
 import backtrader as bt
 
+# =============================================================
+# CONFIGURATION PARAMETERS - EASILY EDITABLE AT TOP OF FILE
+# =============================================================
+
+# === EASY INSTRUMENT SELECTION ===
+# Uncomment ONE line below to test different forex instruments:
+DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # Gold vs USD (PF=1.09)
+#DATA_FILENAME = 'XAGUSD_5m_5Yea.csv'     # Silver vs USD (PF=0.89) 
+#DATA_FILENAME = 'EURUSD_5m_5Yea.csv'       # Euro vs USD (PF=1.21)
+#DATA_FILENAME = 'USDCHF_5m_5Yea.csv'       # USD vs Swiss Franc (PF=1.03)
+#DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'       # Australian Dollar vs USD (PF=1.10)
+#DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'       # British Pound vs USD (PF=1.02)
+
+# === GENERAL SETTINGS ===
+FROMDATE = '2022-07-10'               # Extended test period
+TODATE = '2025-07-25'                 # Extended test period
+STARTING_CASH = 100000.0
+QUICK_TEST = False                    # If True: auto-reduce to last 10 days
+LIMIT_BARS = 0                        # >0 = stop after N bars processed
+ENABLE_PLOT = True                    # Plot final result (if matplotlib available)
+
+# === FOREX CONFIGURATION ===
+ENABLE_FOREX_CALC = True              # Enable forex position calculations (AUTO-DETECTS INSTRUMENT)
+FOREX_INSTRUMENT = 'AUTO'             # AUTO, XAUUSD, XAGUSD, EURUSD, USDCHF, AUDUSD, GBPUSD
+TEST_FOREX_MODE = False               # If True: Quick test with forex calculations
+
 
 class SunriseSimple(bt.Strategy):
     params = dict(
-        # Indicator lengths (from Pine Script code - EXACT VALUES)
+        # Indicator lengths
         ema_fast_length=14,
         ema_medium_length=18,
         ema_slow_length=24,
@@ -88,11 +110,11 @@ class SunriseSimple(bt.Strategy):
         print_signals=True,
         # Forex-specific settings for multiple instruments
         use_forex_position_calc=True,    # Enable forex-specific calculations
-        forex_instrument='AUTO',          # Instrument type: AUTO, XAUUSD, EURUSD, USDJPY, USDCHF, AUDUSD, EURJPY, GBPUSD
+        forex_instrument='AUTO',          # Instrument type: AUTO, XAUUSD, XAGUSD, EURUSD, USDCHF, AUDUSD, GBPUSD
         forex_base_currency='AUTO',       # Base currency (auto-detected from instrument)
         forex_quote_currency='AUTO',      # Quote currency (auto-detected from instrument)
-        forex_pip_value=0.0001,           # Standard pip value (auto-adjusted for JPY pairs)
-        forex_pip_decimal_places=4,       # Standard decimal places (auto-adjusted for JPY pairs)
+        forex_pip_value=0.0001,           # Standard pip value
+        forex_pip_decimal_places=4,       # Standard decimal places
         forex_lot_size=100000,            # Standard lot size (100,000 units of base currency)
         forex_micro_lot_size=0.01,        # Micro lot size (0.01 standard lots)
         forex_spread_pips=2.0,            # Typical spread in pips
@@ -223,13 +245,10 @@ class SunriseSimple(bt.Strategy):
         
         # Calculate value per pip for different lot sizes
         # For most pairs: 1 standard lot (100,000 units) = $10 per pip (0.0001 price move)
-        # For JPY pairs: 1 standard lot (100,000 units) = $10 per pip (0.01 price move)
-        # For gold: 1 standard lot (100 oz) = $1 per pip (0.01 price move)
+        # For precious metals (gold/silver): calculate based on lot size and pip value
         
-        if self.p.forex_quote_currency == 'JPY':
-            value_per_pip_per_lot = 10.0  # Standard for JPY pairs
-        elif self.p.forex_instrument.startswith('XAU'):
-            value_per_pip_per_lot = self.p.forex_lot_size * self.p.forex_pip_value  # Gold specific
+        if self.p.forex_instrument.startswith(('XAU', 'XAG')):
+            value_per_pip_per_lot = self.p.forex_lot_size * self.p.forex_pip_value  # Precious metals specific
         else:
             if self.p.forex_quote_currency == 'USD':
                 value_per_pip_per_lot = (self.p.forex_pip_value * self.p.forex_lot_size)
@@ -261,9 +280,9 @@ class SunriseSimple(bt.Strategy):
         position_value = optimal_lots * self.p.forex_lot_size * entry_price
         margin_required = position_value * (self.p.forex_margin_required / 100.0)
         
-        # Convert to Backtrader contracts (FIXED: Use lot size directly, not underlying units)
-        if self.p.forex_instrument.startswith('XAU'):
-            # For gold: Use lot size directly (1 contract = 1 lot)
+        # Convert to Backtrader contracts (Use lot size directly, not underlying units)
+        if self.p.forex_instrument.startswith(('XAU', 'XAG')):
+            # For precious metals: Use lot size directly (1 contract = 1 lot)
             contracts = max(1, int(optimal_lots * 100))  # Scale lots to reasonable contract size
             print(f"DEBUG_POSITION_SIZE: optimal_lots={optimal_lots:.2f}, contracts={contracts}")
         else:
@@ -300,11 +319,8 @@ class SunriseSimple(bt.Strategy):
             risk_reward = 0
             
         # Calculate monetary values based on instrument type
-        if self.p.forex_quote_currency == 'JPY':
-            # JPY pairs: $10 per pip for standard lot
-            pip_value_per_lot = 10.0
-        elif self.p.forex_instrument.startswith('XAU'):
-            # Gold: pip value from configuration
+        if self.p.forex_instrument.startswith(('XAU', 'XAG')):
+            # Precious metals: pip value from configuration
             pip_value_per_lot = self.p.forex_lot_size * self.p.forex_pip_value
         else:
             # Standard USD pairs: $10 per pip for standard lot
@@ -315,7 +331,7 @@ class SunriseSimple(bt.Strategy):
         spread_cost = self.p.forex_spread_pips * lot_size * pip_value_per_lot
         
         # Format units based on instrument
-        if self.p.forex_instrument.startswith('XAU'):
+        if self.p.forex_instrument.startswith(('XAU', 'XAG')):
             units_desc = f"{lot_size * self.p.forex_lot_size:.0f} oz"
         else:
             units_desc = f"{lot_size * self.p.forex_lot_size:,.0f} {self.p.forex_base_currency}"
@@ -341,20 +357,26 @@ class SunriseSimple(bt.Strategy):
         if not self.p.use_forex_position_calc:
             return True
             
-        # Check if data filename suggests XAUUSD
+        # Check if data filename matches instrument setting
         data_filename = getattr(self, '_data_filename', '')
         if 'XAUUSD' not in data_filename.upper() and self.p.forex_instrument == 'XAUUSD':
             print(f"WARNING: Forex instrument set to {self.p.forex_instrument} but data file is {data_filename}")
+        if 'XAGUSD' not in data_filename.upper() and self.p.forex_instrument == 'XAGUSD':
+            print(f"WARNING: Forex instrument set to {self.p.forex_instrument} but data file is {data_filename}")
             
-        # Validate price ranges (XAUUSD typically trades between 1000-3000)
+        # Validate price ranges for precious metals
         if hasattr(self.data, 'close') and len(self.data.close) > 0:
             current_price = float(self.data.close[0])
             if self.p.forex_instrument == 'XAUUSD' and (current_price < 500 or current_price > 5000):
                 print(f"WARNING: Price {current_price} seems unusual for XAUUSD")
+            elif self.p.forex_instrument == 'XAGUSD' and (current_price < 10 or current_price > 100):
+                print(f"WARNING: Price {current_price} seems unusual for XAGUSD")
                 
-        # Check pip value consistency
+        # Check pip value consistency for precious metals
         if self.p.forex_instrument == 'XAUUSD' and self.p.forex_pip_value != 0.01:
             print(f"INFO: XAUUSD typically uses pip value of 0.01, current setting: {self.p.forex_pip_value}")
+        elif self.p.forex_instrument == 'XAGUSD' and self.p.forex_pip_value != 0.001:
+            print(f"INFO: XAGUSD typically uses pip value of 0.001, current setting: {self.p.forex_pip_value}")
             
         return True
     
@@ -374,16 +396,14 @@ class SunriseSimple(bt.Strategy):
             # Try to detect instrument from filename
             if 'XAUUSD' in data_filename:
                 instrument_name = 'XAUUSD'
+            elif 'XAGUSD' in data_filename:
+                instrument_name = 'XAGUSD'
             elif 'EURUSD' in data_filename:
                 instrument_name = 'EURUSD'
-            elif 'USDJPY' in data_filename:
-                instrument_name = 'USDJPY'
             elif 'USDCHF' in data_filename:
                 instrument_name = 'USDCHF'
             elif 'AUDUSD' in data_filename:
                 instrument_name = 'AUDUSD'
-            elif 'EURJPY' in data_filename:
-                instrument_name = 'EURJPY'
             elif 'GBPUSD' in data_filename:
                 instrument_name = 'GBPUSD'
             else:
@@ -400,6 +420,15 @@ class SunriseSimple(bt.Strategy):
                 'margin_required': 0.5,      # 0.5% (higher margin for commodities)
                 'typical_spread': 2.0
             },
+            'XAGUSD': {  # Silver vs USD
+                'base_currency': 'XAG',
+                'quote_currency': 'USD',
+                'pip_value': 0.001,          # 1 pip = $0.001 for silver
+                'pip_decimal_places': 3,
+                'lot_size': 5000,            # 5,000 oz (standard silver contract)
+                'margin_required': 1.0,      # 1.0% (higher margin for commodities)
+                'typical_spread': 3.0
+            },
             'EURUSD': {  # Euro vs USD
                 'base_currency': 'EUR',
                 'quote_currency': 'USD',
@@ -408,15 +437,6 @@ class SunriseSimple(bt.Strategy):
                 'lot_size': 100000,          # 100,000 EUR
                 'margin_required': 3.33,     # 3.33% (30:1 leverage)
                 'typical_spread': 1.5
-            },
-            'USDJPY': {  # USD vs Japanese Yen
-                'base_currency': 'USD',
-                'quote_currency': 'JPY',
-                'pip_value': 0.01,           # 1 pip = 0.01 JPY (special case for JPY)
-                'pip_decimal_places': 2,     # JPY pairs quoted to 2 decimal places
-                'lot_size': 100000,          # 100,000 USD
-                'margin_required': 3.33,     # 3.33% (30:1 leverage)
-                'typical_spread': 1.8
             },
             'USDCHF': {  # USD vs Swiss Franc
                 'base_currency': 'USD',
@@ -435,15 +455,6 @@ class SunriseSimple(bt.Strategy):
                 'lot_size': 100000,          # 100,000 AUD
                 'margin_required': 3.33,     # 3.33% (30:1 leverage)
                 'typical_spread': 1.9
-            },
-            'EURJPY': {  # Euro vs Japanese Yen
-                'base_currency': 'EUR',
-                'quote_currency': 'JPY',
-                'pip_value': 0.01,           # 1 pip = 0.01 JPY (special case for JPY)
-                'pip_decimal_places': 2,     # JPY pairs quoted to 2 decimal places
-                'lot_size': 100000,          # 100,000 EUR
-                'margin_required': 3.33,     # 3.33% (30:1 leverage)
-                'typical_spread': 2.5
             },
             'GBPUSD': {  # British Pound vs USD
                 'base_currency': 'GBP',
@@ -484,7 +495,7 @@ class SunriseSimple(bt.Strategy):
         # Store detected instrument for logging
         self._detected_instrument = 'DEFAULT'
         data_filename = getattr(self, '_data_filename', '').upper()
-        for instrument in ['XAUUSD', 'EURUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'EURJPY', 'GBPUSD']:
+        for instrument in ['XAUUSD', 'EURUSD', 'USDCHF', 'AUDUSD', 'GBPUSD']:
             if instrument in data_filename:
                 self._detected_instrument = instrument
                 break
@@ -535,10 +546,10 @@ class SunriseSimple(bt.Strategy):
             # Track initial stop level
             self.initial_stop_level = None
             
-            # PINE SCRIPT EQUIVALENT: Track trade history for ta.barssince() logic
+            # Track trade history for ta.barssince() logic
             self.trade_exit_bars = []  # Store bars where trades closed (ta.barssince equivalent)
             
-            # PINE SCRIPT BEHAVIOR: Prevent entry and exit on same bar
+            # Prevent entry and exit on same bar
             self.exit_this_bar = False  # Flag to prevent entry on exit bar
             self.last_exit_bar_current = None  # Track if we exited this specific bar #3
             
@@ -581,7 +592,7 @@ class SunriseSimple(bt.Strategy):
             self._init_debug_logging()
 
     def next(self):
-        # RESET exit flag at start of each new bar (Pine Script behavior)
+        # RESET exit flag at start of each new bar
         self.exit_this_bar = False
         
         # CHECK for pending close operation - skip all logic if waiting for close
@@ -1273,34 +1284,6 @@ class SunriseSimple(bt.Strategy):
 
 
 if __name__ == '__main__':
-    # =============================================================
-    # RUNTIME FLAGS (edit here – no CLI / argparse as requested)
-    # =============================================================
-    
-    # === EASY INSTRUMENT SELECTION ===
-    # Uncomment ONE line below to test different forex instruments:
-    
-    DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # Gold vs USD (ok, PF=1.09)
-    #DATA_FILENAME = 'EURUSD_5m_5Yea.csv'       # Euro vs USD (ok, PF=1.21)
-    #DATA_FILENAME = 'USDJPY_5m_5Yea.csv'       # USD vs Japanese Yen
-    # DATA_FILENAME = 'USDCHF_5m_1Year.csv'       # USD vs Swiss Franc
-    #DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'       # Australian Dollar vs USD (ok, PF=1.11)
-    # DATA_FILENAME = 'EURJPY_5m_1Year.csv'       # Euro vs Japanese Yen
-    #DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'       # British Pound vs USD (ok, PF=1.02)
-    
-    # === GENERAL SETTINGS ===
-    FROMDATE = '2022-07-10'               # Extended test period
-    TODATE = '2025-07-25'                 # Extended test period
-    STARTING_CASH = 100000.0
-    QUICK_TEST = False                    # If True: auto-reduce to last 10 days
-    LIMIT_BARS = 0                        # >0 = stop after N bars processed
-    ENABLE_PLOT = True                    # Plot final result (if matplotlib available)
-    
-    # === FOREX CONFIGURATION ===
-    ENABLE_FOREX_CALC = True              # Enable forex position calculations (AUTO-DETECTS INSTRUMENT)
-    FOREX_INSTRUMENT = 'AUTO'             # AUTO, XAUUSD, EURUSD, USDJPY, USDCHF, AUDUSD, EURJPY, GBPUSD
-    TEST_FOREX_MODE = False               # If True: Quick test with forex calculations
-
     from datetime import datetime, timedelta
 
     if QUICK_TEST:
