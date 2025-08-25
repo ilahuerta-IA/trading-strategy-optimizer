@@ -75,6 +75,13 @@ def get_strategy_info(strategy_name: str) -> Dict[str, str]:
 register_strategy('CorrelatedSMACross', 'strategies.correlated_sma_cross', 'CorrelatedSMACrossStrategy')
 register_strategy('MACrossOver', 'strategies.ma_cci_crossover', 'MACrossOver')
 register_strategy('BBandPearsonDivergence', 'strategies.bband_pearson_divergence', 'BBandPearsonDivergence')
+register_strategy('SunriseSimple', 'strategies.sunrise_simple', 'SunriseSimple')
+
+# Import strategy classes for direct access
+try:
+    from .sunrise_simple import SunriseSimple
+except ImportError:
+    pass
 
 # Export the main functions
 __all__ = [
@@ -82,5 +89,6 @@ __all__ = [
     'get_strategy_class', 
     'list_available_strategies',
     'get_strategy_info',
-    'STRATEGY_REGISTRY'
+    'STRATEGY_REGISTRY',
+    'SunriseSimple'  # Export the strategy class directly
 ]

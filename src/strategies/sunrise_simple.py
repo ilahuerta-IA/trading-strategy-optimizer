@@ -7,24 +7,49 @@ Features comprehensive risk management, position sizing, and debugging capabilit
 
 ENTRY MODES
 -----------
+▶ TRADING DIRECTION:
+  • LONG ONLY: Buy entries when uptrend conditions met
+  • SHORT ONLY: Sell entries when downtrend conditions met  
+  • BOTH: Enable long and short trading simultaneously
+  
+▶ ENTRY PRIORITY (when both LONG and SHORT conditions are met):
+  • LONG signals are checked FIRST and take priority
+  • If LONG conditions are met, SHORT conditions are ignored for that bar
+  • Only one position allowed at a time - conflicts result in position closure
+
 ▶ STANDARD MODE (use_pullback_entry=False):
   Direct entry when all conditions align simultaneously
 
 ▶ PULLBACK MODE (use_pullback_entry=True) - RECOMMENDED:
   3-phase entry system for better timing:
+  
+  LONG ENTRIES:
   1. SIGNAL DETECTION: EMA crossover + bullish candle detected
   2. PULLBACK PHASE: Wait for 1-3 red candles (configurable)
   3. BREAKOUT ENTRY: Enter when price breaks above first red candle high
+  
+  SHORT ENTRIES:
+  1. SIGNAL DETECTION: EMA crossover + bearish candle detected
+  2. PULLBACK PHASE: Wait for 1-3 green candles (configurable)  
+  3. BREAKDOWN ENTRY: Enter when price breaks below first green candle low
 
-ENTRY CONDITIONS (Both Modes)
------------------------------
+ENTRY CONDITIONS
+----------------
+LONG CONDITIONS:
 1. ✅ Confirmation EMA crosses ABOVE any of fast/medium/slow EMAs
 2. ✅ Previous candle bullish (close[1] > open[1])
 3. ⚙️ Optional: EMA ordering filter (confirm > fast & medium & slow)
 4. ⚙️ Optional: Price filter (close > filter EMA)
 5. ⚙️ Optional: Angle filter (EMA slope > minimum degrees)
 6. ⚙️ Optional: ATR volatility filter (minimum ATR + volatility change)
-7. ⚙️ Optional: Security window (no entry for N bars after last exit)
+
+SHORT CONDITIONS:
+1. ✅ Confirmation EMA crosses BELOW any of fast/medium/slow EMAs
+2. ✅ Previous candle bearish (close[1] < open[1])
+3. ⚙️ Optional: EMA ordering filter (confirm < fast & medium & slow)
+4. ⚙️ Optional: Price filter (close < filter EMA)
+5. ⚙️ Optional: Angle filter (EMA slope < minimum degrees)
+6. ⚙️ Optional: ATR volatility filter (minimum ATR + volatility change)
 
 ATR VOLATILITY FILTER
 ----------------------
@@ -114,9 +139,9 @@ import backtrader as bt
 #DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # 🥇 Gold vs USD (PF=1.45, ATR=>2.1_0.15) - Commodity
 #DATA_FILENAME = 'XAGUSD_5m_5Yea.csv'     # 🥈 Silver vs USD (PF=0.89) - Commodity
 #DATA_FILENAME = 'EURUSD_5m_5Yea.csv'     # 🇪🇺 Euro vs USD (PF=1.21) - Major Forex
-#DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # 🇨🇭 USD vs Swiss Franc (PF=1.03) - Major Forex  
+DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # 🇨🇭 USD vs Swiss Franc (PF=1.03) - Major Forex  
 #DATA_FILENAME = 'AUDUSD_5m_5Yea.csv'     # 🇦🇺 Australian Dollar vs USD (PF=1.10) - Commodity Currency
-DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'     # 🇬🇧 British Pound vs USD (PF=1.02) - Major Forex
+#DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'     # 🇬🇧 British Pound vs USD (PF=1.02) - Major Forex
 
 # === BACKTEST SETTINGS ===
 FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
@@ -131,48 +156,117 @@ ENABLE_FOREX_CALC = True              # Enable advanced forex position calculati
 FOREX_INSTRUMENT = 'AUTO'             # AUTO-DETECT or manual: XAUUSD, XAGUSD, EURUSD, etc.
 TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calculations
 
-# === ATR VOLATILITY FILTER ===
-USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for entries
-ATR_MIN_THRESHOLD = 0.00035 #2.1(Gold)            # Minimum ATR value required for entry (volatility floor)
-ATR_INCREMENT_THRESHOLD = 0.000055 #0.15(Gold)      # Required ATR change (absolute) from signal to pullback phase
+# === TRADING DIRECTION ===
+ENABLE_LONG_TRADES = True            # Enable long (buy) entries
+ENABLE_SHORT_TRADES = False           # Enable short (sell) entries
+
+# === DUAL CEREBRO MODE ===
+RUN_DUAL_CEREBRO = True              # Run separate LONG-only and SHORT-only cerebros to avoid position interference
+
+# === DEBUG SETTINGS ===
+VERBOSE_DEBUG = False                 # Print detailed debug info to console (set True only for troubleshooting)
+
+# === LONG ATR VOLATILITY FILTER ===
+LONG_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for long entries
+LONG_ATR_MIN_THRESHOLD = 0.00020 #0.00035 #2.1(Gold)            # Minimum ATR value required for long entry (volatility floor)
+LONG_ATR_INCREMENT_THRESHOLD = 0.000030#0.000055 #0.15(Gold)      # Required ATR change (absolute) from signal to pullback phase
+
+# === SHORT ATR VOLATILITY FILTER ===
+SHORT_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for short entries  
+SHORT_ATR_MIN_THRESHOLD = 0.00020 #2.1(Gold)             # Minimum ATR value required for short entry (volatility floor)
+SHORT_ATR_INCREMENT_THRESHOLD = 0.000030 #0.15(Gold)      # Required ATR change (absolute) from signal to pullback phase
+
+# === LONG ENTRY FILTERS ===
+LONG_USE_EMA_ORDER_CONDITION = False        # Require confirm_EMA > all other EMAs for long entries
+LONG_USE_PRICE_FILTER_EMA = True            # Require close > filter_EMA (trend alignment) for long entries
+LONG_USE_ANGLE_FILTER = True                # Require minimum EMA slope angle for long entries
+LONG_MIN_ANGLE = 80.0                      # Minimum angle in degrees for EMA slope (long entries)
+LONG_ANGLE_SCALE_FACTOR = 10000.0           # Scaling factor for angle calculation sensitivity (long entries)
+
+# === SHORT ENTRY FILTERS ===
+SHORT_USE_EMA_ORDER_CONDITION = False      # Require confirm_EMA < all other EMAs for short entries
+SHORT_USE_PRICE_FILTER_EMA = True           # Require close < filter_EMA (trend alignment) for short entries  
+SHORT_USE_ANGLE_FILTER = True               # Require minimum EMA slope angle for short entries
+SHORT_MIN_ANGLE = -80.0                     # Minimum angle in degrees for EMA slope (short entries) - negative for downtrend
+SHORT_ANGLE_SCALE_FACTOR = 10000.0          # Scaling factor for angle calculation sensitivity (short entries)
+
+# === LONG PULLBACK ENTRY SYSTEM ===
+LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
+LONG_PULLBACK_MAX_CANDLES = 1              # Max red candles in pullback for long entries (1-3 recommended)
+LONG_ENTRY_WINDOW_PERIODS = 10             # Bars to wait for breakout after pullback (long entries)
+LONG_ENTRY_PIP_OFFSET = 0.5 #2.0                # Pips above first red candle high for long entry
+
+# === SHORT PULLBACK ENTRY SYSTEM ===
+SHORT_USE_PULLBACK_ENTRY = True            # Enable 3-phase pullback entry system for short entries
+SHORT_PULLBACK_MAX_CANDLES = 1             # Max green candles in pullback for short entries (1-3 recommended)
+SHORT_ENTRY_WINDOW_PERIODS = 10            # Bars to wait for breakdown after pullback (short entries)
+SHORT_ENTRY_PIP_OFFSET = 0.1               # Pips below first green candle low for short entry
 
 
 class SunriseSimple(bt.Strategy):
     params = dict(
         # === TECHNICAL INDICATORS ===
-        ema_fast_length=14,               # Fast EMA period for trend detection
-        ema_medium_length=18,             # Medium EMA period for trend confirmation  
-        ema_slow_length=24,               # Slow EMA period for trend strength
+        ema_fast_length=14,               # Fast EMA period for trend detection #14
+        ema_medium_length=18,             # Medium EMA period for trend confirmation #18
+        ema_slow_length=24,               # Slow EMA period for trend strength # 24
         ema_confirm_length=1,             # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=50,       # Price filter EMA to avoid counter-trend trades
+        ema_filter_price_length=50,       # Price filter EMA to avoid counter-trend trades #50
         ema_exit_length=25,               # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
         atr_length=10,                    # ATR calculation period
-        atr_sl_multiplier=2.5,            # Stop Loss = entry_low - (ATR × this)
-        atr_tp_multiplier=12.0,           # Take Profit = entry_high + (ATR × this)
         
-        # === ATR VOLATILITY FILTER ===
-        use_atr_filter=USE_ATR_FILTER,    # Enable ATR-based volatility filtering
-        atr_min_threshold=ATR_MIN_THRESHOLD,  # Minimum ATR for entry (default: 0.0004)
-        atr_increment_threshold=ATR_INCREMENT_THRESHOLD,  # Required ATR change (absolute, default: 0.0001)
+        # === TRADING DIRECTION ===
+        enable_long_trades=ENABLE_LONG_TRADES,  # Enable long (buy) entries
+        enable_short_trades=ENABLE_SHORT_TRADES, # Enable short (sell) entries
         
-        # === ENTRY FILTERS (OPTIONAL) ===
-        use_ema_order_condition=False,    # Require confirm_EMA > all other EMAs
-        use_price_filter_ema=True,        # Require close > filter_EMA (trend alignment)
-        use_angle_filter=True,            # Require minimum EMA slope angle
-        min_angle=75.0,                   # Minimum angle in degrees for EMA slope
-        angle_scale_factor=10000.0,       # Scaling factor for angle calculation sensitivity
+        # === DUAL CEREBRO OVERRIDES ===
+        long_enabled=None,                # Override for LONG trades (None=use enable_long_trades)
+        short_enabled=None,               # Override for SHORT trades (None=use enable_short_trades)
+        
+        # === LONG ATR VOLATILITY FILTER ===
+        long_use_atr_filter=LONG_USE_ATR_FILTER,    # Enable ATR-based volatility filtering for long entries
+        long_atr_min_threshold=LONG_ATR_MIN_THRESHOLD,  # Minimum ATR for long entry
+        long_atr_increment_threshold=LONG_ATR_INCREMENT_THRESHOLD,  # Required ATR change (absolute) for long entry
+        
+        # === LONG ENTRY FILTERS ===
+        long_use_ema_order_condition=LONG_USE_EMA_ORDER_CONDITION,    # Require confirm_EMA > all other EMAs for long entries
+        long_use_price_filter_ema=LONG_USE_PRICE_FILTER_EMA,        # Require close > filter_EMA (trend alignment) for long entries
+        long_use_angle_filter=LONG_USE_ANGLE_FILTER,            # Require minimum EMA slope angle for long entries
+        long_min_angle=LONG_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (long entries)
+        long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (long entries)
+        long_atr_sl_multiplier=2.5,                            # Stop Loss multiplier for LONG trades
+        long_atr_tp_multiplier=12.0,                           # Take Profit multiplier for LONG trades
         
         # === SECURITY WINDOW ===
         use_security_window=False,         # Prevent entries after recent exits (True in Gold)
         security_window_bars=15,          # Bars to wait after exit before next entry
         
-        # === PULLBACK ENTRY SYSTEM (RECOMMENDED) ===
-        use_pullback_entry=True,          # Enable 3-phase pullback entry system
-        pullback_max_candles=1,           # Max red candles in pullback (1-3 recommended)
-        entry_window_periods=10,          # Bars to wait for breakout after pullback
-        entry_pip_offset=2.0,             # Pips above first red candle high for entry
+        # === LONG PULLBACK ENTRY SYSTEM ===
+        long_use_pullback_entry=LONG_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for long entries
+        long_pullback_max_candles=LONG_PULLBACK_MAX_CANDLES,           # Max red candles in pullback for long entries (1-3 recommended)
+        long_entry_window_periods=LONG_ENTRY_WINDOW_PERIODS,          # Bars to wait for breakout after pullback (long entries)
+        long_entry_pip_offset=LONG_ENTRY_PIP_OFFSET,             # Pips above first red candle high for long entry
+        
+        # === SHORT ATR VOLATILITY FILTER ===
+        short_use_atr_filter=SHORT_USE_ATR_FILTER,    # Enable ATR-based volatility filtering for short entries
+        short_atr_min_threshold=SHORT_ATR_MIN_THRESHOLD,  # Minimum ATR for short entry
+        short_atr_increment_threshold=SHORT_ATR_INCREMENT_THRESHOLD,  # Required ATR change (absolute) for short entry
+        
+        # === SHORT ENTRY FILTERS ===
+        short_use_ema_order_condition=SHORT_USE_EMA_ORDER_CONDITION,    # Require confirm_EMA < all other EMAs for short entries
+        short_use_price_filter_ema=SHORT_USE_PRICE_FILTER_EMA,        # Require close < filter_EMA (trend alignment) for short entries
+        short_use_angle_filter=SHORT_USE_ANGLE_FILTER,            # Require minimum EMA slope angle for short entries
+        short_min_angle=SHORT_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (short entries)
+        short_angle_scale_factor=SHORT_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (short entries)
+        short_atr_sl_multiplier=2.5,                             # Stop Loss multiplier for SHORT trades
+        short_atr_tp_multiplier=3.5,                            # Take Profit multiplier for SHORT trades
+        
+        # === SHORT PULLBACK ENTRY SYSTEM ===
+        short_use_pullback_entry=SHORT_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for short entries
+        short_pullback_max_candles=SHORT_PULLBACK_MAX_CANDLES,           # Max green candles in pullback for short entries (1-3 recommended)
+        short_entry_window_periods=SHORT_ENTRY_WINDOW_PERIODS,          # Bars to wait for breakdown after pullback (short entries)
+        short_entry_pip_offset=SHORT_ENTRY_PIP_OFFSET,             # Pips below first green candle low for short entry
         
         # === EXIT STRATEGIES ===
         use_bar_count_exit=False,         # Enable time-based exit after N bars
@@ -185,6 +279,7 @@ class SunriseSimple(bt.Strategy):
         risk_percent=0.01,                # Risk 1% of account per trade
         contract_size=100000,             # Base contract size (auto-adjusted per instrument)
         print_signals=True,               # Print trade signals and debug info to console
+        verbose_debug=VERBOSE_DEBUG,      # Print detailed debug info to console (for troubleshooting only)
         
         # === FOREX/PRECIOUS METALS SETTINGS ===
         use_forex_position_calc=True,     # Enable advanced forex position calculations
@@ -229,7 +324,7 @@ class SunriseSimple(bt.Strategy):
             self.debug_file.write(f"Started: {datetime.now()}\n")
             self.debug_file.write(f"Data File: {self._data_filename}\n")
             self.debug_file.write(f"Forex Mode: {self.p.use_forex_position_calc}\n")
-            self.debug_file.write(f"Pullback Mode: {self.p.use_pullback_entry}\n")
+            self.debug_file.write(f"Pullback Mode: {self.p.long_use_pullback_entry}\n")
             self.debug_file.write("=" * 50 + "\n\n")
             self.debug_file.flush()
             print(f"📝 DEBUG LOGGING: {debug_path}")
@@ -245,7 +340,8 @@ class SunriseSimple(bt.Strategy):
                 self.debug_file.flush()
             except:
                 pass
-        if self.p.print_signals:
+        # Only print debug info to console if verbose_debug is enabled
+        if self.p.verbose_debug:
             print(f"DEBUG: {message}")
     
     def _close_debug_logging(self):
@@ -261,8 +357,7 @@ class SunriseSimple(bt.Strategy):
                 pass
             self.debug_file = None
 
-    @staticmethod
-    def _cross_above(a, b):
+    def _cross_above(self, a, b):
         """Return True if `a` crossed above `b` on the current bar.
         
         Pine Script ta.crossover() equivalent:
@@ -283,6 +378,27 @@ class SunriseSimple(bt.Strategy):
         except (IndexError, ValueError, TypeError):
             return False
 
+    def _cross_below(self, a, b):
+        """Return True if `a` crossed below `b` on the current bar.
+        
+        Pine Script ta.crossunder() equivalent:
+        - Current bar: a[0] < b[0] 
+        - Previous bar: a[-1] >= b[-1]
+        - Must be EXACT crossover (not just below)
+        """
+        try:
+            current_a = float(a[0])
+            current_b = float(b[0])
+            previous_a = float(a[-1])
+            previous_b = float(b[-1])
+            
+            # Pine Script crossunder logic: current < AND previous >=
+            crossunder = (current_a < current_b) and (previous_a >= previous_b)
+            
+            return crossunder
+        except (IndexError, ValueError, TypeError):
+            return False
+
     def _angle(self):
         """Compute instantaneous angle (degrees) of the confirm EMA slope.
 
@@ -294,7 +410,7 @@ class SunriseSimple(bt.Strategy):
             previous_ema = float(self.ema_confirm[-1])
             
             # Pine Script: math.atan((ema_confirm - ema_confirm[1]) * factor_escala_angulo) * 180 / math.pi
-            rise = (current_ema - previous_ema) * self.p.angle_scale_factor
+            rise = (current_ema - previous_ema) * self.p.long_angle_scale_factor
             angle_radians = math.atan(rise)  # run = 1 (1 bar)
             angle_degrees = math.degrees(angle_radians)
             
@@ -619,6 +735,11 @@ class SunriseSimple(bt.Strategy):
             # Current protective price levels (float) for plotting / decisions
             self.stop_level = None
             self.take_level = None
+            
+            # Portfolio tracking for combined plotting
+            self._portfolio_values = []
+            self._timestamps = []
+            
             # Book-keeping for filters
             self.last_entry_bar = None
             self.last_exit_bar = None
@@ -635,8 +756,10 @@ class SunriseSimple(bt.Strategy):
             
             # PULLBACK ENTRY STATE MACHINE
             self.pullback_state = "NORMAL"  # States: NORMAL, WAITING_PULLBACK, WAITING_BREAKOUT
-            self.pullback_red_count = 0  # Count of consecutive red candles
-            self.first_red_high = None  # High of first red candle in pullback
+            self.pullback_red_count = 0  # Count of consecutive red candles (LONG pullbacks)
+            self.first_red_high = None  # High of first red candle in pullback (LONG)
+            self.pullback_green_count = 0  # Count of consecutive green candles (SHORT pullbacks)
+            self.first_green_low = None  # Low of first green candle in pullback (SHORT)
             self.entry_window_start = None  # Bar when entry window opened
             self.breakout_target = None  # Price target for entry breakout
             
@@ -672,10 +795,21 @@ class SunriseSimple(bt.Strategy):
                 self.p.contract_size = self.p.forex_lot_size  # Sync the contract size with the detected lot size
                 self._validate_forex_setup()
                 
+            # Apply dual cerebro overrides for trading direction
+            if self.p.long_enabled is not None:
+                self.p.enable_long_trades = self.p.long_enabled
+            if self.p.short_enabled is not None:
+                self.p.enable_short_trades = self.p.short_enabled
+                
             # Initialize debug logging
             self._init_debug_logging()
 
     def next(self):
+        # Track portfolio value and timestamp for plotting
+        if hasattr(self, '_portfolio_values'):
+            self._portfolio_values.append(self.broker.get_value())
+            self._timestamps.append(self.data.datetime.datetime(0))
+        
         # RESET exit flag at start of each new bar
         self.exit_this_bar = False
         
@@ -741,7 +875,7 @@ class SunriseSimple(bt.Strategy):
                     print(f"CLEANUP: Canceled {orders_canceled} phantom orders")
             
             # Reset pullback state when no position (fresh start)
-            if self.p.use_pullback_entry and orders_canceled > 0:
+            if self.p.long_use_pullback_entry and orders_canceled > 0:
                 self._reset_pullback_state()
 
         # Check if we have pending ENTRY orders (but allow protective orders)
@@ -756,19 +890,34 @@ class SunriseSimple(bt.Strategy):
             # Check exit conditions
             bars_since_entry = len(self) - self.last_entry_bar if self.last_entry_bar is not None else 0
             
+            # Determine position direction (LONG = positive size, SHORT = negative size)
+            position_direction = 'LONG' if self.position.size > 0 else 'SHORT'
+            
             # Timed exit (Pine Script logic: barsSinceEntry >= barras_salida)
             if self.p.use_bar_count_exit and bars_since_entry >= self.p.bar_count_exit and not self.exit_this_bar:
-                print(f"BAR_EXIT at {dt:%Y-%m-%d %H:%M} after {bars_since_entry} bars (target: {self.p.bar_count_exit})")
+                print(f"{position_direction} BAR_EXIT at {dt:%Y-%m-%d %H:%M} after {bars_since_entry} bars (target: {self.p.bar_count_exit})")
                 self.order = self.close()
                 self.exit_this_bar = True  # Mark exit action taken
                 return
 
-            # EMA crossover exit
-            if self.p.use_ema_crossover_exit and self._cross_above(self.ema_exit, self.ema_confirm) and not self.exit_this_bar:
-                print(f"EMA_EXIT at {dt:%Y-%m-%d %H:%M}")
-                self.order = self.close()
-                self.exit_this_bar = True  # Mark exit action taken
-                return
+            # EMA crossover exit - direction-aware logic
+            if self.p.use_ema_crossover_exit and not self.exit_this_bar:
+                exit_signal = False
+                
+                if position_direction == 'LONG':
+                    # LONG exit: exit_EMA crosses ABOVE confirm_EMA (bearish signal)
+                    exit_signal = self._cross_above(self.ema_exit, self.ema_confirm)
+                    exit_reason = "EMA_EXIT_LONG (exit EMA crossed above confirm)"
+                else:  # SHORT
+                    # SHORT exit: exit_EMA crosses BELOW confirm_EMA (bullish signal)
+                    exit_signal = self._cross_below(self.ema_exit, self.ema_confirm)
+                    exit_reason = "EMA_EXIT_SHORT (exit EMA crossed below confirm)"
+                
+                if exit_signal:
+                    print(f"{exit_reason} at {dt:%Y-%m-%d %H:%M}")
+                    self.order = self.close()
+                    self.exit_this_bar = True  # Mark exit action taken
+                    return
 
             # Continue holding - no new entry logic when in position
             return
@@ -798,13 +947,13 @@ class SunriseSimple(bt.Strategy):
 
         # DETAILED ENTRY SIGNAL ANALYSIS
         self.entry_signal_count += 1
-        entry_result = self._full_entry_signal_with_debug(current_bar, dt)
+        signal_direction, has_signal = self._full_entry_signal_with_debug(current_bar, dt)
         
-        if not entry_result:
+        if not has_signal:
             self.blocked_entry_count += 1
             return
 
-        # Calculate position size and create buy order
+        # Calculate position size and create order (LONG = buy, SHORT = sell)
         atr_now = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
         if atr_now <= 0:
             return
@@ -812,13 +961,24 @@ class SunriseSimple(bt.Strategy):
         entry_price = float(self.data.close[0])
         bar_low = float(self.data.low[0])
         bar_high = float(self.data.high[0])
-        self.stop_level = bar_low - atr_now * self.p.atr_sl_multiplier
-        self.take_level = bar_high + atr_now * self.p.atr_tp_multiplier
+        
+        # Set stop and take levels based on signal direction
+        if signal_direction == 'LONG':
+            self.stop_level = bar_low - atr_now * self.p.long_atr_sl_multiplier
+            self.take_level = bar_high + atr_now * self.p.long_atr_tp_multiplier
+        elif signal_direction == 'SHORT':
+            self.stop_level = bar_high + atr_now * self.p.short_atr_sl_multiplier  # Stop above for shorts
+            self.take_level = bar_low - atr_now * self.p.short_atr_tp_multiplier   # Take below for shorts
+        
         self.initial_stop_level = self.stop_level
 
         # Position sizing (Pine Script equivalent calculation)
         if self.p.enable_risk_sizing:
-            raw_risk = entry_price - self.stop_level
+            if signal_direction == 'LONG':
+                raw_risk = entry_price - self.stop_level
+            else:  # SHORT
+                raw_risk = self.stop_level - entry_price
+                
             if raw_risk <= 0:
                 return
             equity = self.broker.get_value()
@@ -838,22 +998,37 @@ class SunriseSimple(bt.Strategy):
         # Always recalculate bt_size before placing the order
         bt_size = contracts * self.p.contract_size
 
-        # CRITICAL FIX: Ensure clean state before new entry
+        # CRITICAL: Position conflict handling
+        # Strategy only allows ONE position at a time. If both LONG and SHORT conditions
+        # are met simultaneously, LONG takes priority (checked first in _full_entry_signal_with_debug).
+        # If a position exists when a new signal triggers, the existing position is closed first.
         if self.position:
-            print(f"WARNING: Existing position detected (size={self.position.size}) - closing before new entry")
+            position_type = "LONG" if self.position.size > 0 else "SHORT"
+            new_direction = signal_direction
+            if self.p.print_signals:
+                print(f"⚠️  POSITION CONFLICT: {position_type} position exists, new {new_direction} signal triggered - closing {position_type} first")
             # Cancel all pending orders and close position
             self._cancel_all_pending_orders()
             self.order = self.close()
             self.pending_close = True  # Flag to prevent new entries until close completes
             return  # Wait for position to close before entering new trade
 
-        # 1. Place market buy order
-        self.order = self.buy(size=bt_size)
+        # Place market order based on signal direction
+        if signal_direction == 'LONG':
+            self.order = self.buy(size=bt_size)
+            signal_type_display = "📈 LONG BUY"
+        elif signal_direction == 'SHORT':
+            self.order = self.sell(size=bt_size)
+            signal_type_display = "📉 SHORT SELL"
 
-        # Only print the entry message AFTER the buy order has been submitted
+        # Only print the entry message AFTER the order has been submitted
         if self.p.print_signals:
-            rr = (self.take_level - entry_price) / (entry_price - self.stop_level) if (entry_price - self.stop_level) > 0 else float('nan')
-            print(f"ENTRY PLACED {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
+            if signal_direction == 'LONG':
+                rr = (self.take_level - entry_price) / (entry_price - self.stop_level) if (entry_price - self.stop_level) > 0 else float('nan')
+            else:  # SHORT
+                rr = (entry_price - self.take_level) / (self.stop_level - entry_price) if (self.stop_level - entry_price) > 0 else float('nan')
+            
+            print(f"🎯 ENTRY PLACED {signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
 
         self.last_entry_price = entry_price
         self.last_entry_bar = current_bar
@@ -861,133 +1036,111 @@ class SunriseSimple(bt.Strategy):
     def _full_entry_signal_with_debug(self, current_bar, dt):
         """Detailed entry signal analysis with comprehensive debug logging.
         
-        This method performs the same logic as _full_entry_signal() but with
-        exhaustive debug logging to identify exactly why entries are blocked.
+        Returns tuple (signal_type, has_signal) same as _full_entry_signal()
+        but with exhaustive debug logging to identify exactly why entries are blocked.
         """
-        # PULLBACK ENTRY SYSTEM STATE MACHINE
-        if self.p.use_pullback_entry:
-            result = self._handle_pullback_entry(dt)
-            if not result:
-                # self._log_debug(f"BLOCK_PULLBACK: Pullback entry system rejected signal at bar {current_bar}")
-                pass
-            return result
-        
-        # STANDARD ENTRY LOGIC (when pullback is disabled)
         self._log_debug(f"EVALUATING_ENTRY: Bar {current_bar} | {dt:%Y-%m-%d %H:%M}")
         
-        # 1. Previous candle bullish check
-        try:
-            prev_close = self.data.close[-1]
-            prev_open = self.data.open[-1]
-            prev_bull = prev_close > prev_open
-            self._log_debug(f"  1. PREV_BULL: {prev_bull} (close[-1]={prev_close:.5f} > open[-1]={prev_open:.5f})")
-        except IndexError:
-            self._log_debug(f"  1. PREV_BULL: FALSE (IndexError - not enough data)")
-            return False
-
-        # 2. EMA crossover check (ANY of the three)
-        cross_fast = self._cross_above(self.ema_confirm, self.ema_fast)
-        cross_medium = self._cross_above(self.ema_confirm, self.ema_medium) 
-        cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
-        cross_any = cross_fast or cross_medium or cross_slow
+        # Check LONG signals if enabled
+        if self.p.enable_long_trades:
+            self._log_debug(f"  CHECKING_LONG_SIGNALS...")
+            if self.p.long_use_pullback_entry:
+                long_result = self._handle_pullback_entry(dt, 'LONG')
+                self._log_debug(f"  LONG_PULLBACK_RESULT: {long_result}")
+            else:
+                long_result = self._standard_long_entry_signal(dt)
+                self._log_debug(f"  LONG_STANDARD_RESULT: {long_result}")
+            
+            if long_result:
+                self._log_debug(f"  SUCCESS_LONG: LONG entry signal confirmed at bar {current_bar}")
+                return ('LONG', True)
+        else:
+            self._log_debug(f"  LONG_TRADES_DISABLED")
         
-        self._log_debug(f"  2. EMA_CROSS: fast={cross_fast}, medium={cross_medium}, slow={cross_slow}, any={cross_any}")
-        if cross_any:
-            cross_type = []
-            if cross_fast: cross_type.append("FAST")
-            if cross_medium: cross_type.append("MEDIUM") 
-            if cross_slow: cross_type.append("SLOW")
-            self._log_debug(f"     Cross types: {', '.join(cross_type)}")
+        # Check SHORT signals if enabled  
+        if self.p.enable_short_trades:
+            self._log_debug(f"  CHECKING_SHORT_SIGNALS...")
+            if self.p.short_use_pullback_entry:
+                short_result = self._handle_pullback_entry(dt, 'SHORT')
+                self._log_debug(f"  SHORT_PULLBACK_RESULT: {short_result}")
+            else:
+                short_result = self._standard_short_entry_signal(dt)
+                self._log_debug(f"  SHORT_STANDARD_RESULT: {short_result}")
+            
+            if short_result:
+                self._log_debug(f"  SUCCESS_SHORT: SHORT entry signal confirmed at bar {current_bar}")
+                return ('SHORT', True)
+        else:
+            self._log_debug(f"  SHORT_TRADES_DISABLED")
         
-        if not (prev_bull and cross_any):
-            self._log_debug(f"  BLOCK_BASIC: prev_bull={prev_bull} AND cross_any={cross_any} = {prev_bull and cross_any}")
-            return False
-
-        # 3. EMA order condition
-        if self.p.use_ema_order_condition:
-            confirm_val = self.ema_confirm[0]
-            fast_val = self.ema_fast[0]
-            medium_val = self.ema_medium[0]
-            slow_val = self.ema_slow[0]
-            
-            ema_order_ok = (confirm_val > fast_val and confirm_val > medium_val and confirm_val > slow_val)
-            self._log_debug(f"  3. EMA_ORDER: {ema_order_ok} (confirm={confirm_val:.5f} > fast={fast_val:.5f} & medium={medium_val:.5f} & slow={slow_val:.5f})")
-            
-            if not ema_order_ok:
-                self._log_debug(f"  BLOCK_EMA_ORDER: Failed order condition")
-                return False
-        else:
-            self._log_debug(f"  3. EMA_ORDER: DISABLED")
-
-        # 4. Price filter EMA
-        if self.p.use_price_filter_ema:
-            current_close = self.data.close[0]
-            filter_val = self.ema_filter_price[0]
-            price_above_filter = current_close > filter_val
-            self._log_debug(f"  4. PRICE_FILTER: {price_above_filter} (close={current_close:.5f} > filter_ema={filter_val:.5f})")
-            
-            if not price_above_filter:
-                self._log_debug(f"  BLOCK_PRICE_FILTER: Price below filter EMA")
-                return False
-        else:
-            self._log_debug(f"  4. PRICE_FILTER: DISABLED")
-
-        # 5. Angle filter
-        if self.p.use_angle_filter:
-            current_angle = self._angle()
-            angle_ok = current_angle > self.p.min_angle
-            self._log_debug(f"  5. ANGLE_FILTER: {angle_ok} (angle={current_angle:.2f} > min={self.p.min_angle})")
-            
-            if not angle_ok:
-                self._log_debug(f"  BLOCK_ANGLE_FILTER: Angle too low")
-                return False
-        else:
-            self._log_debug(f"  5. ANGLE_FILTER: DISABLED")
-
-        # All filters passed
-        self._log_debug(f"  SUCCESS_ALL_FILTERS: All entry conditions satisfied at bar {current_bar}")
-        return True
+        self._log_debug(f"  NO_SIGNALS: No entry conditions met at bar {current_bar}")
+        return (None, False)
 
     def _full_entry_signal(self):
-        """Return True if ALL *full* entry constraints pass.
+        """Return tuple (signal_type, has_signal) for entry constraints.
 
-        Mirrors the Pine Script required + optional filters.
-        Includes optional pullback entry logic.
+        Returns:
+            ('LONG', True) if LONG entry conditions met
+            ('SHORT', True) if SHORT entry conditions met  
+            (None, False) if no entry conditions met
         """
         dt = bt.num2date(self.data.datetime[0])
         
-        # PULLBACK ENTRY SYSTEM STATE MACHINE
-        if self.p.use_pullback_entry:
-            return self._handle_pullback_entry(dt)
+        # Check LONG signals if enabled
+        if self.p.enable_long_trades:
+            if self.p.long_use_pullback_entry:
+                long_signal = self._handle_pullback_entry(dt, 'LONG')
+            else:
+                long_signal = self._standard_entry_signal(dt, 'LONG')
+            
+            if long_signal:
+                return ('LONG', True)
         
-        # STANDARD ENTRY LOGIC (when pullback is disabled)
-        return self._standard_entry_signal(dt)
+        # Check SHORT signals if enabled  
+        if self.p.enable_short_trades:
+            if self.p.short_use_pullback_entry:
+                short_signal = self._handle_pullback_entry(dt, 'SHORT')
+            else:
+                short_signal = self._standard_entry_signal(dt, 'SHORT')
+            
+            if short_signal:
+                return ('SHORT', True)
+        
+        return (None, False)
     
-    def _standard_entry_signal(self, dt):
-        """Standard entry logic without pullback system"""
+    def _standard_entry_signal(self, dt, direction):
+        """Standard entry logic without pullback system
+        
+        Args:
+            dt: Current datetime
+            direction: 'LONG' or 'SHORT'
+        """
+        if direction == 'LONG':
+            return self._standard_long_entry_signal(dt)
+        elif direction == 'SHORT':
+            return self._standard_short_entry_signal(dt)
+        else:
+            return False
+    
+    def _standard_long_entry_signal(self, dt):
+        """Standard LONG entry logic without pullback system"""
         # 1. Previous candle bullish check
         try:
             prev_bull = self.data.close[-1] > self.data.open[-1]
         except IndexError:
             return False
 
-        # 2. EMA crossover check (ANY of the three)
+        # 2. EMA crossover check (ANY of the three) - ABOVE for LONG
         cross_fast = self._cross_above(self.ema_confirm, self.ema_fast)
         cross_medium = self._cross_above(self.ema_confirm, self.ema_medium) 
         cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
         cross_any = cross_fast or cross_medium or cross_slow
         
-        if cross_any:
-            cross_type = []
-            if cross_fast: cross_type.append("FAST")
-            if cross_medium: cross_type.append("MEDIUM") 
-            if cross_slow: cross_type.append("SLOW")
-        
         if not (prev_bull and cross_any):
             return False
 
-        # 3. EMA order condition
-        if self.p.use_ema_order_condition:
+        # 3. EMA order condition (LONG: confirm > others)
+        if self.p.long_use_ema_order_condition:
             ema_order_ok = (
                 self.ema_confirm[0] > self.ema_fast[0] and
                 self.ema_confirm[0] > self.ema_medium[0] and
@@ -996,32 +1149,96 @@ class SunriseSimple(bt.Strategy):
             if not ema_order_ok:
                 return False
 
-        # 4. Price filter EMA
-        if self.p.use_price_filter_ema:
+        # 4. Price filter EMA (LONG: close > filter)
+        if self.p.long_use_price_filter_ema:
             price_above_filter = self.data.close[0] > self.ema_filter_price[0]
             if not price_above_filter:
                 return False
 
-        # 5. Angle filter
-        if self.p.use_angle_filter:
+        # 5. Angle filter (LONG: positive angle)
+        if self.p.long_use_angle_filter:
             current_angle = self._angle()
-            angle_ok = current_angle > self.p.min_angle
+            angle_ok = current_angle > self.p.long_min_angle
             if not angle_ok:
                 return False
 
-        # 6. ATR volatility filter (standard entry)
-        if self.p.use_atr_filter:
+        # 6. ATR volatility filter (LONG)
+        if self.p.long_use_atr_filter:
             current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-            if current_atr < self.p.atr_min_threshold:
-                if self.p.print_signals:
-                    print(f"ATR Filter: Standard entry rejected - ATR {current_atr:.6f} < threshold {self.p.atr_min_threshold:.6f}")
+            if current_atr < self.p.long_atr_min_threshold:
+                if self.p.verbose_debug:
+                    print(f"ATR Filter: LONG entry rejected - ATR {current_atr:.6f} < threshold {self.p.long_atr_min_threshold:.6f}")
                 return False
 
-        # All filters passed
+        return True
+
+    def _standard_short_entry_signal(self, dt):
+        """Standard SHORT entry logic without pullback system"""
+        # 1. Previous candle bearish check
+        try:
+            prev_bear = self.data.close[-1] < self.data.open[-1]
+        except IndexError:
+            return False
+
+        # 2. EMA crossover check (ANY of the three) - BELOW for SHORT
+        cross_fast = self._cross_below(self.ema_confirm, self.ema_fast)
+        cross_medium = self._cross_below(self.ema_confirm, self.ema_medium) 
+        cross_slow = self._cross_below(self.ema_confirm, self.ema_slow)
+        cross_any = cross_fast or cross_medium or cross_slow
+        
+        if not (prev_bear and cross_any):
+            return False
+
+        # 3. EMA order condition (SHORT: confirm < others)
+        if self.p.short_use_ema_order_condition:
+            ema_order_ok = (
+                self.ema_confirm[0] < self.ema_fast[0] and
+                self.ema_confirm[0] < self.ema_medium[0] and
+                self.ema_confirm[0] < self.ema_slow[0]
+            )
+            if not ema_order_ok:
+                return False
+
+        # 4. Price filter EMA (SHORT: close < filter)
+        if self.p.short_use_price_filter_ema:
+            price_below_filter = self.data.close[0] < self.ema_filter_price[0]
+            if not price_below_filter:
+                return False
+
+        # 5. Angle filter (SHORT: negative angle)
+        if self.p.short_use_angle_filter:
+            current_angle = self._angle()
+            angle_ok = current_angle < -self.p.short_min_angle  # Negative for SHORT
+            if not angle_ok:
+                return False
+
+        # 6. ATR volatility filter (SHORT)
+        if self.p.short_use_atr_filter:
+            current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+            if current_atr < self.p.short_atr_min_threshold:
+                if self.p.verbose_debug:
+                    print(f"ATR Filter: SHORT entry rejected - ATR {current_atr:.6f} < threshold {self.p.short_atr_min_threshold:.6f}")
+                return False
+
         return True
     
-    def _handle_pullback_entry(self, dt):
-        """Pullback entry state machine logic"""
+    def _handle_pullback_entry(self, dt, direction='LONG'):
+        """Pullback entry state machine logic
+        
+        Args:
+            dt: Current datetime
+            direction: 'LONG' or 'SHORT' signal direction
+            
+        Returns:
+            Boolean indicating if entry should be executed
+        """
+        if direction == 'SHORT':
+            return self._handle_short_pullback_entry(dt)
+        else:
+            return self._handle_long_pullback_entry(dt)
+    
+    def _handle_long_pullback_entry(self, dt):
+        """LONG pullback entry state machine logic (original logic)"""
         current_bar = len(self)
         current_close = float(self.data.close[0])
         current_open = float(self.data.open[0])
@@ -1039,9 +1256,9 @@ class SunriseSimple(bt.Strategy):
                 self.signal_detection_atr = current_atr
                 
                 # Check ATR minimum threshold if filter is enabled
-                if self.p.use_atr_filter and current_atr < self.p.atr_min_threshold:
-                    if self.p.print_signals:
-                        print(f"ATR Filter: Signal rejected - ATR {current_atr:.6f} < threshold {self.p.atr_min_threshold:.6f}")
+                if self.p.long_use_atr_filter and current_atr < self.p.long_atr_min_threshold:
+                    if self.p.verbose_debug:
+                        print(f"ATR Filter: Signal rejected - ATR {current_atr:.6f} < threshold {self.p.long_atr_min_threshold:.6f}")
                     return False
                 
                 self.pullback_state = "WAITING_PULLBACK"
@@ -1059,7 +1276,7 @@ class SunriseSimple(bt.Strategy):
                     self.first_red_high = current_high
                 
                 # Check if we exceeded max red candles
-                if self.pullback_red_count > self.p.pullback_max_candles:
+                if self.pullback_red_count > self.p.long_pullback_max_candles:
                     self._reset_pullback_state()
                     return False
                     
@@ -1070,18 +1287,18 @@ class SunriseSimple(bt.Strategy):
                     self.pullback_start_atr = current_atr
                     
                     # Check ATR increment condition if filter is enabled
-                    if self.p.use_atr_filter and self.signal_detection_atr is not None:
+                    if self.p.long_use_atr_filter and self.signal_detection_atr is not None:
                         atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
-                        if atr_increment < self.p.atr_increment_threshold:
-                            if self.p.print_signals:
-                                print(f"ATR Filter: Pullback rejected - ATR increment {atr_increment:.6f} < threshold {self.p.atr_increment_threshold:.6f}")
+                        if atr_increment < self.p.long_atr_increment_threshold:
+                            if self.p.verbose_debug:
+                                print(f"ATR Filter: Pullback rejected - ATR increment {atr_increment:.6f} < threshold {self.p.long_atr_increment_threshold:.6f}")
                             self._reset_pullback_state()
                             return False
                     
                     # Pullback phase complete, start entry window
                     self.pullback_state = "WAITING_BREAKOUT"
                     self.entry_window_start = current_bar
-                    self.breakout_target = self.first_red_high + (self.p.entry_pip_offset * self.p.pip_value)
+                    self.breakout_target = self.first_red_high + (self.p.long_entry_pip_offset * self.p.pip_value)
                 else:
                     # No pullback occurred, reset
                     self._reset_pullback_state()
@@ -1090,7 +1307,7 @@ class SunriseSimple(bt.Strategy):
         elif self.pullback_state == "WAITING_BREAKOUT":
             # Check if entry window expired
             bars_in_window = current_bar - self.entry_window_start
-            if bars_in_window >= self.p.entry_window_periods:
+            if bars_in_window >= self.p.long_entry_window_periods:
                 self._reset_pullback_state()
                 return False
             
@@ -1101,10 +1318,101 @@ class SunriseSimple(bt.Strategy):
                     if self.p.print_signals:
                         current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                         atr_info = ""
-                        if self.p.use_atr_filter and self.signal_detection_atr is not None:
+                        if self.p.long_use_atr_filter and self.signal_detection_atr is not None:
                             atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
                             atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: +{atr_increment:.6f})"
                         print(f"BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}{atr_info}")
+                    self._reset_pullback_state()  # Reset for next setup
+                    return True
+            return False
+        
+        return False
+    
+    def _handle_short_pullback_entry(self, dt):
+        """SHORT pullback entry state machine logic (opposite of LONG logic)"""
+        current_bar = len(self)
+        current_close = float(self.data.close[0])
+        current_open = float(self.data.open[0])
+        current_low = float(self.data.low[0])
+        
+        # Check if current candle is green (bullish) - opposite for SHORT
+        is_green_candle = current_close > current_open
+        
+        # STATE MACHINE LOGIC
+        if self.pullback_state == "NORMAL":
+            # Check for initial SHORT entry conditions
+            if self._basic_short_entry_conditions():
+                # Store ATR value when signal is detected
+                current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                self.signal_detection_atr = current_atr
+                
+                # Check ATR minimum threshold if filter is enabled
+                if self.p.short_use_atr_filter and current_atr < self.p.short_atr_min_threshold:
+                    if self.p.verbose_debug:
+                        print(f"SHORT ATR Filter: Signal rejected - ATR {current_atr:.6f} < threshold {self.p.short_atr_min_threshold:.6f}")
+                    return False
+                
+                self.pullback_state = "WAITING_PULLBACK"
+                self.pullback_green_count = 0  # Count GREEN candles for SHORT
+                self.first_green_low = None    # Store LOW of first green candle
+                return False  # Don't enter yet, wait for pullback
+            return False
+            
+        elif self.pullback_state == "WAITING_PULLBACK":
+            if is_green_candle:  # GREEN candles for SHORT pullback
+                self.pullback_green_count += 1
+                
+                # Store low of first green candle
+                if self.pullback_green_count == 1:
+                    self.first_green_low = current_low
+                
+                # Check if we exceeded max green candles
+                if self.pullback_green_count > self.p.short_pullback_max_candles:
+                    self._reset_pullback_state()
+                    return False
+                    
+            else:  # Red candle - pullback ended
+                if self.pullback_green_count > 0:
+                    # Store ATR value when pullback phase ends
+                    current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                    self.pullback_start_atr = current_atr
+                    
+                    # Check ATR increment condition if filter is enabled
+                    if self.p.short_use_atr_filter and self.signal_detection_atr is not None:
+                        atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
+                        if atr_increment < self.p.short_atr_increment_threshold:
+                            if self.p.verbose_debug:
+                                print(f"SHORT ATR Filter: Pullback rejected - ATR increment {atr_increment:.6f} < threshold {self.p.short_atr_increment_threshold:.6f}")
+                            self._reset_pullback_state()
+                            return False
+                    
+                    # Pullback phase complete, start entry window
+                    self.pullback_state = "WAITING_BREAKOUT"
+                    self.entry_window_start = current_bar
+                    self.breakout_target = self.first_green_low - (self.p.short_entry_pip_offset * self.p.pip_value)  # Break BELOW for SHORT
+                else:
+                    # No pullback occurred, reset
+                    self._reset_pullback_state()
+            return False
+            
+        elif self.pullback_state == "WAITING_BREAKOUT":
+            # Check if entry window expired
+            bars_in_window = current_bar - self.entry_window_start
+            if bars_in_window >= self.p.short_entry_window_periods:
+                self._reset_pullback_state()
+                return False
+            
+            # Check for breakout below target (opposite of above for LONG)
+            if current_low <= self.breakout_target:
+                # Breakout detected! Check all other SHORT entry conditions
+                if self._validate_all_short_entry_filters():
+                    if self.p.print_signals:
+                        current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                        atr_info = ""
+                        if self.p.short_use_atr_filter and self.signal_detection_atr is not None:
+                            atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
+                            atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: +{atr_increment:.6f})"
+                        print(f"SHORT BREAKOUT ENTRY! Low={current_low:.5f} <= target={self.breakout_target:.5f}{atr_info}")
                     self._reset_pullback_state()  # Reset for next setup
                     return True
             return False
@@ -1130,7 +1438,7 @@ class SunriseSimple(bt.Strategy):
     def _validate_all_entry_filters(self):
         """Validate all entry filters (3-6) for pullback entry"""
         # 3. EMA order condition
-        if self.p.use_ema_order_condition:
+        if self.p.long_use_ema_order_condition:
             ema_order_ok = (
                 self.ema_confirm[0] > self.ema_fast[0] and
                 self.ema_confirm[0] > self.ema_medium[0] and
@@ -1140,15 +1448,58 @@ class SunriseSimple(bt.Strategy):
                 return False
 
         # 4. Price filter EMA
-        if self.p.use_price_filter_ema:
+        if self.p.long_use_price_filter_ema:
             price_above_filter = self.data.close[0] > self.ema_filter_price[0]
             if not price_above_filter:
                 return False
 
         # 5. Angle filter
-        if self.p.use_angle_filter:
+        if self.p.long_use_angle_filter:
             current_angle = self._angle()
-            angle_ok = current_angle > self.p.min_angle
+            angle_ok = current_angle > self.p.long_min_angle
+            if not angle_ok:
+                return False
+
+        return True
+    
+    def _basic_short_entry_conditions(self):
+        """Check basic SHORT entry conditions 1 & 2 for pullback system"""
+        # 1. Previous candle bearish check (opposite of LONG)
+        try:
+            prev_bear = self.data.close[-1] < self.data.open[-1]
+        except IndexError:
+            return False
+
+        # 2. EMA crossunder check (ANY of the three) - opposite of LONG
+        cross_fast = self._cross_below(self.ema_confirm, self.ema_fast)
+        cross_medium = self._cross_below(self.ema_confirm, self.ema_medium) 
+        cross_slow = self._cross_below(self.ema_confirm, self.ema_slow)
+        cross_any = cross_fast or cross_medium or cross_slow
+        
+        return prev_bear and cross_any
+    
+    def _validate_all_short_entry_filters(self):
+        """Validate all SHORT entry filters (3-6) for pullback entry"""
+        # 3. EMA order condition (opposite of LONG)
+        if self.p.short_use_ema_order_condition:
+            ema_order_ok = (
+                self.ema_confirm[0] < self.ema_fast[0] and
+                self.ema_confirm[0] < self.ema_medium[0] and
+                self.ema_confirm[0] < self.ema_slow[0]
+            )
+            if not ema_order_ok:
+                return False
+
+        # 4. Price filter EMA (opposite of LONG)
+        if self.p.short_use_price_filter_ema:
+            price_below_filter = self.data.close[0] < self.ema_filter_price[0]
+            if not price_below_filter:
+                return False
+
+        # 5. Angle filter (opposite of LONG)
+        if self.p.short_use_angle_filter:
+            current_angle = self._angle()
+            angle_ok = current_angle < self.p.short_min_angle  # Negative angle for SHORT
             if not angle_ok:
                 return False
 
@@ -1157,8 +1508,13 @@ class SunriseSimple(bt.Strategy):
     def _reset_pullback_state(self):
         """Reset pullback state machine to initial state"""
         self.pullback_state = "NORMAL"
+        # Reset LONG pullback variables
         self.pullback_red_count = 0
         self.first_red_high = None
+        # Reset SHORT pullback variables
+        self.pullback_green_count = 0
+        self.first_green_low = None
+        # Reset common variables
         self.entry_window_start = None
         self.breakout_target = None
         # Reset ATR tracking variables
@@ -1166,47 +1522,72 @@ class SunriseSimple(bt.Strategy):
         self.pullback_start_atr = None
 
     def notify_order(self, order):
-        """Enhanced order notification with robust OCA group for SL/TP."""
+        """Enhanced order notification with robust OCA group for SL/TP supporting both LONG and SHORT positions."""
         dt = bt.num2date(self.data.datetime[0])
 
         if order.status in [order.Submitted, order.Accepted]:
             return
 
         if order.status == order.Completed:
-            if order.isbuy():
-                # BUY order completed - this is our entry
+            # Determine if this is an entry or exit order
+            if order == self.order:  # This is our main entry order
+                # Entry order completed
                 self.last_entry_price = order.executed.price
                 self.last_entry_bar = len(self)
-                if self.p.print_signals:
-                    print(f"BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
-
-                # --- THE DEFINITIVE FIX: USE AN OCA (ONE-CANCELS-ALL) GROUP ---
-                if self.stop_level and self.take_level:
-                    # Place the stop and limit sell orders as an OCA group
-                    # This ensures that if one is executed, the broker automatically cancels the other.
-                    # This is the industry-standard way to prevent phantom positions.
-                    self.stop_order = self.sell(
-                        size=order.executed.size,
-                        exectype=bt.Order.Stop,
-                        price=self.stop_level,
-                        oco=self.limit_order  # Link to the other order
-                    )
-                    self.limit_order = self.sell(
-                        size=order.executed.size,
-                        exectype=bt.Order.Limit,
-                        price=self.take_level,
-                        oco=self.stop_order # Link to the other order
-                    )
+                
+                if order.isbuy():
+                    # LONG position entry (BUY order)
+                    entry_type = "📈 LONG BUY"
                     if self.p.print_signals:
-                        print(f"PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                        print(f"✅ {entry_type} EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
+
+                    # Place SHORT protective orders (SELL SL/TP for LONG position)
+                    if self.stop_level and self.take_level:
+                        self.stop_order = self.sell(
+                            size=order.executed.size,
+                            exectype=bt.Order.Stop,
+                            price=self.stop_level,
+                            oco=self.limit_order  # Link to TP order
+                        )
+                        self.limit_order = self.sell(
+                            size=order.executed.size,
+                            exectype=bt.Order.Limit,
+                            price=self.take_level,
+                            oco=self.stop_order  # Link to SL order
+                        )
+                        if self.p.print_signals:
+                            print(f"🛡️  LONG PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                
+                else:  # order.issell()
+                    # SHORT position entry (SELL order)
+                    entry_type = "📉 SHORT SELL"
+                    if self.p.print_signals:
+                        print(f"✅ {entry_type} EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
+
+                    # Place LONG protective orders (BUY SL/TP for SHORT position)
+                    if self.stop_level and self.take_level:
+                        self.stop_order = self.buy(
+                            size=order.executed.size,
+                            exectype=bt.Order.Stop,
+                            price=self.stop_level,  # Stop above entry for SHORT
+                            oco=self.limit_order  # Link to TP order
+                        )
+                        self.limit_order = self.buy(
+                            size=order.executed.size,
+                            exectype=bt.Order.Limit,
+                            price=self.take_level,  # Take below entry for SHORT
+                            oco=self.stop_order  # Link to SL order
+                        )
+                        if self.p.print_signals:
+                            print(f"🛡️  SHORT PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
                 
                 self.order = None
 
-            else:  # SELL order completed - this is an EXIT
-                # With OCA, we only expect one of these to ever complete.
-                # The other will be automatically Canceled.
+            else:
+                # Exit order completed (SL/TP or manual close)
                 exit_price = order.executed.price
                 
+                # Determine exit reason
                 exit_reason = "UNKNOWN"
                 if order.exectype == bt.Order.Stop:
                     exit_reason = "STOP_LOSS"
@@ -1217,8 +1598,11 @@ class SunriseSimple(bt.Strategy):
                 
                 self.last_exit_reason = exit_reason
                 
+                # Determine position direction that was closed
+                position_type = "📈 LONG" if order.issell() else "📉 SHORT"
+                
                 if self.p.print_signals:
-                    print(f"SELL EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
+                    print(f"🔚 {position_type} EXIT EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
 
                 # Reset all state variables to ensure a clean slate for the next trade
                 self.stop_order = None
@@ -1253,13 +1637,21 @@ class SunriseSimple(bt.Strategy):
         pnl = trade.pnlcomm
         
         # Calculate entry and exit prices from PnL and trade data
-        # PnL = (exit_price - entry_price) * size - commission
-        # For long trades: exit_price = entry_price + (pnl / size)
+        # For LONG trades: PnL = (exit_price - entry_price) * size - commission
+        # For SHORT trades: PnL = (entry_price - exit_price) * size - commission
+        # In both cases: exit_price can be calculated from entry_price and pnl
         
         entry_price = self.last_entry_price if self.last_entry_price else 0
+        position_direction = 'LONG' if trade.size > 0 else 'SHORT'
+        
         if entry_price > 0 and trade.size != 0:
-            # Calculate exit price from PnL: exit = entry + (pnl / size)
-            exit_price = entry_price + (pnl / trade.size)
+            # Calculate exit price from PnL
+            if position_direction == 'LONG':
+                # LONG: exit = entry + (pnl / size)
+                exit_price = entry_price + (pnl / trade.size)
+            else:
+                # SHORT: exit = entry - (pnl / size) [size is negative for SHORT]
+                exit_price = entry_price + (pnl / trade.size)  # This works for both since size is negative for SHORT
         else:
             # Fallback to trade.price (might be average or exit price)
             exit_price = trade.price
@@ -1303,8 +1695,13 @@ class SunriseSimple(bt.Strategy):
         self.last_exit_bar = current_bar
 
         if self.p.print_signals:
-            pips = (exit_price - entry_price) / self.p.pip_value if self.p.pip_value and entry_price > 0 else 0
-            print(f"TRADE CLOSED {dt:%Y-%m-%d %H:%M} reason={exit_reason} PnL={pnl:.2f} Pips={pips:.1f}")
+            # Calculate pips based on position direction
+            if position_direction == 'LONG':
+                pips = (exit_price - entry_price) / self.p.pip_value if self.p.pip_value and entry_price > 0 else 0
+            else:  # SHORT
+                pips = (entry_price - exit_price) / self.p.pip_value if self.p.pip_value and entry_price > 0 else 0
+            
+            print(f"{position_direction} TRADE CLOSED {dt:%Y-%m-%d %H:%M} reason={exit_reason} PnL={pnl:.2f} Pips={pips:.1f}")
             print(f"  Entry: {entry_price:.5f} -> Exit: {exit_price:.5f} | Size: {trade.size}")
 
         # Reset levels
@@ -1312,8 +1709,8 @@ class SunriseSimple(bt.Strategy):
         self.take_level = None
         self.initial_stop_level = None
         
-        # Reset pullback state after trade completion
-        if self.p.use_pullback_entry:
+        # Reset pullback state after trade completion (both LONG and SHORT)
+        if self.p.long_use_pullback_entry or self.p.short_use_pullback_entry:
             self._reset_pullback_state()
 
     def stop(self):
@@ -1386,7 +1783,7 @@ class SunriseSimple(bt.Strategy):
         if pnl_diff > 10.0:  # Allow for small rounding/fee differences
             print(f"INFO: PnL difference: {pnl_diff:.2f} (calculated: {calculated_pnl:+.2f})")
 
-        if self.p.use_pullback_entry:
+        if self.p.long_use_pullback_entry or self.p.short_use_pullback_entry:
             self._reset_pullback_state()
     
     def _cancel_all_pending_orders(self):
@@ -1484,12 +1881,290 @@ if __name__ == '__main__':
     print(f"=== SUNRISE SIMPLE === (from {FROMDATE} to {TODATE})")
     if ENABLE_FOREX_CALC:
         print(f">> FOREX MODE ENABLED - Data: {DATA_FILENAME}")
-        print(f"🎯 Instrument Detection: {FOREX_INSTRUMENT} (AUTO-DETECT from filename)")
+        print(f">> Instrument Detection: {FOREX_INSTRUMENT} (AUTO-DETECT from filename)")
     else:
         print(f"📈 STANDARD MODE - Data: {DATA_FILENAME}")
+
+    if RUN_DUAL_CEREBRO and ENABLE_LONG_TRADES and ENABLE_SHORT_TRADES:
+        print("🔄 DUAL CEREBRO MODE: Running separate LONG-only and SHORT-only strategies")
+        
+        # === LONG-ONLY CEREBRO ===
+        print("\n📈 RUNNING LONG-ONLY STRATEGY...")
+        cerebro_long = bt.Cerebro(stdstats=False)
+        data_long = bt.feeds.GenericCSVData(**feed_kwargs)
+        cerebro_long.adddata(data_long)
+        cerebro_long.broker.setcash(STARTING_CASH)
+        cerebro_long.broker.setcommission(leverage=30.0)
+        
+        # Override to LONG-only
+        long_kwargs = STRAT_KWARGS.copy()
+        long_kwargs.update({
+            'long_enabled': True,
+            'short_enabled': False,
+            'print_signals': True
+        })
+        cerebro_long.addstrategy(SunriseSimple, **long_kwargs)
+        
+        try: cerebro_long.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseSimple.params.buy_sell_plotdist)
+        except Exception: pass
+        if SunriseSimple.params.plot_sltp_lines:
+            try: cerebro_long.addobserver(SLTPObserver)
+            except Exception: pass
+        try: cerebro_long.addobserver(bt.observers.Value)
+        except Exception: pass
+        
+        results_long = cerebro_long.run()
+        final_value_long = cerebro_long.broker.getvalue()
+        
+        # === SHORT-ONLY CEREBRO ===
+        print("\n📉 RUNNING SHORT-ONLY STRATEGY...")
+        cerebro_short = bt.Cerebro(stdstats=False)
+        data_short = bt.feeds.GenericCSVData(**feed_kwargs)
+        cerebro_short.adddata(data_short)
+        cerebro_short.broker.setcash(STARTING_CASH)
+        cerebro_short.broker.setcommission(leverage=30.0)
+        
+        # Override to SHORT-only
+        short_kwargs = STRAT_KWARGS.copy()
+        short_kwargs.update({
+            'long_enabled': False,
+            'short_enabled': True,
+            'print_signals': True
+        })
+        cerebro_short.addstrategy(SunriseSimple, **short_kwargs)
+        
+        try: cerebro_short.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseSimple.params.buy_sell_plotdist)
+        except Exception: pass
+        if SunriseSimple.params.plot_sltp_lines:
+            try: cerebro_short.addobserver(SLTPObserver)
+            except Exception: pass
+        try: cerebro_short.addobserver(bt.observers.Value)
+        except Exception: pass
+        
+        results_short = cerebro_short.run()
+        final_value_short = cerebro_short.broker.getvalue()
+        
+        # === COMBINED RESULTS ===
+        print("\n=== DUAL CEREBRO SUMMARY ===")
+        long_pnl = final_value_long - STARTING_CASH
+        short_pnl = final_value_short - STARTING_CASH
+        combined_pnl = long_pnl + short_pnl
+        combined_value = STARTING_CASH + combined_pnl
+        
+        # Extract individual strategy metrics
+        long_strategy = results_long[0]
+        short_strategy = results_short[0]
+        
+        # Calculate combined metrics
+        combined_trades = long_strategy.trades + short_strategy.trades
+        combined_wins = long_strategy.wins + short_strategy.wins
+        combined_losses = long_strategy.losses + short_strategy.losses
+        combined_gross_profit = long_strategy.gross_profit + short_strategy.gross_profit
+        combined_gross_loss = long_strategy.gross_loss + short_strategy.gross_loss
+        
+        # Calculate combined ratios
+        combined_win_rate = (combined_wins / combined_trades * 100) if combined_trades > 0 else 0
+        combined_pf = (combined_gross_profit / abs(combined_gross_loss)) if combined_gross_loss != 0 else float('inf')
+        
+        print(f"📈 LONG-ONLY  PnL: {long_pnl:+,.2f} | Final: {final_value_long:,.2f}")
+        print(f"📉 SHORT-ONLY PnL: {short_pnl:+,.2f} | Final: {final_value_short:,.2f}")
+        print(f"🔄 COMBINED   PnL: {combined_pnl:+,.2f} | Final: {combined_value:,.2f}")
+        print(f"🔄 COMBINED Stats: Trades: {combined_trades} | Wins: {combined_wins} | Losses: {combined_losses} | WinRate: {combined_win_rate:.2f}% | PF: {combined_pf:.2f}")
+        
+        # === COMBINED PLOT ===
+        if ENABLE_PLOT and getattr(long_strategy.p, 'plot_result', False):
+            print("\n📊 Creating combined portfolio performance chart with 5-minute time axis...")
+            try:
+                import matplotlib.pyplot as plt
+                import numpy as np
+                
+                # Extract actual portfolio values from cerebros
+                long_portfolio_values = []
+                short_portfolio_values = []
+                
+                # Get data from LONG cerebro
+                long_strat = cerebro_long.runstrats[0][0]  # First strategy instance
+                if hasattr(long_strat, '_portfolio_values') and len(long_strat._portfolio_values) > 0:
+                    long_portfolio_values = long_strat._portfolio_values
+                    print(f"📈 LONG portfolio data: {len(long_portfolio_values)} points")
+                else:
+                    print("⚠️  No LONG portfolio tracking data found")
+                    long_portfolio_values = []
+                
+                # Get data from SHORT cerebro  
+                short_strat = cerebro_short.runstrats[0][0]  # First strategy instance
+                if hasattr(short_strat, '_portfolio_values') and len(short_strat._portfolio_values) > 0:
+                    short_portfolio_values = short_strat._portfolio_values
+                    print(f"📉 SHORT portfolio data: {len(short_portfolio_values)} points")
+                else:
+                    print("⚠️  No SHORT portfolio tracking data found")
+                    short_portfolio_values = []
+                
+                # If we have real portfolio data, plot it
+                if len(long_portfolio_values) > 0 and len(short_portfolio_values) > 0:
+                    # Make sure arrays are same length
+                    min_len = min(len(long_portfolio_values), len(short_portfolio_values))
+                    long_values = long_portfolio_values[:min_len]
+                    short_values = short_portfolio_values[:min_len]
+                    
+                    # Calculate combined portfolio values
+                    combined_values = [(l + s - STARTING_CASH) for l, s in zip(long_values, short_values)]
+                    
+                    # Create simple index for x-axis (5-minute intervals)
+                    x_axis = list(range(len(combined_values)))
+                    
+                    # Create the portfolio chart
+                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))
+                    
+                    # Main combined portfolio chart
+                    ax1.plot(x_axis, combined_values, 
+                            label=f'🔄 Combined Portfolio (+${combined_pnl:.2f})', 
+                            linewidth=3, color='purple')
+                    ax1.plot(x_axis, long_values, 
+                            label=f'📈 LONG Only (+${long_pnl:.2f})', 
+                            linewidth=2, alpha=0.8, color='green')
+                    ax1.plot(x_axis, short_values, 
+                            label=f'📉 SHORT Only (+${short_pnl:.2f})', 
+                            linewidth=2, alpha=0.8, color='red')
+                    ax1.axhline(y=STARTING_CASH, color='gray', linestyle='--', alpha=0.5, label='Break Even')
+                    
+                    ax1.set_title(f'SUNRISE DUAL CEREBRO - Portfolio Performance (5-minute bars)\n' +
+                                 f'Combined: {combined_trades} trades | Win Rate: {combined_win_rate:.1f}% | PF: {combined_pf:.2f}', 
+                                 fontsize=14, fontweight='bold')
+                    ax1.set_ylabel('Portfolio Value ($)', fontweight='bold')
+                    ax1.set_xlabel('5-Minute Bars', fontweight='bold')
+                    ax1.legend(loc='upper left')
+                    ax1.grid(True, alpha=0.3)
+                    
+                    # Performance metrics comparison
+                    strategies = ['LONG Only', 'SHORT Only', 'Combined']
+                    pnls = [long_pnl, short_pnl, combined_pnl]
+                    colors = ['green', 'red', 'purple']
+                    
+                    bars = ax2.bar(strategies, pnls, color=colors, alpha=0.7)
+                    ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+                    ax2.set_title('Strategy Performance Comparison', fontweight='bold')
+                    ax2.set_ylabel('P&L ($)', fontweight='bold')
+                    ax2.grid(True, alpha=0.3, axis='y')
+                    
+                    # Add value labels on bars
+                    for bar, pnl in zip(bars, pnls):
+                        height = bar.get_height()
+                        ax2.text(bar.get_x() + bar.get_width()/2., height + (100 if height >= 0 else -200),
+                                f'${pnl:.0f}', ha='center', va='bottom' if height >= 0 else 'top', fontweight='bold')
+                    
+                    plt.tight_layout()
+                    plt.show()
+                    
+                    print(f"✅ Combined portfolio chart created with {len(combined_values)} 5-minute intervals!")
+                    
+                else:
+                    print("⚠️  Insufficient portfolio data, using simplified chart")
+                    # Simple final values chart
+                    strategies = ['LONG Only', 'SHORT Only', 'Combined']
+                    final_values = [final_value_long, final_value_short, combined_value]
+                    pnls = [long_pnl, short_pnl, combined_pnl]
+                    colors = ['green', 'red', 'purple']
+                    
+                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+                    
+                    # Final values
+                    bars1 = ax1.bar(strategies, final_values, color=colors, alpha=0.7)
+                    ax1.axhline(y=STARTING_CASH, color='gray', linestyle='--', alpha=0.5, label='Starting Cash')
+                    ax1.set_title(f'SUNRISE DUAL CEREBRO - Final Portfolio Values\n' +
+                                 f'Combined: {combined_trades} trades | Win Rate: {combined_win_rate:.1f}% | PF: {combined_pf:.2f}', 
+                                 fontweight='bold')
+                    ax1.set_ylabel('Final Portfolio Value ($)', fontweight='bold')
+                    ax1.legend()
+                    ax1.grid(True, alpha=0.3, axis='y')
+                    
+                    # P&L comparison
+                    bars2 = ax2.bar(strategies, pnls, color=colors, alpha=0.7)
+                    ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+                    ax2.set_title('Strategy Performance Comparison', fontweight='bold')
+                    ax2.set_ylabel('P&L ($)', fontweight='bold')
+                    ax2.grid(True, alpha=0.3, axis='y')
+                    
+                    # Add value labels
+                    for bar, val in zip(bars1, final_values):
+                        height = bar.get_height()
+                        ax1.text(bar.get_x() + bar.get_width()/2., height + 500,
+                                f'${val:,.0f}', ha='center', va='bottom', fontweight='bold')
+                    
+                    for bar, pnl in zip(bars2, pnls):
+                        height = bar.get_height()
+                        ax2.text(bar.get_x() + bar.get_width()/2., height + (100 if height >= 0 else -200),
+                                f'${pnl:.0f}', ha='center', va='bottom' if height >= 0 else 'top', fontweight='bold')
+                    
+                    plt.tight_layout()
+                    plt.show()
+                    
+                    print("✅ Simplified portfolio comparison chart created!")
+                
+                # Optional: Show individual strategy plots with backtrader native charts
+                try:
+                    user_input = input("\n📊 Show individual Backtrader charts with entries/exits? (y/n): ").lower().strip()
+                    if user_input in ['y', 'yes']:
+                        print("📈 Showing LONG strategy chart...")
+                        long_title = f'LONG STRATEGY | PnL: +${long_pnl:.2f} | Trades: {long_strategy.trades}'
+                        cerebro_long.plot(style='candlestick', subtitle=long_title)
+                        
+                        print("📉 Showing SHORT strategy chart...")
+                        short_title = f'SHORT STRATEGY | PnL: +${short_pnl:.2f} | Trades: {short_strategy.trades}'
+                        cerebro_short.plot(style='candlestick', subtitle=short_title)
+                except:
+                    pass
+                
+            except Exception as e:
+                print(f"Combined plot error: {e}")
+                print("� Falling back to separate strategy plots...")
+                
+                # Fallback: Show LONG strategy plot with combined info
+                plot_title = f'LONG STRATEGY (Part of Dual Cerebro)\nLONG PnL: {long_pnl:+,.0f} ({long_strategy.trades} trades) | COMBINED PnL: {combined_pnl:+,.0f}'
+                print("� Showing LONG strategy plot...")
+                cerebro_long.plot(style='candlestick', subtitle=plot_title)
+                
+                # Ask if user wants to see SHORT plot separately
+                try:
+                    user_input = input("\n📉 Show SHORT strategy plot separately? (y/n): ").lower().strip()
+                    if user_input in ['y', 'yes']:
+                        short_title = f'SHORT STRATEGY (Part of Dual Cerebro)\nSHORT PnL: {short_pnl:+,.0f} ({short_strategy.trades} trades)'
+                        print("📉 Showing SHORT strategy plot...")
+                        cerebro_short.plot(style='candlestick', subtitle=short_title)
+                except:
+                    pass
+        
+        # Use combined results as the final result
+        final_value = combined_value
+        
+    else:
+        # === SINGLE CEREBRO MODE ===
+        cerebro = bt.Cerebro(stdstats=False)
+        cerebro.adddata(data)
+        cerebro.broker.setcash(STARTING_CASH)
+        cerebro.broker.setcommission(leverage=30.0)
+        cerebro.addstrategy(SunriseSimple, **STRAT_KWARGS)
+        try: cerebro.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseSimple.params.buy_sell_plotdist)
+        except Exception: pass
+        if SunriseSimple.params.plot_sltp_lines:
+            try: cerebro.addobserver(SLTPObserver)
+            except Exception: pass
+        try: cerebro.addobserver(bt.observers.Value)
+        except Exception: pass
+
+        if LIMIT_BARS > 0:
+            # Monkey-patch next() to stop early after LIMIT_BARS bars for quick experimentation.
+            orig_next = SunriseSimple.next
+            def limited_next(self):
+                if len(self.data) >= LIMIT_BARS:
+                    self.env.runstop(); return
+                orig_next(self)
+            SunriseSimple.next = limited_next
+
+        results = cerebro.run()
+        final_value = cerebro.broker.getvalue()
     
-    results = cerebro.run()
-    print(f"Final Value: {cerebro.broker.getvalue():,.2f}")
-    if results and getattr(results[0].p, 'plot_result', False) and ENABLE_PLOT:
+    print(f"Final Value: {final_value:,.2f}")
+    if not RUN_DUAL_CEREBRO and results and getattr(results[0].p, 'plot_result', False) and ENABLE_PLOT:
         try: cerebro.plot(style='candlestick')
         except Exception as e: print(f"Plot error: {e}")
