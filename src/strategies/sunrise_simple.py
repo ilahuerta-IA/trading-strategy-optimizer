@@ -144,7 +144,7 @@ DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # 🇨🇭 USD vs Swiss Franc (PF=1.03)
 #DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'     # 🇬🇧 British Pound vs USD (PF=1.02) - Major Forex
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
+FROMDATE = '2024-07-10'               # Start date for backtesting (YYYY-MM-DD)
 TODATE = '2025-07-25'                 # End date for backtesting (YYYY-MM-DD)
 STARTING_CASH = 100000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
@@ -161,10 +161,18 @@ ENABLE_LONG_TRADES = True            # Enable long (buy) entries
 ENABLE_SHORT_TRADES = False           # Enable short (sell) entries
 
 # === DUAL CEREBRO MODE ===
-RUN_DUAL_CEREBRO = True              # Run separate LONG-only and SHORT-only cerebros to avoid position interference
+RUN_DUAL_CEREBRO = False              # Run separate LONG-only and SHORT-only cerebros to avoid position interference
 
 # === DEBUG SETTINGS ===
 VERBOSE_DEBUG = False                 # Print detailed debug info to console (set True only for troubleshooting)
+
+# === TRADE REPORTING ===
+EXPORT_TRADE_REPORTS = True          # Export detailed trade reports to temp_reports directory
+TRADE_REPORT_ENABLED = True          # Enable trade report generation (simple text format)
+
+# === PLOTTING OPTIONS ===
+SHOW_INDIVIDUAL_PLOTS = True         # Show individual LONG/SHORT plots when running dual cerebro
+AUTO_PLOT_SINGLE_MODE = True         # Automatically plot in single mode (LONG-only or SHORT-only)
 
 # === LONG ATR VOLATILITY FILTER ===
 LONG_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for long entries
@@ -180,7 +188,7 @@ SHORT_ATR_INCREMENT_THRESHOLD = 0.000030 #0.15(Gold)      # Required ATR change 
 LONG_USE_EMA_ORDER_CONDITION = False        # Require confirm_EMA > all other EMAs for long entries
 LONG_USE_PRICE_FILTER_EMA = True            # Require close > filter_EMA (trend alignment) for long entries
 LONG_USE_ANGLE_FILTER = True                # Require minimum EMA slope angle for long entries
-LONG_MIN_ANGLE = 80.0                      # Minimum angle in degrees for EMA slope (long entries)
+LONG_MIN_ANGLE = 65.0  #75                    # Minimum angle in degrees for EMA slope (long entries)
 LONG_ANGLE_SCALE_FACTOR = 10000.0           # Scaling factor for angle calculation sensitivity (long entries)
 
 # === SHORT ENTRY FILTERS ===
@@ -356,6 +364,171 @@ class SunriseSimple(bt.Strategy):
             except:
                 pass
             self.debug_file = None
+
+    def _record_trade_entry(self, signal_direction, dt, entry_price, position_size, current_atr):
+        """Record trade entry details for reporting (optimized format)"""
+        if not (EXPORT_TRADE_REPORTS or TRADE_REPORT_ENABLED) or not self.trade_report_file:
+            return
+            
+        try:
+            # Calculate periods before entry (fix: use correct tracking variables)
+            periods_before_entry = 0
+            if hasattr(self, 'entry_window_start') and self.entry_window_start is not None:
+                periods_before_entry = len(self) - self.entry_window_start
+            elif hasattr(self, 'signal_detection_bar') and self.signal_detection_bar is not None:
+                periods_before_entry = len(self) - self.signal_detection_bar
+            
+            # Get current angle  
+            current_angle = self._angle() if hasattr(self, '_angle') else 0.0
+            
+            # Calculate real ATR increment (current vs signal detection) - USER REQUESTED
+            real_atr_increment = 0.0
+            stored_signal_atr = getattr(self, 'entry_signal_detection_atr', None)
+            if stored_signal_atr is not None:
+                real_atr_increment = abs(current_atr - stored_signal_atr)
+            
+            # Store trade entry data (simplified - keep ATR Current, add back increment)
+            trade_entry = {
+                'entry_time': dt,
+                'direction': signal_direction,
+                'stop_level': self.stop_level,
+                'take_level': self.take_level,
+                'current_atr': current_atr,  # Keep this - very important data
+                'current_angle': current_angle,
+                'periods_before_entry': periods_before_entry,
+                'real_atr_increment': real_atr_increment,  # Add back - user requested
+                'pullback_state': getattr(self, 'pullback_state', 'NORMAL')
+            }
+            
+            # Add to trade reports list
+            self.trade_reports.append(trade_entry)
+            
+            # Write to file (remove Stop Loss/Take Profit, ensure ATR increment shows)
+            self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
+            self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.trade_report_file.write(f"Direction: {signal_direction}\n")
+            self.trade_report_file.write(f"ATR Current: {current_atr:.6f}\n")  # Keep this - very important!
+            # Always show ATR increment - USER REQUESTED: Add ATR increment in each entry
+            stored_increment = getattr(self, 'entry_atr_increment', None)
+            if stored_increment is not None:
+                self.trade_report_file.write(f"ATR Increment: {stored_increment:+.6f}\n")
+            else:
+                self.trade_report_file.write(f"ATR Increment: N/A\n")
+            self.trade_report_file.write(f"Angle Current: {current_angle:.2f}°\n")
+            # Always show periods/bars before entry
+            self.trade_report_file.write(f"Bars to Entry: {periods_before_entry}\n")
+            if getattr(self, 'pullback_state', 'NORMAL') != 'NORMAL':
+                self.trade_report_file.write(f"Pullback State: {getattr(self, 'pullback_state', 'NORMAL')}\n")
+            self.trade_report_file.write("-" * 50 + "\n\n")
+            self.trade_report_file.flush()
+            
+        except Exception as e:
+            print(f"Trade entry recording error: {e}")
+
+    def _record_trade_exit(self, dt, exit_price, pnl, exit_reason):
+        """Record trade exit details for reporting (optimized format)"""
+        if not (EXPORT_TRADE_REPORTS or TRADE_REPORT_ENABLED) or not self.trade_report_file:
+            return
+            
+        try:
+            # Find the most recent trade entry
+            if self.trade_reports:
+                last_trade = self.trade_reports[-1]
+                
+                # Calculate trade duration
+                if 'entry_time' in last_trade:
+                    duration = dt - last_trade['entry_time']
+                    duration_minutes = duration.total_seconds() / 60
+                    duration_bars = int(duration_minutes / 5)  # 5-minute bars
+                else:
+                    duration_minutes = 0
+                    duration_bars = 0
+                
+                # Calculate pips for display
+                direction = last_trade.get('direction', 'UNKNOWN')
+                entry_price = None
+                # Get entry price from stored levels or estimate from P&L
+                if 'stop_level' in last_trade and 'take_level' in last_trade:
+                    # Estimate entry price from stop/take levels and direction
+                    stop_level = last_trade['stop_level']
+                    take_level = last_trade['take_level']
+                    if direction == 'LONG':
+                        # For LONG: entry between stop and take
+                        entry_price = (stop_level + take_level) / 2
+                    else:  # SHORT
+                        # For SHORT: entry between stop and take
+                        entry_price = (stop_level + take_level) / 2
+                
+                # Calculate pips based on direction and P&L
+                pips = 0.0
+                if entry_price and exit_price:
+                    if direction == 'LONG':
+                        pips = (exit_price - entry_price) / 0.0001  # Forex pip calculation
+                    else:  # SHORT
+                        pips = (entry_price - exit_price) / 0.0001  # Forex pip calculation
+                
+                # Update trade record with exit info (add pips back)
+                last_trade.update({
+                    'exit_time': dt,
+                    'exit_price': exit_price,
+                    'pnl': pnl,
+                    'pips': pips,
+                    'exit_reason': exit_reason,
+                    'duration_minutes': duration_minutes,
+                    'duration_bars': duration_bars
+                })
+                
+                # Write exit details to file (add pips back)
+                self.trade_report_file.write(f"EXIT #{len(self.trade_reports)}\n")
+                self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                self.trade_report_file.write(f"Exit Reason: {exit_reason}\n")
+                self.trade_report_file.write(f"P&L: {pnl:.2f}\n")
+                if abs(pips) > 0.1:  # Only show pips if meaningful
+                    self.trade_report_file.write(f"Pips: {pips:.1f}\n")
+                self.trade_report_file.write(f"Duration: {duration_bars} bars ({duration_minutes:.0f} min)\n")
+                self.trade_report_file.write("=" * 80 + "\n\n")
+                self.trade_report_file.flush()
+                
+        except Exception as e:
+            print(f"Trade exit recording error: {e}")
+
+    def _close_trade_reporting(self):
+        """Close trade reporting file and generate summary"""
+        if self.trade_report_file:
+            try:
+                # Write summary
+                total_trades = len(self.trade_reports)
+                winning_trades = [t for t in self.trade_reports if t.get('pnl', 0) > 0]
+                losing_trades = [t for t in self.trade_reports if t.get('pnl', 0) < 0]
+                
+                total_pnl = sum(t.get('pnl', 0) for t in self.trade_reports)
+                win_rate = (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
+                
+                self.trade_report_file.write("\n" + "="*80 + "\n")
+                self.trade_report_file.write("SUMMARY\n")
+                self.trade_report_file.write("="*80 + "\n")
+                self.trade_report_file.write(f"Total Trades: {total_trades}\n")
+                self.trade_report_file.write(f"Winning Trades: {len(winning_trades)}\n")
+                self.trade_report_file.write(f"Losing Trades: {len(losing_trades)}\n")
+                self.trade_report_file.write(f"Win Rate: {win_rate:.2f}%\n")
+                self.trade_report_file.write(f"Total P&L: {total_pnl:.2f}\n")
+                
+                if winning_trades:
+                    avg_win = sum(t.get('pnl', 0) for t in winning_trades) / len(winning_trades)
+                    self.trade_report_file.write(f"Average Win: {avg_win:.2f}\n")
+                
+                if losing_trades:
+                    avg_loss = sum(t.get('pnl', 0) for t in losing_trades) / len(losing_trades)
+                    self.trade_report_file.write(f"Average Loss: {avg_loss:.2f}\n")
+                
+                self.trade_report_file.write("="*80 + "\n")
+                self.trade_report_file.close()
+                print(f"📊 Trade report completed: {total_trades} trades recorded")
+                
+            except Exception as e:
+                print(f"Trade reporting close error: {e}")
+            
+            self.trade_report_file = None
 
     def _cross_above(self, a, b):
         """Return True if `a` crossed above `b` on the current bar.
@@ -710,7 +883,7 @@ class SunriseSimple(bt.Strategy):
         if self.p.forex_instrument == 'AUTO':
             print(f"🔍 AUTO-DETECTED: {self._detected_instrument} from filename: {data_filename}")
         else:
-            print(f"🎯 MANUAL CONFIG: {self.p.forex_instrument}")
+            print(f"MANUAL CONFIG: {self.p.forex_instrument}")
             
         print(f"💱 Forex Config: {self.p.forex_base_currency}/{self.p.forex_quote_currency}")
         print(f"📏 Pip Value: {self.p.forex_pip_value} | Lot Size: {self.p.forex_lot_size:,} | Margin: {self.p.forex_margin_required}%")
@@ -765,6 +938,7 @@ class SunriseSimple(bt.Strategy):
             
             # ATR VOLATILITY FILTER TRACKING
             self.signal_detection_atr = None  # ATR value when signal was first detected
+            self.signal_detection_bar = None  # Bar number when signal was first detected
             self.pullback_start_atr = None    # ATR value when pullback phase started
 
             # Basic stats
@@ -803,6 +977,90 @@ class SunriseSimple(bt.Strategy):
                 
             # Initialize debug logging
             self._init_debug_logging()
+            
+            # Initialize trade reporting
+            self._init_trade_reporting()
+
+    def _init_trade_reporting(self):
+        """Initialize trade reporting functionality"""
+        self.trade_reports = []  # Store trade details for export
+        self.trade_report_file = None
+        
+        if EXPORT_TRADE_REPORTS or TRADE_REPORT_ENABLED:
+            try:
+                # Create temp_reports directory if it doesn't exist
+                from pathlib import Path
+                report_dir = Path("temp_reports")
+                report_dir.mkdir(exist_ok=True)
+                
+                # Extract asset name from data filename
+                asset_name = "UNKNOWN"
+                if hasattr(self, '_data_filename') and self._data_filename:
+                    # Extract asset name from filename (e.g., "USDCHF_5m_5Yea.csv" -> "USDCHF")
+                    asset_name = str(self._data_filename).split('_')[0].replace('.csv', '')
+                
+                # Create trade report filename with timestamp
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                report_filename = f"{asset_name}_trades_{timestamp}.txt"
+                report_path = report_dir / report_filename
+                
+                # Open trade report file
+                self.trade_report_file = open(report_path, 'w', encoding='utf-8')
+                
+                # Write header
+                self.trade_report_file.write(f"=== SUNRISE STRATEGY TRADE REPORT ===\n")
+                self.trade_report_file.write(f"Asset: {asset_name}\n")
+                self.trade_report_file.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                self.trade_report_file.write(f"Data File: {self._data_filename}\n")
+                
+                # Trading configuration
+                direction = []
+                if self.p.enable_long_trades: direction.append("LONG")
+                if self.p.enable_short_trades: direction.append("SHORT")
+                self.trade_report_file.write(f"Trading Direction: {' & '.join(direction) if direction else 'NONE'}\n")
+                self.trade_report_file.write("\n")
+                
+                # Fixed Configuration Parameters (no longer repeated in each entry)
+                self.trade_report_file.write("CONFIGURATION PARAMETERS:\n")
+                self.trade_report_file.write("-" * 30 + "\n")
+                
+                # LONG parameters
+                if self.p.enable_long_trades:
+                    self.trade_report_file.write("LONG Configuration:\n")
+                    self.trade_report_file.write(f"  ATR Threshold: {self.p.long_atr_min_threshold:.6f}\n")
+                    self.trade_report_file.write(f"  ATR Increment: {self.p.long_atr_increment_threshold:.6f}\n")
+                    self.trade_report_file.write(f"  Angle Minimum: {self.p.long_min_angle:.2f}°\n")
+                    self.trade_report_file.write(f"  Pullback Mode: {self.p.long_use_pullback_entry}\n\n")
+                    
+                # SHORT parameters  
+                if self.p.enable_short_trades:
+                    self.trade_report_file.write("SHORT Configuration:\n")
+                    self.trade_report_file.write(f"  ATR Threshold: {self.p.short_atr_min_threshold:.6f}\n")
+                    self.trade_report_file.write(f"  ATR Increment: {self.p.short_atr_increment_threshold:.6f}\n")
+                    self.trade_report_file.write(f"  Angle Minimum: {self.p.short_min_angle:.2f}°\n")
+                    self.trade_report_file.write(f"  Pullback Mode: {self.p.short_use_pullback_entry}\n\n")
+                    
+                # Common parameters
+                self.trade_report_file.write("Common Parameters:\n")
+                self.trade_report_file.write(f"  Risk Percent: {self.p.risk_percent:.1f}%\n")
+                if self.p.enable_long_trades:
+                    self.trade_report_file.write(f"  LONG Stop Loss ATR Multiplier: {self.p.long_atr_sl_multiplier:.1f}\n")
+                    self.trade_report_file.write(f"  LONG Take Profit ATR Multiplier: {self.p.long_atr_tp_multiplier:.1f}\n")
+                if self.p.enable_short_trades:
+                    self.trade_report_file.write(f"  SHORT Stop Loss ATR Multiplier: {self.p.short_atr_sl_multiplier:.1f}\n")
+                    self.trade_report_file.write(f"  SHORT Take Profit ATR Multiplier: {self.p.short_atr_tp_multiplier:.1f}\n")
+                
+                self.trade_report_file.write("\n" + "="*80 + "\n")
+                self.trade_report_file.write("TRADE DETAILS\n")
+                self.trade_report_file.write("="*80 + "\n\n")
+                self.trade_report_file.flush()
+                
+                print(f"📊 TRADE REPORT: {report_path}")
+                
+            except Exception as e:
+                print(f"⚠️  Trade reporting initialization failed: {e}")
+                self.trade_report_file = None
 
     def next(self):
         # Track portfolio value and timestamp for plotting
@@ -1014,6 +1272,8 @@ class SunriseSimple(bt.Strategy):
             return  # Wait for position to close before entering new trade
 
         # Place market order based on signal direction
+        # ATR increment values are already stored from entry detection logic
+        
         if signal_direction == 'LONG':
             self.order = self.buy(size=bt_size)
             signal_type_display = "📈 LONG BUY"
@@ -1028,7 +1288,15 @@ class SunriseSimple(bt.Strategy):
             else:  # SHORT
                 rr = (entry_price - self.take_level) / (self.stop_level - entry_price) if (self.stop_level - entry_price) > 0 else float('nan')
             
-            print(f"🎯 ENTRY PLACED {signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
+            # Calculate bars from signal detection to entry
+            bars_to_entry = 0
+            if hasattr(self, 'signal_detection_bar') and self.signal_detection_bar is not None:
+                bars_to_entry = len(self) - self.signal_detection_bar
+            
+            print(f"🎯 ENTRY PLACED {signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f} | Bars: {bars_to_entry}")
+
+        # Record trade entry for reporting
+        self._record_trade_entry(signal_direction, dt, entry_price, bt_size, atr_now)
 
         self.last_entry_price = entry_price
         self.last_entry_bar = current_bar
@@ -1251,9 +1519,10 @@ class SunriseSimple(bt.Strategy):
         if self.pullback_state == "NORMAL":
             # Check for initial entry conditions (1 & 2)
             if self._basic_entry_conditions():
-                # Store ATR value when signal is detected
+                # Store ATR value and bar number when signal is detected
                 current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                 self.signal_detection_atr = current_atr
+                self.signal_detection_bar = len(self)  # Track bar number when signal was detected
                 
                 # Check ATR minimum threshold if filter is enabled
                 if self.p.long_use_atr_filter and current_atr < self.p.long_atr_min_threshold:
@@ -1315,12 +1584,29 @@ class SunriseSimple(bt.Strategy):
             if current_high >= self.breakout_target:
                 # Breakout detected! Check all other entry conditions
                 if self._validate_all_entry_filters():
+                    # Calculate ATR increment for validation and recording
+                    current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                    atr_increment = None
+                    
+                    # Check ATR increment threshold if ATR filter is enabled
+                    if self.p.long_use_atr_filter and self.signal_detection_atr is not None:
+                        atr_increment = current_atr - self.signal_detection_atr
+                        # Validate ATR increment threshold - must be positive and above minimum
+                        if abs(atr_increment) < self.p.long_atr_increment_threshold:
+                            if self.p.print_signals:
+                                print(f"ATR Increment Filter: LONG entry rejected - ATR increment {atr_increment:+.6f} < threshold {self.p.long_atr_increment_threshold:.6f}")
+                            return False
+                        # Store values for trade recording
+                        self.entry_atr_increment = atr_increment
+                        self.entry_signal_detection_atr = self.signal_detection_atr
+                    else:
+                        self.entry_atr_increment = None
+                        self.entry_signal_detection_atr = None
+                    
                     if self.p.print_signals:
-                        current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                         atr_info = ""
                         if self.p.long_use_atr_filter and self.signal_detection_atr is not None:
-                            atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
-                            atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: +{atr_increment:.6f})"
+                            atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: {atr_increment:+.6f})"
                         print(f"BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}{atr_info}")
                     self._reset_pullback_state()  # Reset for next setup
                     return True
@@ -1342,9 +1628,10 @@ class SunriseSimple(bt.Strategy):
         if self.pullback_state == "NORMAL":
             # Check for initial SHORT entry conditions
             if self._basic_short_entry_conditions():
-                # Store ATR value when signal is detected
+                # Store ATR value and bar number when signal is detected
                 current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                 self.signal_detection_atr = current_atr
+                self.signal_detection_bar = len(self)  # Track bar number when signal was detected
                 
                 # Check ATR minimum threshold if filter is enabled
                 if self.p.short_use_atr_filter and current_atr < self.p.short_atr_min_threshold:
@@ -1406,13 +1693,32 @@ class SunriseSimple(bt.Strategy):
             if current_low <= self.breakout_target:
                 # Breakout detected! Check all other SHORT entry conditions
                 if self._validate_all_short_entry_filters():
+                    # Calculate ATR increment for validation and recording
+                    current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+                    atr_increment = None
+                    
+                    # Check ATR increment threshold if ATR filter is enabled
+                    if self.p.short_use_atr_filter and self.signal_detection_atr is not None:
+                        atr_increment = current_atr - self.signal_detection_atr
+                        # Validate ATR increment threshold - must be above minimum absolute value
+                        if abs(atr_increment) < self.p.short_atr_increment_threshold:
+                            if self.p.print_signals:
+                                print(f"ATR Increment Filter: SHORT entry rejected - ATR increment {atr_increment:+.6f} < threshold {self.p.short_atr_increment_threshold:.6f}")
+                            return False
+                        # Store values for trade recording
+                        self.entry_atr_increment = atr_increment
+                        self.entry_signal_detection_atr = self.signal_detection_atr
+                    else:
+                        self.entry_atr_increment = None
+                        self.entry_signal_detection_atr = None
+                    
                     if self.p.print_signals:
-                        current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                         atr_info = ""
                         if self.p.short_use_atr_filter and self.signal_detection_atr is not None:
-                            atr_increment = abs(current_atr - self.signal_detection_atr)  # Use absolute value
-                            atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: +{atr_increment:.6f})"
+                            atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: {atr_increment:+.6f})"
                         print(f"SHORT BREAKOUT ENTRY! Low={current_low:.5f} <= target={self.breakout_target:.5f}{atr_info}")
+                    self._reset_pullback_state()  # Reset for next setup
+                    return True
                     self._reset_pullback_state()  # Reset for next setup
                     return True
             return False
@@ -1704,6 +2010,9 @@ class SunriseSimple(bt.Strategy):
             print(f"{position_direction} TRADE CLOSED {dt:%Y-%m-%d %H:%M} reason={exit_reason} PnL={pnl:.2f} Pips={pips:.1f}")
             print(f"  Entry: {entry_price:.5f} -> Exit: {exit_price:.5f} | Size: {trade.size}")
 
+        # Record trade exit for reporting
+        self._record_trade_exit(dt, exit_price, pnl, exit_reason)
+
         # Reset levels
         self.stop_level = None
         self.take_level = None
@@ -1785,6 +2094,9 @@ class SunriseSimple(bt.Strategy):
 
         if self.p.long_use_pullback_entry or self.p.short_use_pullback_entry:
             self._reset_pullback_state()
+        
+        # Close trade reporting
+        self._close_trade_reporting()
     
     def _cancel_all_pending_orders(self):
         """Cancel all pending orders to ensure clean state"""
@@ -2102,18 +2414,19 @@ if __name__ == '__main__':
                     print("✅ Simplified portfolio comparison chart created!")
                 
                 # Optional: Show individual strategy plots with backtrader native charts
-                try:
-                    user_input = input("\n📊 Show individual Backtrader charts with entries/exits? (y/n): ").lower().strip()
-                    if user_input in ['y', 'yes']:
-                        print("📈 Showing LONG strategy chart...")
-                        long_title = f'LONG STRATEGY | PnL: +${long_pnl:.2f} | Trades: {long_strategy.trades}'
-                        cerebro_long.plot(style='candlestick', subtitle=long_title)
-                        
-                        print("📉 Showing SHORT strategy chart...")
-                        short_title = f'SHORT STRATEGY | PnL: +${short_pnl:.2f} | Trades: {short_strategy.trades}'
-                        cerebro_short.plot(style='candlestick', subtitle=short_title)
-                except:
-                    pass
+                if SHOW_INDIVIDUAL_PLOTS:
+                    try:
+                        user_input = input("\n📊 Show individual Backtrader charts with entries/exits? (y/n): ").lower().strip()
+                        if user_input in ['y', 'yes']:
+                            print("📈 Showing LONG strategy chart...")
+                            long_title = f'LONG STRATEGY | PnL: +${long_pnl:.2f} | Trades: {long_strategy.trades}'
+                            cerebro_long.plot(style='candlestick', subtitle=long_title)
+                            
+                            print("📉 Showing SHORT strategy chart...")
+                            short_title = f'SHORT STRATEGY | PnL: +${short_pnl:.2f} | Trades: {short_strategy.trades}'
+                            cerebro_short.plot(style='candlestick', subtitle=short_title)
+                    except:
+                        pass
                 
             except Exception as e:
                 print(f"Combined plot error: {e}")
@@ -2165,6 +2478,32 @@ if __name__ == '__main__':
         final_value = cerebro.broker.getvalue()
     
     print(f"Final Value: {final_value:,.2f}")
-    if not RUN_DUAL_CEREBRO and results and getattr(results[0].p, 'plot_result', False) and ENABLE_PLOT:
-        try: cerebro.plot(style='candlestick')
-        except Exception as e: print(f"Plot error: {e}")
+    
+    # Enhanced plotting logic for single mode
+    if not RUN_DUAL_CEREBRO and ENABLE_PLOT:
+        # Determine trading mode for plot title
+        trading_mode = []
+        if ENABLE_LONG_TRADES:
+            trading_mode.append("LONG")
+        if ENABLE_SHORT_TRADES:
+            trading_mode.append("SHORT")
+        
+        mode_description = " & ".join(trading_mode) if trading_mode else "NO TRADES"
+        
+        if AUTO_PLOT_SINGLE_MODE or getattr(results[0].p, 'plot_result', False):
+            try:
+                strategy_result = results[0]
+                final_pnl = final_value - STARTING_CASH
+                plot_title = f'SUNRISE STRATEGY ({mode_description} MODE)\n'
+                plot_title += f'Final Value: ${final_value:,.0f} | P&L: {final_pnl:+,.0f} | '
+                plot_title += f'Trades: {strategy_result.trades} | Win Rate: {(strategy_result.wins/strategy_result.trades*100) if strategy_result.trades > 0 else 0:.1f}%'
+                
+                print(f"📊 Showing {mode_description} strategy chart...")
+                cerebro.plot(style='candlestick', subtitle=plot_title)
+            except Exception as e: 
+                print(f"Plot error: {e}")
+        else:
+            print(f"📊 Plotting disabled. Set ENABLE_PLOT=True and AUTO_PLOT_SINGLE_MODE=True to show charts.")
+    
+    elif not RUN_DUAL_CEREBRO:
+        print(f"📊 Plotting disabled. Set ENABLE_PLOT=True to show charts.")
