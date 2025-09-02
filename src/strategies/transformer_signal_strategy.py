@@ -35,7 +35,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     MODELS_DIR = PROJECT_ROOT / 'src' / 'ml_models'
-    DATA_PATH = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Yea.csv'  # Example data file
+    DATA_PATH = PROJECT_ROOT / 'data' / 'EURUSD_5m_2Mon.csv'  # Example data file
     #'EURUSD_5m_2Mon.csv' #USDCHF_5m_1Yea.csv
     
     if not DATA_PATH.exists():

@@ -13,7 +13,7 @@ __pycache__/
 *.swp
 
 # Archivos de datos grandes (si decides no versionarlos)
-data/*.csv
+#data/*.csv
 
 # Archivos de credenciales o secretos
 credentials.json
@@ -30,4 +30,4 @@ temp_reports/
 
 
 # Data folder
-data/
+#data/

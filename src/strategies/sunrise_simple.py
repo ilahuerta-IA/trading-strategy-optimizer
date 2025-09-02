@@ -1,24 +1,6 @@
 """Advanced Sunrise Strategy - Multi-Asset Trading System
 ========================================================
-
-🎯 CONFIGURACIÓN OPTIMIZADA (Basada en análisis de 757 trades - Aug 2025)
-===========================================================================
-Esta versión implementa optimizaciones basadas en análisis estadístico profundo:
-
-✅ MEJORAS IMPLEMENTADAS:
-• ATR Range optimizado: 0.000396-0.000473 (Quintil Q4 - WR: 29.8%)
-• ATR Increments DESACTIVADOS (performance inferior: WR 21.3%)  
-• ATR Decrements OPTIMIZADOS: Solo cambios muy bajos (-0.000020 to -0.000001)
-• Configuración "Decrement + Muy_Bajo" mostró WR: 30.9% y P&L: +216.10
-
-📊 RESULTADOS ESPERADOS vs CONFIGURACIÓN ANTERIOR:
-• Win Rate: 21.8% → ~30.9% (mejora de +9.1 puntos porcentuales)
-• P&L Total: -44,527.96 → Proyección POSITIVA
-• Trades más selectivos pero de mayor calidad
-
-A sophisticated breakout strategy with pullback entry system, designed for 
-forex pairs, precious metals (Gold/Silver), and automatic instrument detection.
-Features comprehensive risk management, position sizing, and debugging capabilities.
+This strategy implements a sophisticated trading system with the following features:
 
 ENTRY MODES
 -----------
@@ -69,21 +51,21 @@ SHORT CONDITIONS:
 ATR VOLATILITY FILTER
 ----------------------
 🌊 PURPOSE: Ensures trades occur during sufficient market volatility
-   • Minimum ATR threshold (default: 0.0004) - volatility floor
-   • ATR change requirement (default: 0.0001) - market momentum
-   • Absolute value used - measures volatility change regardless of direction
+   • LONG: ATR range 0.000200-0.000600 with decrement filtering (-0.000050 to -0.000001)
+   • SHORT: ATR range 0.000400-0.000750 with increment filtering (0.000010 to 0.000150)
+   • ATR change requirement measures market momentum direction
    • Pullback mode: Compares ATR from signal detection to breakout phase
    • Standard mode: Checks current ATR against minimum threshold
 
 EXIT SYSTEM
 -----------
 🎯 PRIMARY: ATR-based Stop Loss & Take Profit (OCA orders)
-   • Stop Loss  = entry_bar_low - (ATR × sl_multiplier)
-   • Take Profit = entry_bar_high + (ATR × tp_multiplier)
+   • LONG: Stop Loss = entry_bar_low - (ATR × 2.5), Take Profit = entry_bar_high + (ATR × 12.0)
+   • SHORT: Stop Loss = entry_bar_high + (ATR × 2.5), Take Profit = entry_bar_low - (ATR × 3.5)
    
 ⚙️ OPTIONAL EXITS:
    • Time-based: Close after N bars in position
-   • EMA crossover: Exit when exit_EMA crosses above confirm_EMA
+   • EMA crossover: Direction-aware exit signals (confirm vs exit EMA)
 
 MULTI-ASSET SUPPORT
 -------------------
@@ -117,8 +99,9 @@ CONFIGURATION
 -------------
 📍 All settings moved to TOP of file for easy access:
    • Instrument selection (DATA_FILENAME)
-   • Date ranges, cash, plotting options
-   • Forex calculation toggles
+   • Date ranges, cash, plotting options  
+   • Trading hours: 7:00-17:00 UTC (configurable)
+   • Direction control: LONG/SHORT/BOTH modes
    
 🔧 Strategy parameters in params dict for runtime overrides
 📊 Comprehensive debug logging to file with entry analysis
@@ -172,11 +155,11 @@ FOREX_INSTRUMENT = 'AUTO'             # AUTO-DETECT or manual: XAUUSD, XAGUSD, E
 TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calculations
 
 # === TRADING DIRECTION ===
-ENABLE_LONG_TRADES = False            # Enable long (buy) entries
+ENABLE_LONG_TRADES = True            # Enable long (buy) entries
 ENABLE_SHORT_TRADES = True           # Enable short (sell) entries
 
 # === DUAL CEREBRO MODE ===
-RUN_DUAL_CEREBRO = False              # Run separate LONG-only and SHORT-only cerebros to avoid position interference
+RUN_DUAL_CEREBRO = True              # Run separate LONG-only and SHORT-only cerebros to avoid position interference
 
 # === DEBUG SETTINGS ===
 VERBOSE_DEBUG = False                 # Print detailed debug info to console (set True only for troubleshooting)
@@ -193,27 +176,27 @@ AUTO_PLOT_SINGLE_MODE = True         # Automatically plot in single mode (LONG-o
 LONG_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for long entries
 LONG_ATR_MIN_THRESHOLD = 0.000200          
 LONG_ATR_MAX_THRESHOLD = 0.000600          
-# ATR INCREMENT FILTER (DESACTIVADO - Performance inferior)
-LONG_USE_ATR_INCREMENT_FILTER = False       # 🎯 OPTIMIZADO: Increments mostraron performance inferior
-LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000000 # DESACTIVADO: No usar increments (WR: 21.3% vs 22.7% decrements)
-LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000000 # DESACTIVADO: Análisis mostró decrements superiores
-# ATR DECREMENT FILTER (OPTIMIZADO - Solo cambios muy bajos)
-LONG_USE_ATR_DECREMENT_FILTER = True        # 🎯 OPTIMIZADO: Decrements con mejor performance
-LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000050 # 🎯 OPTIMIZADO: Solo decrements muy bajos (30.9% WR)
-LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 # 🎯 OPTIMIZADO: Intensidad "Muy_Bajo" = mejor config
+# ATR INCREMENT FILTER (DISABLED - Inferior Performance)
+LONG_USE_ATR_INCREMENT_FILTER = False       # 🎯 OPTIMIZED: Increments showed inferior performance
+LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000000 # DISABLED: Don't use increments (WR: 21.3% vs 22.7% decrements)
+LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000000 # DISABLED: Analysis showed decrements are superior
+# ATR DECREMENT FILTER (OPTIMIZED - Only very low changes)
+LONG_USE_ATR_DECREMENT_FILTER = True        # 🎯 OPTIMIZED: Decrements with better performance
+LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000050 # 🎯 OPTIMIZED: Only very low decrements (30.9% WR)
+LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 # 🎯 OPTIMIZED: "Very_Low" intensity = best config
 
 # === SHORT ATR VOLATILITY FILTER ===
 SHORT_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for short entries  
-SHORT_ATR_MIN_THRESHOLD = 0.000400         # 🎯 OPTIMIZADO: Mismo rango óptimo que LONG
-SHORT_ATR_MAX_THRESHOLD = 0.000750         # 🎯 OPTIMIZADO: Consistente con análisis LONG
+SHORT_ATR_MIN_THRESHOLD = 0.000400         # 🎯 OPTIMIZED: Same optimal range as LONG
+SHORT_ATR_MAX_THRESHOLD = 0.000750         # 🎯 OPTIMIZED: Consistent with LONG analysis
 # ATR INCREMENT FILTER
-SHORT_USE_ATR_INCREMENT_FILTER = True      # 🎯 OPTIMIZADO: Increments mostraron performance inferior
-SHORT_ATR_INCREMENT_MIN_THRESHOLD = 0.000010 # DESACTIVADO: Consistente con configuración LONG
-SHORT_ATR_INCREMENT_MAX_THRESHOLD = 0.000150 # DESACTIVADO: Análisis favoreció decrements
+SHORT_USE_ATR_INCREMENT_FILTER = True      # 🎯 OPTIMIZED: Increments showed inferior performance
+SHORT_ATR_INCREMENT_MIN_THRESHOLD = 0.000010 # DISABLED: Consistent with LONG configuration
+SHORT_ATR_INCREMENT_MAX_THRESHOLD = 0.000150 # DISABLED: Analysis favored decrements
 # ATR DECREMENT FILTER 
-SHORT_USE_ATR_DECREMENT_FILTER = False       # 🎯 OPTIMIZADO: Decrements con mejor performance
-SHORT_ATR_DECREMENT_MIN_THRESHOLD = -0.001000 # 🎯 OPTIMIZADO: Solo decrements muy bajos
-SHORT_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 # 🎯 OPTIMIZADO: Intensidad "Muy_Bajo" óptima
+SHORT_USE_ATR_DECREMENT_FILTER = False       # 🎯 OPTIMIZED: Decrements with better performance
+SHORT_ATR_DECREMENT_MIN_THRESHOLD = -0.001000 # 🎯 OPTIMIZED: Only very low decrements
+SHORT_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 # 🎯 OPTIMIZED: "Very_Low" intensity optimal
 
 # === LONG ENTRY FILTERS ===
 LONG_USE_EMA_ORDER_CONDITION = False        # Require confirm_EMA > all other EMAs for long entries
@@ -235,16 +218,16 @@ SHORT_ANGLE_SCALE_FACTOR = 10000.0          # Scaling factor for angle calculati
 LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
 LONG_PULLBACK_MAX_CANDLES = 1              # Max red candles in pullback for long entries (1-3 recommended)
 LONG_ENTRY_WINDOW_PERIODS = 7 #10             # Bars to wait for breakout after pullback (long entries)
-LONG_ENTRY_PIP_OFFSET = 0.5 #2.0                # Pips above first red candle high for long entry
+LONG_ENTRY_PIP_OFFSET = 1.0 #0.5 #2.0                # Pips above first red candle high for long entry
 
 # === SHORT PULLBACK ENTRY SYSTEM ===
 SHORT_USE_PULLBACK_ENTRY = True            # Enable 3-phase pullback entry system for short entries
 SHORT_PULLBACK_MAX_CANDLES = 2             # Max green candles in pullback for short entries (1-3 recommended)
 SHORT_ENTRY_WINDOW_PERIODS = 7            # Bars to wait for breakdown after pullback (short entries)
-SHORT_ENTRY_PIP_OFFSET = 0.5               # Pips below first green candle low for short entry
+SHORT_ENTRY_PIP_OFFSET = 1.0               # Pips below first green candle low for short entry
 
 # === TIME RANGE FILTER ===
-USE_TIME_RANGE_FILTER = True              # HABILITADO: Filtro horario para análisis completo
+USE_TIME_RANGE_FILTER = True              # ENABLED: Time filter for complete analysis
 ENTRY_START_HOUR = 7#6                      # Start hour for entry window (UTC)
 ENTRY_START_MINUTE = 0                     # Start minute for entry window (UTC)
 ENTRY_END_HOUR = 17#18 #15                        # End hour for entry window (UTC)
@@ -256,9 +239,9 @@ class SunriseSimple(bt.Strategy):
         # === TECHNICAL INDICATORS ===
         ema_fast_length=14,               # Fast EMA period for trend detection #14
         ema_medium_length=18,             # Medium EMA period for trend confirmation #18
-        ema_slow_length=18, #24,               # Slow EMA period for trend strength # 24
+        ema_slow_length=24, #24,               # Slow EMA period for trend strength # 24
         ema_confirm_length=1,             # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=100,#70,#50       # Price filter EMA to avoid counter-trend trades #50
+        ema_filter_price_length=50,#70,#50       # Price filter EMA to avoid counter-trend trades #50
         ema_exit_length=25,               # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
@@ -324,7 +307,7 @@ class SunriseSimple(bt.Strategy):
         short_max_angle=SHORT_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (short entries)
         short_angle_scale_factor=SHORT_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (short entries)
         short_atr_sl_multiplier=2.5,                             # Stop Loss multiplier for SHORT trades
-        short_atr_tp_multiplier=3.5,                             # Take Profit multiplier for SHORT trades
+        short_atr_tp_multiplier=6.5,#3.5,                             # Take Profit multiplier for SHORT trades
 
         # === SHORT PULLBACK ENTRY SYSTEM ===
         short_use_pullback_entry=SHORT_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for short entries
@@ -658,7 +641,7 @@ class SunriseSimple(bt.Strategy):
             current_ema = float(self.ema_confirm[0])
             previous_ema = float(self.ema_confirm[-1])
             
-            # Pine Script: math.atan((ema_confirm - ema_confirm[1]) * factor_escala_angulo) * 180 / math.pi
+            # Pine Script: math.atan((ema_confirm - ema_confirm[1]) * angle_scale_factor) * 180 / math.pi
             rise = (current_ema - previous_ema) * self.p.long_angle_scale_factor
             angle_radians = math.atan(rise)  # run = 1 (1 bar)
             angle_degrees = math.degrees(angle_radians)
@@ -1174,10 +1157,10 @@ class SunriseSimple(bt.Strategy):
         current_bar = len(self)
         current_close = float(self.data.close[0])
         
-        # DISABLED: Log basic bar info every 100 bars or when position changes
-        # if current_bar % 100 == 0 or (self.position and not hasattr(self, '_was_in_position')) or (not self.position and hasattr(self, '_was_in_position')):
-        #     position_status = f"POSITION: {self.position.size} lots" if self.position else "NO_POSITION"
-        #     self._log_debug(f"Bar {current_bar} | {dt:%Y-%m-%d %H:%M} | Close: {current_close:.5f} | {position_status}")
+            # DISABLED: Log basic bar info every 100 bars or when position changes
+            # if current_bar % 100 == 0 or (self.position and not hasattr(self, '_was_in_position')) or (not self.position and hasattr(self, '_was_in_position')):
+            #     position_status = f"POSITION: {self.position.size} lots" if self.position else "NO_POSITION"
+            #     self._log_debug(f"Bar {current_bar} | {dt:%Y-%m-%d %H:%M} | Close: {current_close:.5f} | {position_status}")
         
         # Track position state changes
         if self.position:
@@ -1239,7 +1222,7 @@ class SunriseSimple(bt.Strategy):
             # Determine position direction (LONG = positive size, SHORT = negative size)
             position_direction = 'LONG' if self.position.size > 0 else 'SHORT'
             
-            # Timed exit (Pine Script logic: barsSinceEntry >= barras_salida)
+            # Timed exit (Pine Script logic: barsSinceEntry >= bar_count_exit)
             if self.p.use_bar_count_exit and bars_since_entry >= self.p.bar_count_exit and not self.exit_this_bar:
                 print(f"{position_direction} BAR_EXIT at {dt:%Y-%m-%d %H:%M} after {bars_since_entry} bars (target: {self.p.bar_count_exit})")
                 self.order = self.close()
@@ -1606,7 +1589,7 @@ class SunriseSimple(bt.Strategy):
             return self._handle_long_pullback_entry(dt)
     
     def _handle_long_pullback_entry(self, dt):
-        """LONG pullback entry state machine logic (original logic)"""
+        """LONG pullback entry state machine logic - 3-phase precise implementation"""
         # Check time range filter first
         if not self._is_in_trading_time_range(dt):
             if self.p.verbose_debug:
@@ -1621,9 +1604,9 @@ class SunriseSimple(bt.Strategy):
         # Check if current candle is red (bearish)
         is_red_candle = current_close < current_open
         
-        # STATE MACHINE LOGIC
+        # PHASE 1: SIGNAL DETECTION
         if self.pullback_state == "NORMAL":
-            # Check for initial entry conditions (1 & 2)
+            # Check for initial entry conditions (EMA crossover + previous bullish candle + filters)
             if self._basic_entry_conditions():
                 # Store ATR value and bar number when signal is detected
                 current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
@@ -1641,27 +1624,33 @@ class SunriseSimple(bt.Strategy):
                             print(f"ATR Filter: Signal rejected - ATR {current_atr:.6f} > max threshold {self.p.long_atr_max_threshold:.6f}")
                         return False
                 
+                # Transition to Phase 2: Wait for pullback
                 self.pullback_state = "WAITING_PULLBACK"
                 self.pullback_red_count = 0
                 self.first_red_high = None
+                self.breakout_target = None  # Will be set by first pullback candle
                 return False  # Don't enter yet, wait for pullback
             return False
             
+        # PHASE 2: PULLBACK WAIT & SETTING THE BREAKOUT LEVEL
         elif self.pullback_state == "WAITING_PULLBACK":
             if is_red_candle:
                 self.pullback_red_count += 1
                 
-                # Store high of first red candle
+                # CRITICAL: Set breakout level ONLY from the FIRST red candle
                 if self.pullback_red_count == 1:
                     self.first_red_high = current_high
+                    # Set breakout target immediately when first pullback candle appears
+                    self.breakout_target = self.first_red_high + (self.p.long_entry_pip_offset * self.p.pip_value)
                 
                 # Check if we exceeded max red candles
                 if self.pullback_red_count > self.p.long_pullback_max_candles:
                     self._reset_pullback_state()
                     return False
                     
-            else:  # Green candle - pullback ended
-                if self.pullback_red_count > 0:
+            else:  # Green candle - pullback sequence ended
+                if self.pullback_red_count >= self.p.long_pullback_max_candles:
+                    # Pullback sequence complete (required number of red candles occurred)
                     # Store ATR value when pullback phase ends
                     current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                     self.pullback_start_atr = current_atr
@@ -1670,8 +1659,7 @@ class SunriseSimple(bt.Strategy):
                     if self.p.long_use_atr_filter and self.signal_detection_atr is not None:
                         atr_change = current_atr - self.signal_detection_atr
                         
-                        # ATR CHANGE FILTERING LOGIC (CORRECTED - MATHEMATICAL PRECISION)
-                        # Based on historical analysis: optimal range is -0.000150 ≤ ATR Change ≤ -0.000051
+                        # ATR CHANGE FILTERING LOGIC
                         # Rule 1: If ATR is incrementing (positive change: low → high volatility)
                         if atr_change > 0:
                             if self.p.long_use_atr_increment_filter:
@@ -1692,7 +1680,6 @@ class SunriseSimple(bt.Strategy):
                         elif atr_change < 0:
                             if self.p.long_use_atr_decrement_filter:
                                 # Decrement filter is ENABLED - check if atr_change is within optimal negative range
-                                # MATHEMATICAL CORRECTION: Compare negative values directly (no abs conversion)
                                 if not (self.p.long_atr_decrement_min_threshold <= atr_change <= self.p.long_atr_decrement_max_threshold):
                                     if self.p.verbose_debug:
                                         print(f"ATR DECREMENT Filter: LONG pullback rejected - ATR change {atr_change:+.6f} outside range [{self.p.long_atr_decrement_min_threshold:.6f}, {self.p.long_atr_decrement_max_threshold:.6f}]")
@@ -1702,15 +1689,15 @@ class SunriseSimple(bt.Strategy):
                         
                         # Rule 3: If ATR change is exactly zero, allow it (no volatility change)
                     
-                    # Pullback phase complete, start entry window
+                    # Transition to Phase 3: Start entry window countdown
                     self.pullback_state = "WAITING_BREAKOUT"
                     self.entry_window_start = current_bar
-                    self.breakout_target = self.first_red_high + (self.p.long_entry_pip_offset * self.p.pip_value)
                 else:
-                    # No pullback occurred, reset
+                    # No pullback occurred (no red candles), reset
                     self._reset_pullback_state()
             return False
             
+        # PHASE 3: BREAKOUT CONFIRMATION AND ENTRY
         elif self.pullback_state == "WAITING_BREAKOUT":
             # Check if entry window expired
             bars_in_window = current_bar - self.entry_window_start
@@ -1718,13 +1705,12 @@ class SunriseSimple(bt.Strategy):
                 self._reset_pullback_state()
                 return False
             
-            # Check for breakout above target
+            # Entry Trigger Condition: current high >= breakout_target (already includes pip offset)
             if current_high >= self.breakout_target:
                 # Breakout detected! Check all other entry conditions
                 if self._validate_all_entry_filters():
                     # Calculate ATR increment for validation and recording
                     current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-                    atr_increment = None
                     
                     # Check ATR increment/decrement threshold if ATR filter is enabled
                     if self.p.long_use_atr_filter and self.signal_detection_atr is not None:
@@ -1749,7 +1735,6 @@ class SunriseSimple(bt.Strategy):
                         elif atr_change < 0:
                             if self.p.long_use_atr_decrement_filter:
                                 # Decrement filter is ENABLED - check if atr_change is within optimal negative range
-                                # MATHEMATICAL CORRECTION: Compare negative values directly (no abs conversion)
                                 if not (self.p.long_atr_decrement_min_threshold <= atr_change <= self.p.long_atr_decrement_max_threshold):
                                     if self.p.print_signals:
                                         print(f"ATR DECREMENT Filter: LONG entry rejected - ATR change {atr_change:+.6f} outside range [{self.p.long_atr_decrement_min_threshold:.6f}, {self.p.long_atr_decrement_max_threshold:.6f}]")
@@ -1770,15 +1755,17 @@ class SunriseSimple(bt.Strategy):
                         if self.p.long_use_atr_filter and self.signal_detection_atr is not None:
                             atr_change = self.entry_atr_increment if self.entry_atr_increment is not None else current_atr - self.signal_detection_atr
                             atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: {atr_change:+.6f})"
-                        print(f"BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}{atr_info}")
-                    self._reset_pullback_state()  # Reset for next setup
+                        print(f"LONG BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}{atr_info}")
+                    
+                    # Reset state machine and trigger entry
+                    self._reset_pullback_state()
                     return True
             return False
         
         return False
     
     def _handle_short_pullback_entry(self, dt):
-        """SHORT pullback entry state machine logic (opposite of LONG logic)"""
+        """SHORT pullback entry state machine logic - 3-phase precise implementation"""
         # Check time range filter first
         if not self._is_in_trading_time_range(dt):
             if self.p.verbose_debug:
@@ -1793,9 +1780,9 @@ class SunriseSimple(bt.Strategy):
         # Check if current candle is green (bullish) - opposite for SHORT
         is_green_candle = current_close > current_open
         
-        # STATE MACHINE LOGIC
+        # PHASE 1: SIGNAL DETECTION
         if self.pullback_state == "NORMAL":
-            # Check for initial SHORT entry conditions
+            # Check for initial SHORT entry conditions (EMA crossunder + previous bearish candle + filters)
             if self._basic_short_entry_conditions():
                 # Store ATR value and bar number when signal is detected
                 current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
@@ -1813,27 +1800,33 @@ class SunriseSimple(bt.Strategy):
                             print(f"SHORT ATR Filter: Signal rejected - ATR {current_atr:.6f} > max threshold {self.p.short_atr_max_threshold:.6f}")
                         return False
                 
+                # Transition to Phase 2: Wait for pullback
                 self.pullback_state = "WAITING_PULLBACK"
                 self.pullback_green_count = 0  # Count GREEN candles for SHORT
                 self.first_green_low = None    # Store LOW of first green candle
+                self.breakout_target = None    # Will be set by first pullback candle
                 return False  # Don't enter yet, wait for pullback
             return False
             
+        # PHASE 2: PULLBACK WAIT & SETTING THE BREAKOUT LEVEL
         elif self.pullback_state == "WAITING_PULLBACK":
             if is_green_candle:  # GREEN candles for SHORT pullback
                 self.pullback_green_count += 1
                 
-                # Store low of first green candle
+                # CRITICAL: Set breakout level ONLY from the FIRST green candle
                 if self.pullback_green_count == 1:
                     self.first_green_low = current_low
+                    # Set breakout target immediately when first pullback candle appears
+                    self.breakout_target = self.first_green_low - (self.p.short_entry_pip_offset * self.p.pip_value)
                 
                 # Check if we exceeded max green candles
                 if self.pullback_green_count > self.p.short_pullback_max_candles:
                     self._reset_pullback_state()
                     return False
                     
-            else:  # Red candle - pullback ended
-                if self.pullback_green_count > 0:
+            else:  # Red candle - pullback sequence ended
+                if self.pullback_green_count >= self.p.short_pullback_max_candles:
+                    # Pullback sequence complete (required number of green candles occurred)
                     # Store ATR value when pullback phase ends
                     current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                     self.pullback_start_atr = current_atr
@@ -1842,7 +1835,7 @@ class SunriseSimple(bt.Strategy):
                     if self.p.short_use_atr_filter and self.signal_detection_atr is not None:
                         atr_change = current_atr - self.signal_detection_atr
                         
-                        # ATR CHANGE FILTERING LOGIC (ROBUST)
+                        # ATR CHANGE FILTERING LOGIC
                         # Rule 1: If ATR is incrementing (positive change: low → high volatility)
                         if atr_change > 0:
                             if self.p.short_use_atr_increment_filter:
@@ -1858,7 +1851,6 @@ class SunriseSimple(bt.Strategy):
                         elif atr_change < 0:
                             if self.p.short_use_atr_decrement_filter:
                                 # Decrement filter is ENABLED - check if atr_change is within optimal negative range
-                                # MATHEMATICAL CORRECTION: Compare negative values directly (no abs conversion)
                                 if not (self.p.short_atr_decrement_min_threshold <= atr_change <= self.p.short_atr_decrement_max_threshold):
                                     if self.p.verbose_debug:
                                         print(f"ATR DECREMENT Filter: SHORT pullback rejected - ATR change {atr_change:+.6f} outside range [{self.p.short_atr_decrement_min_threshold:.6f}, {self.p.short_atr_decrement_max_threshold:.6f}]")
@@ -1868,29 +1860,32 @@ class SunriseSimple(bt.Strategy):
                         
                         # Rule 3: If ATR change is exactly zero, allow it (no volatility change)
                     
-                    # Pullback phase complete, start entry window
+                    # Transition to Phase 3: Start entry window countdown
                     self.pullback_state = "WAITING_BREAKOUT"
                     self.entry_window_start = current_bar
-                    self.breakout_target = self.first_green_low - (self.p.short_entry_pip_offset * self.p.pip_value)  # Break BELOW for SHORT
                 else:
-                    # No pullback occurred, reset
+                    # No pullback occurred (no green candles), reset
                     self._reset_pullback_state()
             return False
             
+        # PHASE 3: BREAKOUT CONFIRMATION AND ENTRY
         elif self.pullback_state == "WAITING_BREAKOUT":
             # Check if entry window expired
             bars_in_window = current_bar - self.entry_window_start
+            # SAFETY CHECK: If bars_in_window is unreasonably high, reset state
+            if bars_in_window > 50:  # Safety limit - should never exceed this
+                self._reset_pullback_state()
+                return False
             if bars_in_window >= self.p.short_entry_window_periods:
                 self._reset_pullback_state()
                 return False
             
-            # Check for breakout below target (opposite of above for LONG)
+            # Entry Trigger Condition: current low <= breakout_target (already includes pip offset)
             if current_low <= self.breakout_target:
                 # Breakout detected! Check all other SHORT entry conditions
                 if self._validate_all_short_entry_filters():
                     # Calculate ATR increment for validation and recording
                     current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-                    atr_increment = None
                     
                     # Check ATR increment/decrement threshold if ATR filter is enabled
                     if self.p.short_use_atr_filter and self.signal_detection_atr is not None:
@@ -1911,7 +1906,6 @@ class SunriseSimple(bt.Strategy):
                         elif atr_change < 0:
                             if self.p.short_use_atr_decrement_filter:
                                 # Decrement filter is ENABLED - check if atr_change is within optimal negative range
-                                # MATHEMATICAL CORRECTION: Compare negative values directly (no abs conversion)
                                 if not (self.p.short_atr_decrement_min_threshold <= atr_change <= self.p.short_atr_decrement_max_threshold):
                                     if self.p.print_signals:
                                         print(f"ATR DECREMENT Filter: SHORT entry rejected - ATR change {atr_change:+.6f} outside range [{self.p.short_atr_decrement_min_threshold:.6f}, {self.p.short_atr_decrement_max_threshold:.6f}]")
@@ -1933,9 +1927,9 @@ class SunriseSimple(bt.Strategy):
                             atr_change = self.entry_atr_increment if self.entry_atr_increment is not None else current_atr - self.signal_detection_atr
                             atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: {atr_change:+.6f})"
                         print(f"SHORT BREAKOUT ENTRY! Low={current_low:.5f} <= target={self.breakout_target:.5f}{atr_info}")
-                    self._reset_pullback_state()  # Reset for next setup
-                    return True
-                    self._reset_pullback_state()  # Reset for next setup
+                    
+                    # Reset state machine and trigger entry
+                    self._reset_pullback_state()
                     return True
             return False
         
