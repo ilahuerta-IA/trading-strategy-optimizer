@@ -1,9 +1,9 @@
-"""Advanced Sunrise Strategy - EURUSD Trading System
-===================================================
-CLEAN VERSION: This is a cleaned and optimized version focused exclusively on EURUSD trading.
-All other assets (Gold, Silver, GBPUSD, AUDUSD) have been removed for simplicity.
+"""Advanced Sunrise Strategy - XAUUSD Trading System
+==================================================
+GOLD VERSION: This is a specialized version optimized exclusively for XAUUSD (Gold vs USD) trading.
+Adapted from the original strategy with Gold-specific parameters and configurations.
 
-This strategy implements a sophisticated trading system optimized for EURUSD with the following features:
+This strategy implements a sophisticated trading system optimized for XAUUSD with the following features:
 
 ENTRY MODES
 -----------
@@ -91,13 +91,13 @@ EXIT SYSTEM
 
 MULTI-ASSET SUPPORT
 -------------------
-💱 FOREX PAIR: EURUSD (EUR vs US Dollar)
-   - Standard 100K lot sizes
-   - 0.0001 pip values (4 decimal places)
-   - 30:1 leverage with 3.33% margin
+🥇 PRECIOUS METAL: XAUUSD (Gold vs US Dollar)
+   - Standard 100 oz contract sizes
+   - 0.01 tick values (2 decimal places)
+   - 20:1 leverage with 5% margin
 
-🤖 CONFIGURATION: Instrument settings optimized for EURUSD
-   - Pip values: 0.0001
+🤖 CONFIGURATION: Instrument settings optimized for XAUUSD
+   - Tick values: 0.01
    - Lot sizes: 100,000 USD
    - Margin requirements: 3.33%
 
@@ -195,8 +195,8 @@ import backtrader as bt
 # ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡
 
 # === INSTRUMENT SELECTION ===
-# Cleaned version - AUDUSD only
-DATA_FILENAME = 'EURUSD_5m_5Yea.csv'     # 🇦🇺 EURO Dollar vs US Dollar - Major Forex Pair
+# Gold version - XAUUSD only
+DATA_FILENAME = 'XAUUSD_5m_5Yea.csv'     # 🥇 Gold vs US Dollar - Precious Metal
 
 # === BACKTEST SETTINGS ===
 FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
@@ -208,7 +208,7 @@ ENABLE_PLOT = True                    # Show final chart with trades (requires m
 
 # === FOREX CONFIGURATION ===
 ENABLE_FOREX_CALC = True              # Enable advanced forex position calculations
-FOREX_INSTRUMENT = 'EURUSD'           # Fixed to EURUSD (no auto-detection needed)
+FOREX_INSTRUMENT = 'XAUUSD'           # Fixed to XAUUSD (Gold vs USD)
 TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calculations
 
 # === TRADING DIRECTION ===
@@ -231,16 +231,16 @@ AUTO_PLOT_SINGLE_MODE = False         # Automatically plot in single mode (LONG-
 
 # === LONG ATR VOLATILITY FILTER ===
 LONG_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for long entries
-LONG_ATR_MIN_THRESHOLD = 0.000150          
-LONG_ATR_MAX_THRESHOLD = 0.000499 #0.000325        
+LONG_ATR_MIN_THRESHOLD = 0.0          
+LONG_ATR_MAX_THRESHOLD = 2.00        
 # ATR INCREMENT FILTER (DISABLED - Inferior Performance)
 LONG_USE_ATR_INCREMENT_FILTER = True       # 🎯 OPTIMIZED: Increments showed inferior performance
-LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000050#0.000050 # EXPANDED: Much wider range for more entries
-LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000080 # EXPANDED: Much wider range for more entries
+LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.2 #0.000050 # EXPANDED: Much wider range for more entries
+LONG_ATR_INCREMENT_MAX_THRESHOLD = 1.600000 # EXPANDED: Much wider range for more entries
 # ATR DECREMENT FILTER (OPTIMIZED - Only very low changes)
 LONG_USE_ATR_DECREMENT_FILTER = False        # 🎯 OPTIMIZED: Decrements with better performance
-LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000025 # 🎯 EXPANDED: Much wider range for more entries
-LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 # 🎯 EXPANDED: Much wider range for more entries
+LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.00002 # 🎯 EXPANDED: Much wider range for more entries
+LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.00001 # 🎯 EXPANDED: Much wider range for more entries
 
 # === SHORT ATR VOLATILITY FILTER ===
 SHORT_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for short entries  
@@ -261,21 +261,27 @@ LONG_USE_PRICE_FILTER_EMA = True            # Require close > filter_EMA (trend 
 LONG_USE_CANDLE_DIRECTION_FILTER = False     # Require previous candle bullish (close[1] > open[1]) for long entries
 LONG_USE_ANGLE_FILTER = False                # Require minimum EMA slope angle for long entries
 LONG_MIN_ANGLE = 35.0                       # EXPANDED: Much wider angle range for more entries
-LONG_MAX_ANGLE = 85.0                       # EXPANDED: Much wider angle range for more entries
-LONG_ANGLE_SCALE_FACTOR = 10000.0           # Scaling factor for angle calculation sensitivity (long entries)
+LONG_MAX_ANGLE = 95.0                       # EXPANDED: Much wider angle range for more entries
+LONG_ANGLE_SCALE_FACTOR = 10.0              # 🥇 XAUUSD: Reduced scale factor for Gold price range (EURUSD uses 10000.0)
+
+# === LONG EMA POSITION FILTER ===
+LONG_USE_EMA_BELOW_PRICE_FILTER = False     # NEW: Require fast, medium & slow EMAs below price for long entries
 
 # === SHORT ENTRY FILTERS ===
-SHORT_USE_EMA_ORDER_CONDITION = False      # Require confirm_EMA < all other EMAs for short entries
+SHORT_USE_EMA_ORDER_CONDITION = True      # Require confirm_EMA < all other EMAs for short entries
 SHORT_USE_PRICE_FILTER_EMA = True           # Require close < filter_EMA (trend alignment) for short entries  
 SHORT_USE_CANDLE_DIRECTION_FILTER = True    # Require previous candle bearish (close[1] < open[1]) for short entries
 SHORT_USE_ANGLE_FILTER = True               # Require minimum EMA slope angle for short entries
 SHORT_MIN_ANGLE = -90.0                     # EXPANDED: Much wider angle range for more entries
 SHORT_MAX_ANGLE = -20.0                     # EXPANDED: Much wider angle range for more entries
-SHORT_ANGLE_SCALE_FACTOR = 10000.0          # Scaling factor for angle calculation sensitivity (short entries)
+SHORT_ANGLE_SCALE_FACTOR = 10.0             # 🥇 XAUUSD: Reduced scale factor for Gold price range (EURUSD uses 10000.0)
+
+# === SHORT EMA POSITION FILTER ===
+SHORT_USE_EMA_ABOVE_PRICE_FILTER = False    # NEW: Require fast, medium & slow EMAs above price for short entries
 
 # === LONG PULLBACK ENTRY SYSTEM ===
 LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
-LONG_PULLBACK_MAX_CANDLES = 2              # Max red candles in pullback for long entries (1-3 recommended)
+LONG_PULLBACK_MAX_CANDLES = 3              # Max red candles in pullback for long entries (1-3 recommended)
 LONG_ENTRY_WINDOW_PERIODS = 1 #10 #7             # Bars to wait for breakout after pullback (long entries)
 
 # === SHORT PULLBACK ENTRY SYSTEM ===
@@ -294,26 +300,26 @@ WINDOW_OFFSET_MULTIPLIER = 1.0             # Window delay multiplier (0.5=fast, 
                                           # Formula: window_start = current_bar + (pullback_count × this_value)
                                           # 🔬 EXPERIMENT: Try 0.5 for aggressive, 1.5 for conservative entries
 # 🔧 WINDOW_PRICE_OFFSET_MULTIPLIER: Controls the price expansion of the two-sided channel
-WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01 #0.01      # NEW: Price expansion multiplier (0.5 = 50% of candle range)
+WINDOW_PRICE_OFFSET_MULTIPLIER = 0.001 #0.01      # NEW: Price expansion multiplier (0.5 = 50% of candle range)
                                           # Formula: channel_width = candle_range × this_value
 # ===============================================================
 
 # === TIME RANGE FILTER ===
-USE_TIME_RANGE_FILTER = True              # ENABLED: Time filter for complete analysis
-ENTRY_START_HOUR = 21#6                      # Start hour for entry window (UTC)
+USE_TIME_RANGE_FILTER = False              # ENABLED: Time filter for complete analysis
+ENTRY_START_HOUR = 00#6                      # Start hour for entry window (UTC)
 ENTRY_START_MINUTE = 0                     # Start minute for entry window (UTC)
-ENTRY_END_HOUR = 3#18 #15                        # End hour for entry window (UTC)
+ENTRY_END_HOUR = 8#18 #15                        # End hour for entry window (UTC)
 ENTRY_END_MINUTE = 0#59                      # End minute for entry window (UTC)
 
 
 class SunriseOgle(bt.Strategy):
     params = dict(
         # === TECHNICAL INDICATORS ===
-        ema_fast_length=18, #14              # Fast EMA period for trend detection #14
-        ema_medium_length=18,             # Medium EMA period for trend confirmation #18
+        ema_fast_length=14, #14              # Fast EMA period for trend detection #14
+        ema_medium_length=14,             # Medium EMA period for trend confirmation #18
         ema_slow_length=24, #24,               # Slow EMA period for trend strength # 24
         ema_confirm_length=1,             # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=70,#50       # Price filter EMA to avoid counter-trend trades #50
+        ema_filter_price_length=100,#70       # Price filter EMA to avoid counter-trend trades #50
         ema_exit_length=25,               # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
@@ -347,8 +353,9 @@ class SunriseOgle(bt.Strategy):
         long_min_angle=LONG_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (long entries)
         long_max_angle=LONG_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (long entries)
         long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (long entries)
-        long_atr_sl_multiplier=1.5,  #1.5                          # Stop Loss multiplier for LONG trades
-        long_atr_tp_multiplier=10.0, #10                           # Take Profit multiplier for LONG trades
+        long_use_ema_below_price_filter=LONG_USE_EMA_BELOW_PRICE_FILTER,  # NEW: Require fast, medium & slow EMAs below price for long entries
+        long_atr_sl_multiplier=4.5,  #1.5                          # Stop Loss multiplier for LONG trades
+        long_atr_tp_multiplier=6.5, #6.5                          # Take Profit multiplier for LONG trades
         
         # === LONG PULLBACK ENTRY SYSTEM ===
         long_use_pullback_entry=LONG_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for long entries
@@ -378,6 +385,7 @@ class SunriseOgle(bt.Strategy):
         short_min_angle=SHORT_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (short entries)
         short_max_angle=SHORT_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (short entries)
         short_angle_scale_factor=SHORT_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (short entries)
+        short_use_ema_above_price_filter=SHORT_USE_EMA_ABOVE_PRICE_FILTER,  # NEW: Require fast, medium & slow EMAs above price for short entries
         short_atr_sl_multiplier=2.5,                             # Stop Loss multiplier for SHORT trades
         short_atr_tp_multiplier=6.5,#3.5,                             # Take Profit multiplier for SHORT trades
 
@@ -403,8 +411,8 @@ class SunriseOgle(bt.Strategy):
         
         # === FOREX SETTINGS ===
         use_forex_position_calc=True,     # Enable advanced forex position calculations
-        forex_instrument='EURUSD',        # Fixed to EURUSD
-        forex_base_currency='EUR',        # Base currency: EUR
+        forex_instrument='XAUUSD',        # Fixed to XAUUSD
+        forex_base_currency='XAU',        # Base currency: XAU
         forex_quote_currency='USD',       # Quote currency: USD
         forex_pip_value=0.0001,           # Pip value for EURUSD
         forex_pip_decimal_places=4,       # Price decimal places for EURUSD
@@ -732,15 +740,15 @@ class SunriseOgle(bt.Strategy):
         account_equity = self.broker.get_value()
         risk_amount = account_equity * self.p.risk_percent
         
-        # Calculate value per pip for EURUSD
-        # For EURUSD: 1 standard lot (100,000 units) = $10 per pip (0.0001 price move)
+        # Calculate value per tick for XAUUSD
+        # For XAUUSD: 1 standard lot (100 oz) = $1 per tick (0.01 price move)
         
         if self.p.forex_quote_currency == 'USD':
             value_per_pip_per_lot = (self.p.forex_pip_value * self.p.forex_lot_size)
         else:
-            # For EURUSD, we need to convert EUR to USD using current exchange rate
-            # Simplified: use approximate $10 per pip for standard lot
-            value_per_pip_per_lot = 10.0
+            # For XAUUSD, direct USD pricing
+            # Simplified: use $1 per tick for standard lot (100 oz)
+            value_per_pip_per_lot = 1.0
         
         # Calculate optimal lot size
         if pip_risk > 0:
@@ -767,8 +775,8 @@ class SunriseOgle(bt.Strategy):
         position_value = optimal_lots * self.p.forex_lot_size * entry_price
         margin_required = position_value * (self.p.forex_margin_required / 100.0)
         
-        # Convert to Backtrader contracts for USDCHF
-        # For USDCHF: Use lot size directly 
+        # Convert to Backtrader contracts for XAUUSD
+        # For XAUUSD: Use lot size directly (100 oz standard lot)
         contracts = max(1, int(optimal_lots * 100))  # Scale lots to reasonable contract size
         print(f"DEBUG_POSITION_SIZE: optimal_lots={optimal_lots:.2f}, contracts={contracts}")
         
@@ -792,7 +800,7 @@ class SunriseOgle(bt.Strategy):
         if not self.p.use_forex_position_calc:
             return ""
             
-        # Calculate potential profit in pips
+        # Calculate potential profit in ticks
         if take_profit and entry_price:
             profit_pips = abs(take_profit - entry_price) / self.p.forex_pip_value
             risk_reward = profit_pips / pip_risk if pip_risk > 0 else 0
@@ -800,26 +808,26 @@ class SunriseOgle(bt.Strategy):
             profit_pips = 0
             risk_reward = 0
             
-        # Calculate monetary values for USDCHF
-        # Standard USD pairs: $10 per pip for standard lot
-        pip_value_per_lot = 10.0
+        # Calculate monetary values for XAUUSD
+        # Gold: $1 per tick for standard lot (100 oz)
+        pip_value_per_lot = 1.0
             
         risk_amount = pip_risk * lot_size * pip_value_per_lot
         profit_potential = profit_pips * lot_size * pip_value_per_lot
         spread_cost = self.p.forex_spread_pips * lot_size * pip_value_per_lot
         
-        # Format units for USDCHF
-        units_desc = f"{lot_size * self.p.forex_lot_size:,.0f} {self.p.forex_base_currency}"
+        # Format units for XAUUSD
+        units_desc = f"{lot_size * self.p.forex_lot_size:,.0f} oz {self.p.forex_base_currency}"
         
         # Format prices based on decimal places
         price_format = f"{{:.{self.p.forex_pip_decimal_places}f}}"
         
-        return (f"\n--- FOREX TRADE DETAILS ({self.p.forex_instrument}) ---\n"
+        return (f"\n--- GOLD TRADE DETAILS ({self.p.forex_instrument}) ---\n"
                 f"Position Size: {lot_size:.2f} lots ({units_desc})\n"
                 f"Position Value: ${position_value:,.2f}\n"
                 f"Margin Required: ${margin_required:,.2f} ({self.p.forex_margin_required}%)\n"
                 f"Entry: {price_format.format(entry_price)} | SL: {price_format.format(stop_loss)} | TP: {price_format.format(take_profit)}\n"
-                f"Risk: {pip_risk:.1f} pips (${risk_amount:.2f}) | Profit: {profit_pips:.1f} pips (${profit_potential:.2f})\n"
+                f"Risk: {pip_risk:.1f} ticks (${risk_amount:.2f}) | Profit: {profit_pips:.1f} ticks (${profit_potential:.2f})\n"
                 f"Risk/Reward: 1:{risk_reward:.2f} | Spread Cost: ${spread_cost:.2f}\n"
                 f"Account Leverage: {self.p.account_leverage:.0f}:1 | Account: {self.p.account_currency}")
     
@@ -827,91 +835,91 @@ class SunriseOgle(bt.Strategy):
         """Validate forex configuration for USDCHF.
         
         Returns:
-            bool: True if configuration is valid for USDCHF data
+            bool: True if configuration is valid for XAUUSD data
         """
         if not self.p.use_forex_position_calc:
             return True
             
-        # Check if data filename matches USDCHF
+        # Check if data filename matches XAUUSD
         data_filename = getattr(self, '_data_filename', '')
-        if 'USDCHF' not in data_filename.upper():
-            print(f"WARNING: Data file is {data_filename} but strategy is configured for USDCHF")
+        if 'XAUUSD' not in data_filename.upper():
+            print(f"WARNING: Data file is {data_filename} but strategy is configured for XAUUSD")
             
-        # Validate price ranges for USDCHF
+        # Validate price ranges for XAUUSD (Gold)
         if hasattr(self.data, 'close') and len(self.data.close) > 0:
             current_price = float(self.data.close[0])
-            if current_price < 0.7 or current_price > 1.3:
-                print(f"WARNING: Price {current_price} seems unusual for USDCHF (expected range: 0.7-1.3)")
+            if current_price < 1000 or current_price > 3000:
+                print(f"WARNING: Price {current_price} seems unusual for XAUUSD (expected range: 1000-3000)")
                 
-        # Check pip value consistency for USDCHF
-        if self.p.forex_pip_value != 0.0001:
-            print(f"INFO: USDCHF typically uses pip value of 0.0001, current setting: {self.p.forex_pip_value}")
+        # Check tick value consistency for XAUUSD
+        if self.p.forex_pip_value != 0.01:
+            print(f"INFO: XAUUSD typically uses tick value of 0.01, current setting: {self.p.forex_pip_value}")
             
         return True
     
     def _get_forex_instrument_config(self, instrument_name=None):
-        """Get forex configuration for USDCHF instrument.
+        """Get configuration for XAUUSD instrument.
         
         Args:
-            instrument_name: Override instrument name (defaults to USDCHF)
+            instrument_name: Override instrument name (defaults to XAUUSD)
             
         Returns:
-            dict: Configuration dictionary for USDCHF
+            dict: Configuration dictionary for XAUUSD
         """
         # Auto-detect instrument from data filename if not specified
         if instrument_name is None or instrument_name == 'AUTO':
             data_filename = getattr(self, '_data_filename', '').upper()
             
             # Try to detect instrument from filename
-            if 'USDCHF' in data_filename:
-                instrument_name = 'USDCHF'
+            if 'XAUUSD' in data_filename:
+                instrument_name = 'XAUUSD'
             else:
-                instrument_name = 'USDCHF'  # Default to USDCHF for this cleaned version
+                instrument_name = 'XAUUSD'  # Default to XAUUSD for this gold version
         
-        # USDCHF configuration only
+        # XAUUSD configuration only
         config = {
-            'USDCHF': {  # USD vs Swiss Franc
-                'base_currency': 'USD',
-                'quote_currency': 'CHF',
-                'pip_value': 0.0001,         # 1 pip = $0.0001
-                'pip_decimal_places': 4,
-                'lot_size': 100000,          # 100,000 USD
-                'margin_required': 3.33,     # 3.33% (30:1 leverage)
-                'typical_spread': 2.2
+            'XAUUSD': {  # Gold vs US Dollar
+                'base_currency': 'XAU',
+                'quote_currency': 'USD',
+                'pip_value': 0.01,           # 1 tick = $0.01
+                'pip_decimal_places': 2,
+                'lot_size': 100,             # 100 ounces
+                'margin_required': 5.0,      # 5.0% (20:1 leverage)
+                'typical_spread': 0.3
             }
         }
         
-        return config.get(instrument_name, config['USDCHF'])
+        return config.get(instrument_name, config['XAUUSD'])
     
     def _apply_forex_config(self):
         """Apply forex configuration for USDCHF."""
         if not self.p.use_forex_position_calc:
             return
             
-        # Get configuration for USDCHF
-        config = self._get_forex_instrument_config('USDCHF')
+        # Get configuration for XAUUSD
+        config = self._get_forex_instrument_config('XAUUSD')
         
-        # Update parameters with USDCHF configuration
+        # Update parameters with XAUUSD configuration
         self.p.forex_base_currency = config['base_currency']
         self.p.forex_quote_currency = config['quote_currency']
         
         # Store detected instrument for logging
-        self._detected_instrument = 'USDCHF'
+        self._detected_instrument = 'XAUUSD'
         data_filename = getattr(self, '_data_filename', '').upper()
                 
-        # Apply USDCHF configuration
+        # Apply XAUUSD configuration
         self.p.forex_pip_value = config['pip_value']
         self.p.forex_pip_decimal_places = config['pip_decimal_places']
         self.p.forex_lot_size = config['lot_size']
         self.p.forex_margin_required = config['margin_required']
         self.p.forex_spread_pips = config['typical_spread']
-        # Update the instrument parameter with USDCHF
-        self.p.forex_instrument = 'USDCHF'
+        # Update the instrument parameter with XAUUSD
+        self.p.forex_instrument = 'XAUUSD'
                 
         # Log forex configuration
-        print(f"CONFIGURED: USDCHF from filename: {data_filename}")
+        print(f"CONFIGURED: XAUUSD from filename: {data_filename}")
         print(f"Forex Config: {self.p.forex_base_currency}/{self.p.forex_quote_currency}")
-        print(f"Pip Value: {self.p.forex_pip_value} | Lot Size: {self.p.forex_lot_size:,} | Margin: {self.p.forex_margin_required}%")
+        print(f"Tick Value: {self.p.forex_pip_value} | Lot Size: {self.p.forex_lot_size:,} oz | Margin: {self.p.forex_margin_required}%")
 
     def __init__(self):
             d = self.data
@@ -1177,6 +1185,16 @@ class SunriseOgle(bt.Strategy):
                     price_above_filter = self.data.close[0] > self.ema_filter_price[0]
                     if not price_above_filter:
                         signal_valid = False
+                
+                # EMA position filter (LONG: all EMAs below price)
+                if signal_valid and self.p.long_use_ema_below_price_filter:
+                    emas_below_price = (
+                        self.ema_fast[0] < self.data.close[0] and
+                        self.ema_medium[0] < self.data.close[0] and
+                        self.ema_slow[0] < self.data.close[0]
+                    )
+                    if not emas_below_price:
+                        signal_valid = False
 
                 # Angle filter (LONG: positive angle range)
                 if signal_valid and self.p.long_use_angle_filter:
@@ -1234,6 +1252,16 @@ class SunriseOgle(bt.Strategy):
                 if signal_valid and self.p.short_use_price_filter_ema:
                     price_below_filter = self.data.close[0] < self.ema_filter_price[0]
                     if not price_below_filter:
+                        signal_valid = False
+                
+                # EMA position filter (SHORT: all EMAs above price)
+                if signal_valid and self.p.short_use_ema_above_price_filter:
+                    emas_above_price = (
+                        self.ema_fast[0] > self.data.close[0] and
+                        self.ema_medium[0] > self.data.close[0] and
+                        self.ema_slow[0] > self.data.close[0]
+                    )
+                    if not emas_above_price:
                         signal_valid = False
 
                 # Angle filter (SHORT: negative angle range)
@@ -1880,6 +1908,16 @@ class SunriseOgle(bt.Strategy):
             price_above_filter = self.data.close[0] > self.ema_filter_price[0]
             if not price_above_filter:
                 return False
+        
+        # 4.5. EMA position filter (LONG: all EMAs below price)
+        if self.p.long_use_ema_below_price_filter:
+            emas_below_price = (
+                self.ema_fast[0] < self.data.close[0] and
+                self.ema_medium[0] < self.data.close[0] and
+                self.ema_slow[0] < self.data.close[0]
+            )
+            if not emas_below_price:
+                return False
 
         # 5. Angle filter (LONG: positive angle range)
         if self.p.long_use_angle_filter:
@@ -1942,6 +1980,16 @@ class SunriseOgle(bt.Strategy):
         if self.p.short_use_price_filter_ema:
             price_below_filter = self.data.close[0] < self.ema_filter_price[0]
             if not price_below_filter:
+                return False
+        
+        # 4.5. EMA position filter (SHORT: all EMAs above price)
+        if self.p.short_use_ema_above_price_filter:
+            emas_above_price = (
+                self.ema_fast[0] > self.data.close[0] and
+                self.ema_medium[0] > self.data.close[0] and
+                self.ema_slow[0] > self.data.close[0]
+            )
+            if not emas_above_price:
                 return False
 
         # 5. Angle filter (SHORT: negative angle range)
@@ -2428,6 +2476,16 @@ class SunriseOgle(bt.Strategy):
             price_above_filter = self.data.close[0] > self.ema_filter_price[0]
             if not price_above_filter:
                 return False
+        
+        # 4.5. EMA position filter (LONG: all EMAs below price)
+        if self.p.long_use_ema_below_price_filter:
+            emas_below_price = (
+                self.ema_fast[0] < self.data.close[0] and
+                self.ema_medium[0] < self.data.close[0] and
+                self.ema_slow[0] < self.data.close[0]
+            )
+            if not emas_below_price:
+                return False
 
         # 5. Angle filter
         if self.p.long_use_angle_filter:
@@ -2484,6 +2542,16 @@ class SunriseOgle(bt.Strategy):
         if self.p.short_use_price_filter_ema:
             price_below_filter = self.data.close[0] < self.ema_filter_price[0]
             if not price_below_filter:
+                return False
+        
+        # 4.5. EMA position filter (SHORT: all EMAs above price)
+        if self.p.short_use_ema_above_price_filter:
+            emas_above_price = (
+                self.ema_fast[0] > self.data.close[0] and
+                self.ema_medium[0] > self.data.close[0] and
+                self.ema_slow[0] > self.data.close[0]
+            )
+            if not emas_above_price:
                 return False
 
         # 5. Angle filter (opposite of LONG) - FIX: Use SHORT scale factor
@@ -2889,7 +2957,7 @@ if __name__ == '__main__':
     print(f"=== SUNRISE OGLE === (from {FROMDATE} to {TODATE})")
     if ENABLE_FOREX_CALC:
         print(f">> FOREX MODE ENABLED - Data: {DATA_FILENAME}")
-        print(f">> Instrument: EURUSD (EUR/USD)")
+        print(f">> Instrument: XAUUSD (XAU/USD)")
     else:
         print(f" STANDARD MODE - Data: {DATA_FILENAME}")
 
