@@ -196,7 +196,7 @@ import backtrader as bt
 
 # === INSTRUMENT SELECTION ===
 # Cleaned version - USDCHF only
-DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # 🇨🇭 USD vs Swiss Franc - Major Forex Pair
+DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # �🇭 USD vs Swiss Franc - Major Forex Pair
 
 # === BACKTEST SETTINGS ===
 FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
@@ -234,13 +234,13 @@ LONG_USE_ATR_FILTER = True                 # Enable ATR-based volatility filteri
 LONG_ATR_MIN_THRESHOLD = 0.000300          
 LONG_ATR_MAX_THRESHOLD = 0.000700          
 # ATR INCREMENT FILTER (DISABLED - Inferior Performance)
-LONG_USE_ATR_INCREMENT_FILTER = True       # 🎯 OPTIMIZED: Increments showed inferior performance
+LONG_USE_ATR_INCREMENT_FILTER = False       # 🎯 OPTIMIZED: Increments showed inferior performance
 LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000011 # EXPANDED: Much wider range for more entries
 LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000080 # EXPANDED: Much wider range for more entries
 # ATR DECREMENT FILTER (OPTIMIZED - Only very low changes)
-LONG_USE_ATR_DECREMENT_FILTER = True        # 🎯 OPTIMIZED: Decrements with better performance
-LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000080 # 🎯 EXPANDED: Much wider range for more entries
-LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000011 # 🎯 EXPANDED: Much wider range for more entries
+LONG_USE_ATR_DECREMENT_FILTER = False        # 🎯 OPTIMIZED: Decrements with better performance
+LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000030 # 🎯 EXPANDED: Much wider range for more entries
+LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 # 🎯 EXPANDED: Much wider range for more entries
 
 # === SHORT ATR VOLATILITY FILTER ===
 SHORT_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for short entries  
@@ -276,7 +276,7 @@ SHORT_ANGLE_SCALE_FACTOR = 10000.0          # Scaling factor for angle calculati
 # === LONG PULLBACK ENTRY SYSTEM ===
 LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
 LONG_PULLBACK_MAX_CANDLES = 2              # Max red candles in pullback for long entries (1-3 recommended)
-LONG_ENTRY_WINDOW_PERIODS = 200 #10 #7             # Bars to wait for breakout after pullback (long entries)
+LONG_ENTRY_WINDOW_PERIODS = 2 #10 #7             # Bars to wait for breakout after pullback (long entries)
 
 # === SHORT PULLBACK ENTRY SYSTEM ===
 SHORT_USE_PULLBACK_ENTRY = True            # Enable 3-phase pullback entry system for short entries
@@ -309,7 +309,7 @@ ENTRY_END_MINUTE = 0#59                      # End minute for entry window (UTC)
 class SunriseOgle(bt.Strategy):
     params = dict(
         # === TECHNICAL INDICATORS ===
-        ema_fast_length=14,               # Fast EMA period for trend detection #14
+        ema_fast_length=18, #14              # Fast EMA period for trend detection #14
         ema_medium_length=18,             # Medium EMA period for trend confirmation #18
         ema_slow_length=24, #24,               # Slow EMA period for trend strength # 24
         ema_confirm_length=1,             # Confirmation EMA (usually 1 for immediate response)
@@ -347,8 +347,8 @@ class SunriseOgle(bt.Strategy):
         long_min_angle=LONG_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (long entries)
         long_max_angle=LONG_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (long entries)
         long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (long entries)
-        long_atr_sl_multiplier=2.5,                            # Stop Loss multiplier for LONG trades
-        long_atr_tp_multiplier=9.0,                           # Take Profit multiplier for LONG trades
+        long_atr_sl_multiplier=2.5,  #1.5                          # Stop Loss multiplier for LONG trades
+        long_atr_tp_multiplier=10, #10                           # Take Profit multiplier for LONG trades
         
         # === LONG PULLBACK ENTRY SYSTEM ===
         long_use_pullback_entry=LONG_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for long entries
