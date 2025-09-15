@@ -48,6 +48,7 @@ sys.path.append(str(BASE_DIR))
 # Import individual strategy classes
 from sunrise_ogle_long_only import SunriseOgle as SunriseOgleEURUSD
 from sunrise_ogle_usdchf import SunriseOgle as SunriseOgleUSDCHF
+from sunrise_ogle_xauusd import SunriseOgle as SunriseOgleXAUUSD
 
 # =============================================================
 # CONFIGURATION PARAMETERS
@@ -65,13 +66,19 @@ ASSETS = {
         'data_file': 'EURUSD_5m_5Yea.csv',  # Fixed to match sunrise_ogle_long_only.py
         'strategy_class': SunriseOgleEURUSD,  # Using sunrise_ogle_long_only.py (newest, cleanest LONG-only)
         'forex_instrument': 'EURUSD',
-        'allocation': 0.5  # 50% of portfolio
+        'allocation': 0.33  # 33% of portfolio
     },
     'USDCHF': {
         'data_file': 'USDCHF_5m_5Yea.csv', 
         'strategy_class': SunriseOgleUSDCHF,  # Using sunrise_ogle_usdchf.py
         'forex_instrument': 'USDCHF',
-        'allocation': 0.5  # 50% of portfolio
+        'allocation': 0.34  # 34% of portfolio
+    },
+    'XAUUSD': {
+        'data_file': 'XAUUSD_5m_5Yea.csv',  # Gold data file
+        'strategy_class': SunriseOgleXAUUSD,  # Using sunrise_ogle_xauusd.py
+        'forex_instrument': 'XAUUSD',
+        'allocation': 0.33  # 33% of portfolio
     }
 }
 
@@ -169,6 +176,20 @@ def run_single_asset_backtest(asset_name, asset_config, fromdate, todate, starti
     drawdown_analyzer = strategy_result.analyzers.drawdown.get_analysis()
     sharpe_analyzer = strategy_result.analyzers.sharpe.get_analysis()
     
+    # Calculate Profit Factor (Gross Profit / Gross Loss)
+    profit_factor = 0.0
+    if trade_analyzer:
+        won = trade_analyzer.get('won', {})
+        lost = trade_analyzer.get('lost', {})
+        
+        gross_profit = won.get('pnl', {}).get('total', 0) if won.get('pnl') else 0
+        gross_loss = abs(lost.get('pnl', {}).get('total', 0)) if lost.get('pnl') else 0
+        
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
+        elif gross_profit > 0:
+            profit_factor = float('inf')  # No losses, infinite PF
+    
     return {
         'asset': asset_name,
         'cerebro': cerebro,
@@ -180,13 +201,14 @@ def run_single_asset_backtest(asset_name, asset_config, fromdate, todate, starti
         'trade_analysis': trade_analyzer,
         'drawdown_analysis': drawdown_analyzer,
         'sharpe_ratio': sharpe_analyzer.get('sharperatio', 0),
+        'profit_factor': profit_factor,
         'data': data
     }
 
 def aggregate_portfolio_results(results_list):
     """Aggregate results from multiple asset backtests"""
     print(f"\n" + "="*80)
-    print(f"📊 DUAL CEREBRO PORTFOLIO AGGREGATION")
+    print(f"📊 TRIPLE CEREBRO PORTFOLIO AGGREGATION")
     print(f"="*80)
     
     total_initial = sum(r['initial_value'] for r in results_list)
@@ -211,11 +233,14 @@ def aggregate_portfolio_results(results_list):
     total_trades = 0
     total_wins = 0
     total_losses = 0
+    total_gross_profit = 0.0
+    total_gross_loss = 0.0
     
     print(f"\n📊 TRADE STATISTICS:")
     for result in results_list:
         asset = result['asset']
         trade_analysis = result['trade_analysis']
+        profit_factor = result.get('profit_factor', 0)
         
         if trade_analysis:
             won = trade_analysis.get('won', {})
@@ -226,14 +251,24 @@ def aggregate_portfolio_results(results_list):
             asset_losses = lost.get('total', 0)
             win_rate = (asset_wins / asset_total * 100) if asset_total > 0 else 0
             
+            # Add gross profits/losses for portfolio PF calculation
+            gross_profit = won.get('pnl', {}).get('total', 0) if won.get('pnl') else 0
+            gross_loss = abs(lost.get('pnl', {}).get('total', 0)) if lost.get('pnl') else 0
+            
             total_trades += asset_total
             total_wins += asset_wins
             total_losses += asset_losses
+            total_gross_profit += gross_profit
+            total_gross_loss += gross_loss
             
-            print(f"  {asset:<8}: {asset_total:>3} trades | {asset_wins:>3} wins | {asset_losses:>3} losses | {win_rate:>5.1f}% WR")
+            pf_str = f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞"
+            print(f"  {asset:<8}: {asset_total:>3} trades | {asset_wins:>3} wins | {asset_losses:>3} losses | {win_rate:>5.1f}% WR | PF: {pf_str}")
     
     portfolio_win_rate = (total_wins / total_trades * 100) if total_trades > 0 else 0
-    print(f"  {'TOTAL':<8}: {total_trades:>3} trades | {total_wins:>3} wins | {total_losses:>3} losses | {portfolio_win_rate:>5.1f}% WR")
+    portfolio_pf = (total_gross_profit / total_gross_loss) if total_gross_loss > 0 else float('inf')
+    portfolio_pf_str = f"{portfolio_pf:.2f}" if portfolio_pf != float('inf') else "∞"
+    
+    print(f"  {'TOTAL':<8}: {total_trades:>3} trades | {total_wins:>3} wins | {total_losses:>3} losses | {portfolio_win_rate:>5.1f}% WR | PF: {portfolio_pf_str}")
     
     # Risk metrics
     print(f"\n⚖️  RISK METRICS:")
@@ -241,11 +276,28 @@ def aggregate_portfolio_results(results_list):
         asset = result['asset']
         dd_analysis = result['drawdown_analysis']
         sharpe = result['sharpe_ratio']
+        profit_factor = result.get('profit_factor', 0)
         
-        max_dd = dd_analysis.get('max', {}).get('drawdown', 0) if dd_analysis else 0
-        max_dd_pct = max_dd * 100 if max_dd else 0
+        # Fix drawdown calculation - Backtrader returns percentage values directly
+        max_dd_raw = dd_analysis.get('max', {}).get('drawdown', 0) if dd_analysis else 0
         
-        print(f"  {asset:<8}: Max DD: {max_dd_pct:>5.2f}% | Sharpe: {sharpe:>6.3f}")
+        # Backtrader DrawDown analyzer returns percentage values directly (0-100 scale)
+        # But they seem to be returned as fractions, so we need to check the range
+        if abs(max_dd_raw) <= 1.0:
+            # Value is a decimal fraction (0.05 = 5%), convert to percentage
+            max_dd_pct = abs(max_dd_raw) * 100
+        else:
+            # Value is already a percentage, just take absolute value
+            max_dd_pct = abs(max_dd_raw)
+        
+        # Cap at reasonable maximum for safety
+        max_dd_pct = min(max_dd_pct, 99.9)
+        
+        pf_str = f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞"
+        print(f"  {asset:<8}: Max DD: {max_dd_pct:>5.2f}% | Sharpe: {sharpe:>6.3f} | PF: {pf_str}")
+    
+    # Add portfolio-level PF summary
+    print(f"  {'PORTFOLIO':<8}: Portfolio PF: {portfolio_pf_str}")
     
     print(f"="*80)
     
@@ -329,12 +381,12 @@ def create_portfolio_chart(results_list):
         performance_title = " | ".join(title_parts)
         
         # Add main title on the left side
-        fig.text(0.02, 0.95, 'Dual Asset Portfolio Performance', 
+        fig.text(0.02, 0.95, 'Triple Asset Portfolio Performance (EURUSD + USDCHF + XAUUSD)', 
                 fontsize=16, fontweight='bold', ha='left', va='top')
         fig.text(0.02, 0.91, performance_title, 
                 fontsize=12, fontweight='normal', ha='left', va='top')
         
-        colors = {'EURUSD': '#2E86AB', 'USDCHF': '#A23B72'}
+        colors = {'EURUSD': '#2E86AB', 'USDCHF': '#A23B72', 'XAUUSD': '#333333'}
         lines = {}
         
         # Plot individual asset portfolios with performance in legend
@@ -360,18 +412,17 @@ def create_portfolio_chart(results_list):
                            markersize=1)
             lines[asset] = line
         
-        # Calculate and plot combined portfolio
-        if len(portfolio_data) == 2:
+        # Calculate and plot combined portfolio for all assets
+        if len(portfolio_data) >= 2:
             assets = list(portfolio_data.keys())
-            asset1_data = portfolio_data[assets[0]]
-            asset2_data = portfolio_data[assets[1]]
             
-            min_length = min(len(asset1_data['values']), len(asset2_data['values']))
+            # Find minimum length across all assets
+            min_length = min(len(portfolio_data[asset]['values']) for asset in assets)
             combined_total = []
-            combined_timestamps = asset1_data['timestamps'][:min_length]
+            combined_timestamps = portfolio_data[assets[0]]['timestamps'][:min_length]
             
             for i in range(min_length):
-                total_val = asset1_data['values'][i] + asset2_data['values'][i]
+                total_val = sum(portfolio_data[asset]['values'][i] for asset in assets)
                 combined_total.append(total_val)
             
             # Calculate combined performance for legend
@@ -400,9 +451,9 @@ def create_portfolio_chart(results_list):
         
         ax.grid(True, alpha=0.3, linestyle='--')
         
-        # Format x-axis dates for better readability
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        ax.xaxis.set_major_locator(mdates.WeekdayLocator(interval=1))
+        # Format x-axis dates for better readability - MONTHLY intervals
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))  # Every 2 months for 5-year span
         
         # Rotate x-axis labels for better readability
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
@@ -473,7 +524,7 @@ def create_simple_individual_charts(results_list):
         except Exception as e:
             print(f"    Warning: Could not create chart for {asset}: {e}")
 
-def run_dual_cerebro_backtest():
+def run_triple_cerebro_backtest():
     """Main function to run dual cerebro backtest"""
     print(f"🤖 DUAL CEREBRO MULTI-ASSET BACKTEST")
     print(f"📅 Period: {FROMDATE} to {TODATE}")
@@ -566,13 +617,13 @@ def cleanup_auxiliary_files():
 
 if __name__ == '__main__':
     try:
-        portfolio_summary, individual_results = run_dual_cerebro_backtest()
-        print(f"\n✅ Dual cerebro backtest completed successfully!")
+        portfolio_summary, individual_results = run_triple_cerebro_backtest()
+        print(f"\n✅ Triple cerebro backtest completed successfully!")
         
         # Keep external reports - don't cleanup
         # cleanup_auxiliary_files()
         
     except Exception as e:
-        print(f"❌ Error in dual cerebro backtest: {e}")
+        print(f"❌ Error in triple cerebro backtest: {e}")
         import traceback
         traceback.print_exc()
