@@ -1,35 +1,23 @@
-"""Dual Asset Strategy - EURUSD & USDCHF Trading System
-======================================================
-Dual Cerebro Implementation using exact sunrise_osiris.py approach
+"""Quad Asset Strategy - Multi-Asset Trading Portfolio System
+==========================================================
+Quad Cerebro Implementation using SunriseOgle strategies
 
-This system runs two separate cereb    print(f"\n⚖️  RISK METRICS:")
-    for result in results_list:
-        asset = result['asset']
-        dd_analysis = result['drawdown_analysis']
-        sharpe = result['sharpe_ratio']
-        
-        # Get the max drawdown value
-        max_dd_raw = dd_analysis.get('max', {}).get('drawdown', 0) if dd_analysis else 0
-        
-        # The drawdown values seem to be coming as very large numbers, possibly in different units
-        # Let's apply some reasonable logic: if > 1, it's likely already a percentage, if < 1, it's decimal
-        if max_dd_raw > 1:
-            max_dd_pct = max_dd_raw  # Already a percentage 
-        else:
-            max_dd_pct = max_dd_raw * 100  # Convert from decimal to percentage
-        
-        # Cap at reasonable maximum (no strategy should have >100% drawdown with positive final value)
-        if max_dd_pct > 100:
-            max_dd_pct = min(max_dd_pct / 100, 99.9)  # Try dividing by 100, cap at 99.9%
-        
-        print(f"  {asset:<8}: Max DD: {max_dd_pct:>5.2f}% | Sharpe: {sharpe:>6.3f}")es:
-1. EURUSD using sunrise_ogle_eurusd.py strategy  
-2. USDCHF using sunrise_osiris.py strategy
+This system runs four separate cerebro instances with the following assets:
+1. EURUSD using sunrise_ogle_long_only.py strategy  
+2. USDCHF using sunrise_ogle_usdchf.py strategy
+3. XAUUSD using sunrise_ogle_xauusd.py strategy
+4. GBPUSD using sunrise_ogle_gbpusd.py strategy
 
 Each asset runs independently with its own optimized parameters,
-then results are aggregated for portfolio-level reporting.
+with equal 25% portfolio allocation per asset, then results are 
+aggregated for comprehensive portfolio-level reporting.
 
-Interactive Backtrader charts with mouse hover functionality.
+Features:
+- Multi-asset diversification across major forex pairs and gold
+- Independent strategy optimization for each asset
+- Portfolio-level risk and performance aggregation
+- Interactive Backtrader charts with mouse hover functionality
+- Comprehensive trade reporting and analytics
 
 DISCLAIMER
 ----------
@@ -56,6 +44,7 @@ sys.path.append(str(BASE_DIR))
 from sunrise_ogle_long_only import SunriseOgle as SunriseOgleEURUSD
 from sunrise_ogle_usdchf import SunriseOgle as SunriseOgleUSDCHF
 from sunrise_ogle_xauusd import SunriseOgle as SunriseOgleXAUUSD
+from sunrise_ogle_gbpusd import SunriseOgle as SunriseOgleGBPUSD
 
 # =============================================================
 # CONFIGURATION PARAMETERS
@@ -73,19 +62,25 @@ ASSETS = {
         'data_file': 'EURUSD_5m_5Yea.csv',  # Fixed to match sunrise_ogle_long_only.py
         'strategy_class': SunriseOgleEURUSD,  # Using sunrise_ogle_long_only.py (newest, cleanest LONG-only)
         'forex_instrument': 'EURUSD',
-        'allocation': 0.33  # 33% of portfolio
+        'allocation': 0.25  # 25% of portfolio
     },
     'USDCHF': {
         'data_file': 'USDCHF_5m_5Yea.csv', 
         'strategy_class': SunriseOgleUSDCHF,  # Using sunrise_ogle_usdchf.py
         'forex_instrument': 'USDCHF',
-        'allocation': 0.34  # 34% of portfolio
+        'allocation': 0.25  # 25% of portfolio
     },
     'XAUUSD': {
         'data_file': 'XAUUSD_5m_5Yea.csv',  # Gold data file
         'strategy_class': SunriseOgleXAUUSD,  # Using sunrise_ogle_xauusd.py
         'forex_instrument': 'XAUUSD',
-        'allocation': 0.33  # 33% of portfolio
+        'allocation': 0.25  # 25% of portfolio
+    },
+    'GBPUSD': {
+        'data_file': 'GBPUSD_5m_5Yea.csv',  # British Pound data file
+        'strategy_class': SunriseOgleGBPUSD,  # Using sunrise_ogle_gbpusd.py
+        'forex_instrument': 'GBPUSD',
+        'allocation': 0.25  # 25% of portfolio
     }
 }
 
@@ -215,7 +210,7 @@ def run_single_asset_backtest(asset_name, asset_config, fromdate, todate, starti
 def aggregate_portfolio_results(results_list):
     """Aggregate results from multiple asset backtests"""
     print(f"\n" + "="*80)
-    print(f"📊 TRIPLE CEREBRO PORTFOLIO AGGREGATION")
+    print(f"📊 QUAD CEREBRO PORTFOLIO AGGREGATION")
     print(f"="*80)
     
     total_initial = sum(r['initial_value'] for r in results_list)
@@ -388,7 +383,7 @@ def create_portfolio_chart(results_list):
         performance_title = " | ".join(title_parts)
         
         # Add main title on the left side
-        fig.text(0.02, 0.95, 'Triple Asset Portfolio Performance (EURUSD + USDCHF + XAUUSD)', 
+        fig.text(0.02, 0.95, 'Quad Asset Portfolio Performance (EURUSD + USDCHF + XAUUSD + GBPUSD)', 
                 fontsize=16, fontweight='bold', ha='left', va='top')
         fig.text(0.02, 0.91, performance_title, 
                 fontsize=12, fontweight='normal', ha='left', va='top')
@@ -533,7 +528,7 @@ def create_simple_individual_charts(results_list):
 
 def run_triple_cerebro_backtest():
     """Main function to run dual cerebro backtest"""
-    print(f"🤖 DUAL CEREBRO MULTI-ASSET BACKTEST")
+    print(f"🤖 QUAD CEREBRO MULTI-ASSET BACKTEST")
     print(f"📅 Period: {FROMDATE} to {TODATE}")
     print(f"💰 Starting Cash: ${STARTING_CASH:,.2f}")
     print(f"📊 Assets: {', '.join(ASSETS.keys())}")

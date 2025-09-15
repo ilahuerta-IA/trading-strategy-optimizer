@@ -1,168 +1,154 @@
-"""Advanced Sunrise Strategy - USDCHF Trading System
-===================================================
-CLEAN VERSION: This is a cleaned and optimized version focused exclusively on USDCHF trading.
-All other assets (Gold, Silver, EURUSD, GBPUSD, AUDUSD) have been removed for simplicity.
+﻿"""Advanced Sunrise Strategy - GBPUSD Trading System (LONG-ONLY)
+================================================================
+LONG-ONLY VERSION: This is a cleaned and optimized version focused exclusively on GBPUSD LONG trading.
+All SHORT trading functionality has been removed for simplicity and focus.
 
-This strategy implements a sophisticated trading system optimized for USDCHF with the following features:
+This strategy implements a sophisticated LONG-only trading system optimized for GBPUSD with the following features:
 
 ENTRY MODES
 -----------
 > TRADING DIRECTION:
-  - LONG ONLY: Buy entries when uptrend conditions met
-  - SHORT ONLY: Sell entries when downtrend conditions met  
-  - BOTH: Enable long and short trading simultaneously
-  
-> ENTRY PRIORITY (when both LONG and SHORT conditions are met):
-  - LONG signals are checked FIRST and take priority
-  - If LONG conditions are met, SHORT conditions are ignored for that bar
-  - Only one position allowed at a time - conflicts result in position closure
+    - LONG ONLY: Buy entries when uptrend conditions are met
+    
+> ENTRY SYSTEM:
+    - Single direction trading - only LONG positions
+    - One position allowed at a time
+    - Clean execution flow without direction conflicts
 
 > STANDARD MODE (use_pullback_entry=False):
-  Direct entry when all conditions align simultaneously
+    Direct entry when all conditions align simultaneously
 
 > VOLATILITY EXPANSION CHANNEL ENTRY SYSTEM (use_pullback_entry=True) - RECOMMENDED:
-  ADVANCED 4-PHASE STATE MACHINE for superior entry timing:
-  
-  PHASE 1 - SIGNAL SCANNING:
-  - Monitor for EMA crossovers + directional candle confirmation
-  - State: SCANNING -> ARMED_LONG/ARMED_SHORT
-  
-  PHASE 2 - PULLBACK CONFIRMATION:
-  - Wait for specified pullback candles (long_pullback_max_candles/short_pullback_max_candles)
-  - LONG: Wait 1-3 red candles after bullish signal
-  - SHORT: Wait 1-3 green candles after bearish signal
-  - Global Invalidation Rule: Reset if opposing signal appears
-  
-  PHASE 3 - BREAKOUT WINDOW OPENING:
-  - Calculate breakout window with configurable offset
-  - Set precise price levels for breakout detection
-  - Window duration: long_entry_window_periods/short_entry_window_periods
-  - Window offset: pullback_count x window_offset_multiplier
-  
-  PHASE 4 - BREAKOUT MONITORING:
-  - Monitor for actual price breakout above/below window levels
-  - LONG: Enter when high breaks above stored breakout level
-  - SHORT: Enter when low breaks below stored breakout level
-  - Window expiry: Auto-reset if no breakout within window
-  
-  KEY PARAMETERS for Volatility Expansion:
-  - window_offset_multiplier: Delay window opening (0.5-2.0 recommended)
-  - long_entry_window_periods: Breakout monitoring duration LONG (3-10 bars)
-  • short_entry_window_periods: Breakout monitoring duration SHORT (3-10 bars)
-  • long_pullback_max_candles: Required pullback depth LONG (1-3 candles)
-  • short_pullback_max_candles: Required pullback depth SHORT (1-3 candles)
+    ADVANCED 4-PHASE STATE MACHINE for superior LONG entry timing:
+    
+    PHASE 1 - SIGNAL SCANNING:
+    - Monitor for EMA crossovers + directional candle confirmation
+    - State: SCANNING -> ARMED_LONG
+    
+    PHASE 2 - PULLBACK CONFIRMATION:
+    - Wait for specified pullback candles (long_pullback_max_candles)
+    - LONG: Wait 1-3 red candles after bullish signal
+    - Global Invalidation Rule: Reset if opposing signal appears
+    
+    PHASE 3 - BREAKOUT WINDOW OPENING:
+    - Calculate breakout window with configurable offset
+    - Set precise price levels for breakout detection
+    - Window duration: long_entry_window_periods
+    - Window offset: pullback_count x window_offset_multiplier
+    
+    PHASE 4 - BREAKOUT MONITORING:
+    - Monitor for actual price breakout above window levels
+    - LONG: Enter when high breaks above stored breakout level
+    - Window expiry: Auto-reset if no breakout within window
+    
+    KEY PARAMETERS for Volatility Expansion:
+    - window_offset_multiplier: Delay window opening (0.5-2.0 recommended)
+    - long_entry_window_periods: Breakout monitoring duration LONG (3-10 bars)
+    - long_pullback_max_candles: Required pullback depth LONG (1-3 candles)
 
 ENTRY CONDITIONS
 ----------------
 LONG CONDITIONS:
-1. ✅ Confirmation EMA crosses ABOVE any of fast/medium/slow EMAs
-2. ⚙️ Optional: Previous candle bullish (close[1] > open[1])
-3. ⚙️ Optional: EMA ordering filter (confirm > fast & medium & slow)
-4. ⚙️ Optional: Price filter (close > filter EMA)
-5. ⚙️ Optional: Angle filter (EMA slope > minimum degrees)
-6. ⚙️ Optional: ATR volatility filter (minimum ATR + volatility change)
+1. Confirmation EMA crosses ABOVE any of fast/medium/slow EMAs
+2. Optional: Previous candle bullish (close[1] > open[1])
+3. Optional: EMA ordering filter (confirm > fast & medium & slow)
+4. Optional: Price filter (close > filter EMA)
+5. Optional: Angle filter (EMA slope > minimum degrees)
+6. Optional: ATR volatility filter (minimum ATR + volatility change)
 
-SHORT CONDITIONS:
-1. ✅ Confirmation EMA crosses BELOW any of fast/medium/slow EMAs
-2. ⚙️ Optional: Previous candle bearish (close[1] < open[1])
-3. ⚙️ Optional: EMA ordering filter (confirm < fast & medium & slow)
-4. ⚙️ Optional: Price filter (close < filter EMA)
-5. ⚙️ Optional: Angle filter (EMA slope < minimum degrees)
-6. ⚙️ Optional: ATR volatility filter (minimum ATR + volatility change)
 
 ATR VOLATILITY FILTER
 ----------------------
-🌊 PURPOSE: Ensures trades occur during sufficient market volatility
-   - LONG: ATR range 0.000200-0.000600 with decrement filtering (-0.000050 to -0.000001)
-   - SHORT: ATR range 0.000400-0.000750 with increment filtering (0.000010 to 0.000150)
-   - ATR change requirement measures market momentum direction
-   - Pullback mode: Compares ATR from signal detection to breakout phase
-   - Standard mode: Checks current ATR against minimum threshold
+[WAVE] PURPOSE: Ensures trades occur during sufficient market volatility
+     - LONG: ATR range 0.000200-0.000600 with decrement filtering (-0.000050 to -0.000001)
+     - ATR change requirement measures market momentum direction
+     - Pullback mode: Compares ATR from signal detection to breakout phase
+     - Standard mode: Checks current ATR against minimum threshold
 
 EXIT SYSTEM
 -----------
-🎯 PRIMARY: ATR-based Stop Loss & Take Profit (OCA orders)
-   - LONG: Stop Loss = entry_bar_low - (ATR × 2.5), Take Profit = entry_bar_high + (ATR × 12.0)
-   - SHORT: Stop Loss = entry_bar_high + (ATR × 2.5), Take Profit = entry_bar_low - (ATR × 6.5)
-   
-⚙️ OPTIONAL EXITS:
-   - Time-based: Close after N bars in position
-   - EMA crossover: Direction-aware exit signals (confirm vs exit EMA)
+PRIMARY: ATR-based Stop Loss & Take Profit (OCA orders)
+     - LONG: Stop Loss = entry_bar_low - (ATR x 2.5), Take Profit = entry_bar_high + (ATR x 12.0)
+     - SHORT: Stop Loss = entry_bar_high + (ATR x 2.5), Take Profit = entry_bar_low - (ATR x 6.5)
+     
+Optional EXITS:
+     - Time-based: Close after N bars in position
+     - EMA crossover: Direction-aware exit signals (confirm vs exit EMA)
 
 MULTI-ASSET SUPPORT
 -------------------
-💱 FOREX PAIR: USDCHF (USD vs Swiss Franc)
-   - Standard 100K lot sizes
-   - 0.0001 pip values (4 decimal places)
-   - 30:1 leverage with 3.33% margin
+FOREX PAIR: GBPUSD (GBP vs US Dollar)
+     - Standard 100K lot sizes
+     - 0.0001 pip values (4 decimal places)
+     - 30:1 leverage with 3.33% margin
 
-🤖 CONFIGURATION: Instrument settings optimized for USDCHF
-   - Pip values: 0.0001
-   - Lot sizes: 100,000 USD
-   - Margin requirements: 3.33%
+CONFIGURATION: Instrument settings optimized for GBPUSD
+     - Pip values: 0.0001
+     - Lot sizes: 100,000 USD
+     - Margin requirements: 3.33%
 
 RISK MANAGEMENT
 ---------------
-💰 POSITION SIZING: Risk-based calculation
-   - Fixed risk percentage per trade (default 1%)
-   - Automatic lot size calculation based on stop loss distance
-   - Forex-specific pip value calculations
+POSITION SIZING: Risk-based calculation
+     - Fixed risk percentage per trade (default 1%)
+     - Automatic lot size calculation based on stop loss distance
+     - Forex-specific pip value calculations
 
-🛡️ PROTECTIVE ORDERS: One-Cancels-All (OCA) system
-   - Simultaneous stop loss and take profit orders
-   - Automatic order cancellation when one executes
-   - Prevents phantom positions and order conflicts
+PROTECTIVE ORDERS: One-Cancels-All (OCA) system
+     - Simultaneous stop loss and take profit orders
+     - Automatic order cancellation when one executes
+     - Prevents phantom positions and order conflicts
 
 VOLATILITY EXPANSION PARAMETERS
 -------------------------------
-🎯 WINDOW OFFSET CONTROL (Critical for Entry Timing):
-   • window_offset_multiplier (Default: 1.0)
-     - Controls delay between pullback confirmation and window opening
-     - Formula: window_start = current_bar + (pullback_count × multiplier)
-     - Values: 0.5 = immediate, 1.0 = standard, 2.0 = delayed
-     - Higher values = more confirmation, potentially missed opportunities
-     - Lower values = faster entries, potentially premature
+WINDOW OFFSET CONTROL (Critical for Entry Timing):
+     • window_offset_multiplier (Default: 1.0)
+         - Controls delay between pullback confirmation and window opening
+         - Formula: window_start = current_bar + (pullback_count x multiplier)
+         - Values: 0.5 = immediate, 1.0 = standard, 2.0 = delayed
+         - Higher values = more confirmation, potentially missed opportunities
+         - Lower values = faster entries, potentially premature
 
-🔄 PULLBACK REQUIREMENTS:
-   • long_pullback_max_candles (Default: 1)
-     - Number of red candles required before LONG breakout window opens
-     - Range: 1-3 candles (1=aggressive, 3=conservative)
-   
-   • short_pullback_max_candles (Default: 2) 
-     - Number of green candles required before SHORT breakout window opens
-     - Range: 1-3 candles (1=aggressive, 3=conservative)
+PULLBACK REQUIREMENTS:
+     • long_pullback_max_candles (Default: 1)
+         - Number of red candles required before LONG breakout window opens
+         - Range: 1-3 candles (1=aggressive, 3=conservative)
+     
+     • short_pullback_max_candles (Default: 2) 
+         - Number of green candles required before SHORT breakout window opens
+         - Range: 1-3 candles (1=aggressive, 3=conservative)
 
-⏱️ WINDOW DURATION:
-   • long_entry_window_periods (Default: 7)
-     - Bars to monitor for LONG breakout after window opens
-     - Range: 3-10 bars (shorter=stricter timing, longer=more opportunities)
-   
-   • short_entry_window_periods (Default: 7)
-     - Bars to monitor for SHORT breakout after window opens
-     - Range: 3-10 bars (shorter=stricter timing, longer=more opportunities)
+WINDOW DURATION:
+     • long_entry_window_periods (Default: 7)
+         - Bars to monitor for LONG breakout after window opens
+         - Range: 3-10 bars (shorter=stricter timing, longer=more opportunities)
+     
+     • short_entry_window_periods (Default: 7)
+         - Bars to monitor for SHORT breakout after window opens
+         - Range: 3-10 bars (shorter=stricter timing, longer=more opportunities)
 
-💡 OPTIMIZATION TIPS:
-   - Conservative: pullback_candles=3, window_periods=5, offset=1.5
-   - Balanced: pullback_candles=2, window_periods=7, offset=1.0
-   - Aggressive: pullback_candles=1, window_periods=10, offset=0.5
+OPTIMIZATION TIPS:
+     - Conservative: pullback_candles=3, window_periods=5, offset=1.5
+     - Balanced: pullback_candles=2, window_periods=7, offset=1.0
+     - Aggressive: pullback_candles=1, window_periods=10, offset=0.5
 
 CONFIGURATION
 -------------
-📍 All settings moved to TOP of file for easy access:
-   - Instrument selection (DATA_FILENAME)
-   - Date ranges, cash, plotting options  
-   - Trading hours: 7:00-17:00 UTC (configurable)
-   - Direction control: LONG/SHORT/BOTH modes
-   
-🔧 Strategy parameters in params dict for runtime overrides
-📊 Visual plotting with buy/sell signals and SL/TP lines
+All settings moved to TOP of file for easy access:
+     - Instrument selection (DATA_FILENAME)
+     - Date ranges, cash, plotting options  
+     - Trading hours: 7:00-17:00 UTC (configurable)
+     - Direction control: LONG/SHORT/BOTH modes
+     
+Strategy parameters in params dict for runtime overrides
+Visual plotting with buy/sell signals and SL/TP lines
 
 PERFORMANCE FEATURES
 -------------------
-⚡ Optimized entry filtering to reduce false signals
-🎯 Pullback system improves risk/reward ratios
-🎯 Multiple exit strategies for different market conditions
-📊 Real-time performance statistics and trade tracking
+Optimized entry filtering to reduce false signals
+Pullback system improves risk/reward ratios
+Multiple exit strategies for different market conditions
+Real-time performance statistics and trade tracking
 
 DISCLAIMER
 ----------
@@ -176,27 +162,10 @@ import math
 from pathlib import Path
 import backtrader as bt
 
-# =============================================================
-# CONFIGURATION PARAMETERS - EASILY EDITABLE AT TOP OF FILE
-# =============================================================
 
-# ⚡⚡⚡ VOLATILITY EXPANSION CHANNEL - QUICK ACCESS ⚡⚡⚡
-# 🎯 The most important parameters for fine-tuning entry timing:
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 🔧 USE_WINDOW_TIME_OFFSET = True         ← Enable/disable time delay (True/False)
-# 🔧 WINDOW_OFFSET_MULTIPLIER = 1.0        ← Time delay multiplier (0.5-2.0)
-# 🔧 WINDOW_PRICE_OFFSET_MULTIPLIER = 0.5  ← Channel expansion (0.3-1.0)
-# 🔧 LONG_PULLBACK_MAX_CANDLES = 1         ← LONG pullback depth (1-3)
-# 🔧 SHORT_PULLBACK_MAX_CANDLES = 2        ← SHORT pullback depth (1-3)  
-# 🔧 LONG_ENTRY_WINDOW_PERIODS = 7         ← LONG window duration (3-10)
-# 🔧 SHORT_ENTRY_WINDOW_PERIODS = 7        ← SHORT window duration (3-10)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 💡 Find detailed explanations below in their respective sections
-# ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡
-
-# === INSTRUMENT SELECTION ===
-# Cleaned version - USDCHF only
-DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # 🇭 USD vs Swiss Franc - Major Forex Pair
+# === # === INSTRUMENT SELECTION ===
+# Cleaned version - GBPUSD only
+DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'     # 🇬🇧 British Pound vs US Dollar - Major Forex Pair
 
 # === BACKTEST SETTINGS ===
 FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
@@ -208,15 +177,11 @@ ENABLE_PLOT = True                    # Show final chart with trades (requires m
 
 # === FOREX CONFIGURATION ===
 ENABLE_FOREX_CALC = True              # Enable advanced forex position calculations
-FOREX_INSTRUMENT = 'USDCHF'           # Fixed to USDCHF (no auto-detection needed)
+FOREX_INSTRUMENT = 'GBPUSD'           # Fixed to GBPUSD (no auto-detection needed)
 TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calculations
 
 # === TRADING DIRECTION ===
 ENABLE_LONG_TRADES = True            # Enable long (buy) entries
-ENABLE_SHORT_TRADES = False           # Enable short (sell) entries
-
-# === DUAL CEREBRO MODE ===
-RUN_DUAL_CEREBRO = False             # Run separate LONG-only and SHORT-only cerebros to avoid position interference
 
 # === DEBUG SETTINGS ===
 VERBOSE_DEBUG = False                 # Print detailed debug info to console (set True only for troubleshooting)
@@ -230,79 +195,52 @@ SHOW_INDIVIDUAL_PLOTS = False         # Show individual LONG/SHORT plots when ru
 AUTO_PLOT_SINGLE_MODE = False         # Automatically plot in single mode (LONG-only or SHORT-only)
 
 # === LONG ATR VOLATILITY FILTER ===
-LONG_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for long entries
+LONG_USE_ATR_FILTER = False                 # Enable ATR-based volatility filtering for long entries
 LONG_ATR_MIN_THRESHOLD = 0.000300          
-LONG_ATR_MAX_THRESHOLD = 0.000700          
+LONG_ATR_MAX_THRESHOLD = 0.000700 #0.000325        
 # ATR INCREMENT FILTER (DISABLED - Inferior Performance)
-LONG_USE_ATR_INCREMENT_FILTER = False       # 🎯 OPTIMIZED: Increments showed inferior performance
-LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000011 # EXPANDED: Much wider range for more entries
-LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000080 # EXPANDED: Much wider range for more entries
+LONG_USE_ATR_INCREMENT_FILTER = False       #  OPTIMIZED: Increments showed inferior performance
+LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000001#0.000050 # EXPANDED: Much wider range for more entries
+LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.001000 # EXPANDED: Much wider range for more entries
 # ATR DECREMENT FILTER (OPTIMIZED - Only very low changes)
-LONG_USE_ATR_DECREMENT_FILTER = False        # 🎯 OPTIMIZED: Decrements with better performance
-LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000030 # 🎯 EXPANDED: Much wider range for more entries
-LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 # 🎯 EXPANDED: Much wider range for more entries
-
-# === SHORT ATR VOLATILITY FILTER ===
-SHORT_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for short entries  
-SHORT_ATR_MIN_THRESHOLD = 0.000400         # 🎯 OPTIMIZED: Same optimal range as LONG
-SHORT_ATR_MAX_THRESHOLD = 0.000750         # 🎯 OPTIMIZED: Consistent with LONG analysis
-# ATR INCREMENT FILTER
-SHORT_USE_ATR_INCREMENT_FILTER = True      # 🎯 OPTIMIZED: Increments showed inferior performance
-SHORT_ATR_INCREMENT_MIN_THRESHOLD = 0.000001 # EXPANDED: Much wider range for more entries
-SHORT_ATR_INCREMENT_MAX_THRESHOLD = 0.001000 # EXPANDED: Much wider range for more entries
-# ATR DECREMENT FILTER 
-SHORT_USE_ATR_DECREMENT_FILTER = True       # 🎯 OPTIMIZED: Decrements with better performance
-SHORT_ATR_DECREMENT_MIN_THRESHOLD = -0.000080 # 🎯 EXPANDED: Much wider range for more entries
-SHORT_ATR_DECREMENT_MAX_THRESHOLD = -0.000020 # 🎯 EXPANDED: Much wider range for more entries
+LONG_USE_ATR_DECREMENT_FILTER = False        #  OPTIMIZED: Decrements with better performance
+LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000050 #  EXPANDED: Much wider range for more entries
+LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001 #  EXPANDED: Much wider range for more entries
 
 # === LONG ENTRY FILTERS ===
 LONG_USE_EMA_ORDER_CONDITION = False        # Require confirm_EMA > all other EMAs for long entries
 LONG_USE_PRICE_FILTER_EMA = True            # Require close > filter_EMA (trend alignment) for long entries
 LONG_USE_CANDLE_DIRECTION_FILTER = False     # Require previous candle bullish (close[1] > open[1]) for long entries
-LONG_USE_ANGLE_FILTER = False                # Require minimum EMA slope angle for long entries
-LONG_MIN_ANGLE = 40.0                       # EXPANDED: Much wider angle range for more entries
-LONG_MAX_ANGLE = 80.0                       # EXPANDED: Much wider angle range for more entries
+LONG_USE_ANGLE_FILTER = True                # Require minimum EMA slope angle for long entries
+LONG_MIN_ANGLE = 45.0                       # EXPANDED: Much wider angle range for more entries
+LONG_MAX_ANGLE = 95.0                       # EXPANDED: Much wider angle range for more entries
 LONG_ANGLE_SCALE_FACTOR = 10000.0           # Scaling factor for angle calculation sensitivity (long entries)
-
-# === SHORT ENTRY FILTERS ===
-SHORT_USE_EMA_ORDER_CONDITION = False      # Require confirm_EMA < all other EMAs for short entries
-SHORT_USE_PRICE_FILTER_EMA = True           # Require close < filter_EMA (trend alignment) for short entries  
-SHORT_USE_CANDLE_DIRECTION_FILTER = True    # Require previous candle bearish (close[1] < open[1]) for short entries
-SHORT_USE_ANGLE_FILTER = True               # Require minimum EMA slope angle for short entries
-SHORT_MIN_ANGLE = -90.0                     # EXPANDED: Much wider angle range for more entries
-SHORT_MAX_ANGLE = -20.0                     # EXPANDED: Much wider angle range for more entries
-SHORT_ANGLE_SCALE_FACTOR = 10000.0          # Scaling factor for angle calculation sensitivity (short entries)
 
 # === LONG PULLBACK ENTRY SYSTEM ===
 LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
 LONG_PULLBACK_MAX_CANDLES = 2              # Max red candles in pullback for long entries (1-3 recommended)
-LONG_ENTRY_WINDOW_PERIODS = 2 #10 #7             # Bars to wait for breakout after pullback (long entries)
-
-# === SHORT PULLBACK ENTRY SYSTEM ===
-SHORT_USE_PULLBACK_ENTRY = True            # Enable 3-phase pullback entry system for short entries
-SHORT_PULLBACK_MAX_CANDLES = 2             # Max green candles in pullback for short entries (1-3 recommended)
-SHORT_ENTRY_WINDOW_PERIODS = 7            # Bars to wait for breakdown after pullback (short entries)
+LONG_ENTRY_WINDOW_PERIODS = 1 #10 #7             # Bars to wait for breakout after pullback (long entries)
 
 # ===============================================================
-# ⚡ VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS ⚡
+# * VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS *
 # ===============================================================
-# 🎯 CRITICAL: These parameters control the advanced entry timing system
-# 🔧 USE_WINDOW_TIME_OFFSET: Enable/disable time delay for window opening
+# * CRITICAL: These parameters control the advanced entry timing system
+# * USE_WINDOW_TIME_OFFSET: Enable/disable time delay for window opening
 USE_WINDOW_TIME_OFFSET = False              # NEW: Enable/disable the time delay for window opening
-# 🔧 WINDOW_OFFSET_MULTIPLIER: Controls delay between pullback and window opening (only if USE_WINDOW_TIME_OFFSET=True)
+# * WINDOW_OFFSET_MULTIPLIER: Controls delay between pullback and window opening (only if USE_WINDOW_TIME_OFFSET=True)
 WINDOW_OFFSET_MULTIPLIER = 1.0             # Window delay multiplier (0.5=fast, 1.0=standard, 2.0=conservative)
                                           # Formula: window_start = current_bar + (pullback_count × this_value)
-                                          # 🔬 EXPERIMENT: Try 0.5 for aggressive, 1.5 for conservative entries
-# 🔧 WINDOW_PRICE_OFFSET_MULTIPLIER: Controls the price expansion of the two-sided channel
-WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01 #0.05      # NEW: Price expansion multiplier (0.5 = 50% of candle range)
+                                          # * EXPERIMENT: Try 0.5 for aggressive, 1.5 for conservative entries
+# * WINDOW_PRICE_OFFSET_MULTIPLIER: Controls the price expansion of the two-sided channel
+WINDOW_PRICE_OFFSET_MULTIPLIER = 1.0 #0.01      # NEW: Price expansion multiplier (0.5 = 50% of candle range)
                                           # Formula: channel_width = candle_range × this_value
 # ===============================================================
 
 # === TIME RANGE FILTER ===
-USE_TIME_RANGE_FILTER = True              # ENABLED: Time filter for complete analysis
+USE_TIME_RANGE_FILTER = False              # ENABLED: Time filter for complete analysis
 ENTRY_START_HOUR = 7#6                      # Start hour for entry window (UTC)
 ENTRY_START_MINUTE = 0                     # Start minute for entry window (UTC)
-ENTRY_END_HOUR = 13#18 #15                        # End hour for entry window (UTC)
+ENTRY_END_HOUR = 18#18 #15                        # End hour for entry window (UTC)
 ENTRY_END_MINUTE = 0#59                      # End minute for entry window (UTC)
 
 
@@ -313,7 +251,7 @@ class SunriseOgle(bt.Strategy):
         ema_medium_length=18,             # Medium EMA period for trend confirmation #18
         ema_slow_length=24, #24,               # Slow EMA period for trend strength # 24
         ema_confirm_length=1,             # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=50,#70       # Price filter EMA to avoid counter-trend trades #50
+        ema_filter_price_length=70,#70       # Price filter EMA to avoid counter-trend trades #50
         ema_exit_length=25,               # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
@@ -321,11 +259,9 @@ class SunriseOgle(bt.Strategy):
         
         # === TRADING DIRECTION ===
         enable_long_trades=ENABLE_LONG_TRADES,  # Enable long (buy) entries
-        enable_short_trades=ENABLE_SHORT_TRADES, # Enable short (sell) entries
         
         # === DUAL CEREBRO OVERRIDES ===
         long_enabled=None,                # Override for LONG trades (None=use enable_long_trades)
-        short_enabled=None,               # Override for SHORT trades (None=use enable_short_trades)
         
         # === LONG ATR VOLATILITY FILTER ===
         long_use_atr_filter=LONG_USE_ATR_FILTER,    # Enable ATR-based volatility filtering for long entries
@@ -347,51 +283,23 @@ class SunriseOgle(bt.Strategy):
         long_min_angle=LONG_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (long entries)
         long_max_angle=LONG_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (long entries)
         long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (long entries)
-        long_atr_sl_multiplier=2.5,  #1.5                          # Stop Loss multiplier for LONG trades
-        long_atr_tp_multiplier=10, #10                           # Take Profit multiplier for LONG trades
+        long_atr_sl_multiplier=3.5,  #1.5                          # Stop Loss multiplier for LONG trades
+        long_atr_tp_multiplier=6.5, #10                           # Take Profit multiplier for LONG trades
         
         # === LONG PULLBACK ENTRY SYSTEM ===
         long_use_pullback_entry=LONG_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for long entries
         long_pullback_max_candles=LONG_PULLBACK_MAX_CANDLES,           # Max red candles in pullback for long entries (1-3 recommended)
         long_entry_window_periods=LONG_ENTRY_WINDOW_PERIODS,          # Bars to wait for breakout after pullback (long entries)
-        window_offset_multiplier=WINDOW_OFFSET_MULTIPLIER,        # ⚡ CRITICAL: Volatility expansion window timing control
-        use_window_time_offset=USE_WINDOW_TIME_OFFSET,            # ⚡ NEW: Enable/disable time delay for window opening
-        window_price_offset_multiplier=WINDOW_PRICE_OFFSET_MULTIPLIER,  # ⚡ NEW: Controls two-sided channel expansion
-        
-        # === SHORT ATR VOLATILITY FILTER ===
-        short_use_atr_filter=SHORT_USE_ATR_FILTER,    # Enable ATR-based volatility filtering for short entries
-        short_atr_min_threshold=SHORT_ATR_MIN_THRESHOLD,  # Minimum ATR for short entry
-        short_atr_max_threshold=SHORT_ATR_MAX_THRESHOLD,  # Maximum ATR for short entry
-        # ATR INCREMENT/DECREMENT FILTERS
-        short_use_atr_increment_filter=SHORT_USE_ATR_INCREMENT_FILTER,  # Enable ATR increment filtering
-        short_atr_increment_min_threshold=SHORT_ATR_INCREMENT_MIN_THRESHOLD,  # Minimum ATR increment
-        short_atr_increment_max_threshold=SHORT_ATR_INCREMENT_MAX_THRESHOLD,  # Maximum ATR increment
-        short_use_atr_decrement_filter=SHORT_USE_ATR_DECREMENT_FILTER,  # Enable ATR decrement filtering
-        short_atr_decrement_min_threshold=SHORT_ATR_DECREMENT_MIN_THRESHOLD,  # Minimum ATR decrement
-        short_atr_decrement_max_threshold=SHORT_ATR_DECREMENT_MAX_THRESHOLD,  # Maximum ATR decrement
-        
-        # === SHORT ENTRY FILTERS ===
-        short_use_ema_order_condition=SHORT_USE_EMA_ORDER_CONDITION,    # Require confirm_EMA < all other EMAs for short entries
-        short_use_price_filter_ema=SHORT_USE_PRICE_FILTER_EMA,        # Require close < filter_EMA (trend alignment) for short entries
-        short_use_candle_direction_filter=SHORT_USE_CANDLE_DIRECTION_FILTER, # Require previous candle bearish for short entries
-        short_use_angle_filter=SHORT_USE_ANGLE_FILTER,            # Require minimum EMA slope angle for short entries
-        short_min_angle=SHORT_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (short entries)
-        short_max_angle=SHORT_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (short entries)
-        short_angle_scale_factor=SHORT_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (short entries)
-        short_atr_sl_multiplier=2.5,                             # Stop Loss multiplier for SHORT trades
-        short_atr_tp_multiplier=6.5,#3.5,                             # Take Profit multiplier for SHORT trades
+        window_offset_multiplier=WINDOW_OFFSET_MULTIPLIER,        # * CRITICAL: Volatility expansion window timing control
+        use_window_time_offset=USE_WINDOW_TIME_OFFSET,            # * NEW: Enable/disable time delay for window opening
+        window_price_offset_multiplier=WINDOW_PRICE_OFFSET_MULTIPLIER, # * NEW: Controls two-sided channel expansion
 
-        # === SHORT PULLBACK ENTRY SYSTEM ===
-        short_use_pullback_entry=SHORT_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for short entries
-        short_pullback_max_candles=SHORT_PULLBACK_MAX_CANDLES,           # Max green candles in pullback for short entries (1-3 recommended)
-        short_entry_window_periods=SHORT_ENTRY_WINDOW_PERIODS,          # Bars to wait for breakdown after pullback (short entries)
-        
         # === TIME RANGE FILTER ===
         use_time_range_filter=USE_TIME_RANGE_FILTER,         # Enable time-based entry filtering
         entry_start_hour=ENTRY_START_HOUR,                   # Start hour for entry window (UTC)
         entry_start_minute=ENTRY_START_MINUTE,               # Start minute for entry window (UTC)
         entry_end_hour=ENTRY_END_HOUR,                       # End hour for entry window (UTC)
-        entry_end_minute=ENTRY_END_MINUTE,                   # End minute for entry window (UTC)
+        entry_end_minute=ENTRY_END_MINUTE,                   # End mš¡inute for entry window (UTC)
         
         # === POSITION SIZING ===
         size=1,                           # Default position size (used if risk sizing disabled)
@@ -403,16 +311,16 @@ class SunriseOgle(bt.Strategy):
         
         # === FOREX SETTINGS ===
         use_forex_position_calc=True,     # Enable advanced forex position calculations
-        forex_instrument='USDCHF',        # Fixed to USDCHF
-        forex_base_currency='USD',        # Base currency: USD
-        forex_quote_currency='CHF',       # Quote currency: CHF
-        forex_pip_value=0.0001,           # Pip value for USDCHF
-        forex_pip_decimal_places=4,       # Price decimal places for USDCHF
-        forex_lot_size=100000,            # Lot size for USDCHF (100K USD)
+        forex_instrument='GBPUSD',        # Fixed to GBPUSD
+        forex_base_currency='GBP',        # Base currency: GBP
+        forex_quote_currency='USD',       # Quote currency: USD
+        forex_pip_value=0.0001,           # Pip value for GBPUSD
+        forex_pip_decimal_places=4,       # Price decimal places for GBPUSD
+        forex_lot_size=100000,            # Lot size for GBPUSD (100K GBP)
         forex_micro_lot_size=0.01,        # Minimum lot increment (0.01 standard lots)
-        forex_spread_pips=2.2,            # Typical spread in pips for USDCHF
-        forex_margin_required=3.33,       # Margin requirement % for USDCHF (30:1 leverage)
-        
+        forex_spread_pips=2.2,            # Typical spread in pips for GBPUSD
+        forex_margin_required=3.33,       # Margin requirement % for GBPUSD (30:1 leverage)
+
         # === ACCOUNT SETTINGS ===
         account_currency='USD',           # Account denomination currency
         account_leverage=30.0,            # Account leverage (matches broker setting)
@@ -421,6 +329,9 @@ class SunriseOgle(bt.Strategy):
         plot_result=True,                 # Enable strategy plotting
         buy_sell_plotdist=0.0005,         # Distance for buy/sell markers on chart
         plot_sltp_lines=True,             # Show stop loss and take profit lines
+        
+        # === MULTI-DATA ISOLATION ===
+        dataname=None,                    # Specific data feed name for multi-asset isolation
     )
 
     def _record_trade_entry(self, signal_direction, dt, entry_price, position_size, current_atr):
@@ -437,20 +348,20 @@ class SunriseOgle(bt.Strategy):
             if hasattr(self, 'entry_window_start') and self.entry_window_start is not None:
                 # Primary: Use window start (most accurate)
                 periods_before_entry = current_bar - self.entry_window_start
-                print(f"🎯 DEBUG: Used entry_window_start: {self.entry_window_start}, bars = {periods_before_entry}")
+                print(f" DEBUG: Used entry_window_start: {self.entry_window_start}, bars = {periods_before_entry}")
             elif hasattr(self, 'signal_detection_bar') and self.signal_detection_bar is not None:
                 # Secondary: Use signal detection bar
                 periods_before_entry = current_bar - self.signal_detection_bar
-                print(f"🎯 DEBUG: Used signal_detection_bar: {self.signal_detection_bar}, bars = {periods_before_entry}")
+                print(f" DEBUG: Used signal_detection_bar: {self.signal_detection_bar}, bars = {periods_before_entry}")
             elif hasattr(self, 'window_bar_start') and self.window_bar_start is not None:
                 # Tertiary: Use window_bar_start if available
                 periods_before_entry = current_bar - self.window_bar_start
-                print(f"🎯 DEBUG: Used window_bar_start: {self.window_bar_start}, bars = {periods_before_entry}")
+                print(f" DEBUG: Used window_bar_start: {self.window_bar_start}, bars = {periods_before_entry}")
             else:
                 # Quaternary: Estimate based on pullback count + 1
                 fallback_bars_to_entry = getattr(self, 'pullback_candle_count', 0) + 1
                 periods_before_entry = fallback_bars_to_entry
-                print(f"🎯 DEBUG: Used fallback calculation: pullback_count={getattr(self, 'pullback_candle_count', 0)} + 1 = {periods_before_entry}")
+                print(f" DEBUG: Used fallback calculation: pullback_count={getattr(self, 'pullback_candle_count', 0)} + 1 = {periods_before_entry}")
             
             # Ensure reasonable bounds
             if periods_before_entry < 0:
@@ -458,19 +369,8 @@ class SunriseOgle(bt.Strategy):
             elif periods_before_entry > 50:  # Cap at reasonable maximum
                 periods_before_entry = 50
             
-            # Get current angle with correct scale factor based on signal direction
-            if signal_direction == 'SHORT':
-                # Calculate angle with SHORT scale factor
-                try:
-                    current_ema = float(self.ema_confirm[0])
-                    previous_ema = float(self.ema_confirm[-1])
-                    rise = (current_ema - previous_ema) * self.p.short_angle_scale_factor
-                    angle_radians = math.atan(rise)
-                    current_angle = math.degrees(angle_radians)
-                except:
-                    current_angle = 0.0
-            else:  # LONG
-                current_angle = self._angle() if hasattr(self, '_angle') else 0.0
+            # Get current angle for LONG entries
+            current_angle = self._angle() if hasattr(self, '_angle') else 0.0
             
             # Calculate real ATR increment (current vs signal detection) - USER REQUESTED
             real_atr_increment = 0.0
@@ -501,40 +401,32 @@ class SunriseOgle(bt.Strategy):
             self.trade_report_file.write(f"ATR Current: {current_atr:.6f}\n")  # Keep this - very important!
             # Always show ATR increment - USER REQUESTED: Add ATR increment in each entry
             stored_increment = getattr(self, 'entry_atr_increment', None)
-            print(f"🔍 DEBUG: entry_atr_increment = {stored_increment}")  # DEBUG
+            print(f"DEBUG: entry_atr_increment = {stored_increment}")  # DEBUG
             if stored_increment is not None:
                 # Determine if it's increment or decrement based on sign and filter status
                 if stored_increment >= 0:
                     # Positive change - always show as increment
-                    if self.p.long_use_atr_increment_filter if signal_direction == 'LONG' else self.p.short_use_atr_increment_filter:
+                    if self.p.long_use_atr_increment_filter:
                         self.trade_report_file.write(f"ATR Increment: {stored_increment:+.6f} (Filtered)\n")
                     else:
                         self.trade_report_file.write(f"ATR Increment: {stored_increment:+.6f} (No Filter)\n")
                 else:
                     # Negative change - show as decrement only if filter is enabled
-                    decrement_filter_enabled = self.p.long_use_atr_decrement_filter if signal_direction == 'LONG' else self.p.short_use_atr_decrement_filter
-                    if decrement_filter_enabled:
+                    if self.p.long_use_atr_decrement_filter:
                         self.trade_report_file.write(f"ATR Decrement: {abs(stored_increment):.6f} (Filtered)\n")
                     else:
                         self.trade_report_file.write(f"ATR Change: {stored_increment:+.6f} (Decrement Filter OFF)\n")
             else:
-                print(f"🚨 DEBUG: ATR Change = N/A because entry_atr_increment is None")  # DEBUG
+                print(f"DEBUG: ATR Change = N/A because entry_atr_increment is None")  # DEBUG
                 self.trade_report_file.write(f"ATR Change: N/A\n")
-            self.trade_report_file.write(f"Angle Current: {current_angle:.2f}°\n")
+            self.trade_report_file.write(f"Angle Current: {current_angle:.2f}Â°\n")
             
-            # Debug angle validation status - FIX: Use correct parameters for LONG vs SHORT
-            if signal_direction == 'LONG':
-                if self.p.long_use_angle_filter:
-                    angle_ok = self.p.long_min_angle <= current_angle <= self.p.long_max_angle
-                    self.trade_report_file.write(f"Angle Filter: ENABLED | Range: {self.p.long_min_angle:.1f}°-{self.p.long_max_angle:.1f}° | Valid: {angle_ok}\n")
-                else:
-                    self.trade_report_file.write(f"Angle Filter: DISABLED\n")
-            else:  # SHORT
-                if self.p.short_use_angle_filter:
-                    angle_ok = self.p.short_min_angle <= current_angle <= self.p.short_max_angle
-                    self.trade_report_file.write(f"Angle Filter: ENABLED | Range: {self.p.short_min_angle:.1f}°-{self.p.short_max_angle:.1f}° | Valid: {angle_ok}\n")
-                else:
-                    self.trade_report_file.write(f"Angle Filter: DISABLED\n")
+            # Debug angle validation status for LONG entries
+            if self.p.long_use_angle_filter:
+                angle_ok = self.p.long_min_angle <= current_angle <= self.p.long_max_angle
+                self.trade_report_file.write(f"Angle Filter: ENABLED | Range: {self.p.long_min_angle:.1f}Â°-{self.p.long_max_angle:.1f}Â° | Valid: {angle_ok}\n")
+            else:
+                self.trade_report_file.write(f"Angle Filter: DISABLED\n")
             # Always show periods/bars before entry
             self.trade_report_file.write(f"Bars to Entry: {periods_before_entry}\n")
             if getattr(self, 'pullback_state', 'NORMAL') != 'NORMAL':
@@ -643,7 +535,7 @@ class SunriseOgle(bt.Strategy):
                 
                 self.trade_report_file.write("="*80 + "\n")
                 self.trade_report_file.close()
-                print(f"📊 Trade report completed: {total_trades} trades recorded")
+                print(f"* Trade report completed: {total_trades} trades recorded")
                 
             except Exception as e:
                 print(f"Trade reporting close error: {e}")
@@ -732,13 +624,13 @@ class SunriseOgle(bt.Strategy):
         account_equity = self.broker.get_value()
         risk_amount = account_equity * self.p.risk_percent
         
-        # Calculate value per pip for USDCHF
-        # For USDCHF: 1 standard lot (100,000 units) = $10 per pip (0.0001 price move)
-        
+        # Calculate value per pip for GBPUSD
+        # For GBPUSD: 1 standard lot (100,000 units) = $10 per pip (0.0001 price move)
+
         if self.p.forex_quote_currency == 'USD':
             value_per_pip_per_lot = (self.p.forex_pip_value * self.p.forex_lot_size)
         else:
-            # For USDCHF, we need to convert CHF to USD using current exchange rate
+            # For GBPUSD, we need to convert GBP to USD using current exchange rate
             # Simplified: use approximate $10 per pip for standard lot
             value_per_pip_per_lot = 10.0
         
@@ -914,6 +806,12 @@ class SunriseOgle(bt.Strategy):
         print(f"Pip Value: {self.p.forex_pip_value} | Lot Size: {self.p.forex_lot_size:,} | Margin: {self.p.forex_margin_required}%")
 
     def __init__(self):
+            # --- Multi-Data Isolation ---
+            # Find the specific data feed this strategy instance should use
+            if self.p.dataname:
+                self.data = self.getdatabyname(self.p.dataname)
+            # -------------------------
+            
             d = self.data
             # Indicators
             self.ema_fast = bt.ind.EMA(d.close, period=self.p.ema_fast_length)
@@ -977,7 +875,7 @@ class SunriseOgle(bt.Strategy):
             self.window_expiry_bar = None
             self.window_breakout_level = None  # Price level that must be broken for entry
             
-            # 🔧 CRITICAL FIX: Store original signal trigger candle for validation
+            # ðŸ”§ CRITICAL FIX: Store original signal trigger candle for validation
             self.signal_trigger_candle = None
 
             # Basic stats
@@ -1011,8 +909,6 @@ class SunriseOgle(bt.Strategy):
             # Apply dual cerebro overrides for trading direction
             if self.p.long_enabled is not None:
                 self.p.enable_long_trades = self.p.long_enabled
-            if self.p.short_enabled is not None:
-                self.p.enable_short_trades = self.p.short_enabled
                 
             # Initialize trade reporting
             self._init_trade_reporting()
@@ -1053,7 +949,6 @@ class SunriseOgle(bt.Strategy):
                 # Trading configuration
                 direction = []
                 if self.p.enable_long_trades: direction.append("LONG")
-                if self.p.enable_short_trades: direction.append("SHORT")
                 self.trade_report_file.write(f"Trading Direction: {' & '.join(direction) if direction else 'NONE'}\n")
                 self.trade_report_file.write("\n")
                 
@@ -1070,22 +965,9 @@ class SunriseOgle(bt.Strategy):
                         self.trade_report_file.write(f"  ATR Increment Range: {self.p.long_atr_increment_min_threshold:.6f} to {self.p.long_atr_increment_max_threshold:.6f}\n")
                     if self.p.long_use_atr_decrement_filter:
                         self.trade_report_file.write(f"  ATR Decrement Range: {self.p.long_atr_decrement_min_threshold:.6f} to {self.p.long_atr_decrement_max_threshold:.6f}\n")
-                    self.trade_report_file.write(f"  Angle Range: {self.p.long_min_angle:.2f}° to {self.p.long_max_angle:.2f}°\n")
+                    self.trade_report_file.write(f"  Angle Range: {self.p.long_min_angle:.2f}Â° to {self.p.long_max_angle:.2f}Â°\n")
                     self.trade_report_file.write(f"  Candle Direction Filter: {'ENABLED (Require bullish candle)' if self.p.long_use_candle_direction_filter else 'DISABLED'}\n")
                     self.trade_report_file.write(f"  Pullback Mode: {self.p.long_use_pullback_entry}\n\n")
-                    
-                # SHORT parameters  
-                if self.p.enable_short_trades:
-                    self.trade_report_file.write("SHORT Configuration:\n")
-                    self.trade_report_file.write(f"  ATR Range: {self.p.short_atr_min_threshold:.6f} - {self.p.short_atr_max_threshold:.6f}\n")
-                    # ATR increment/decrement filter configuration
-                    if self.p.short_use_atr_increment_filter:
-                        self.trade_report_file.write(f"  ATR Increment Range: {self.p.short_atr_increment_min_threshold:.6f} to {self.p.short_atr_increment_max_threshold:.6f}\n")
-                    if self.p.short_use_atr_decrement_filter:
-                        self.trade_report_file.write(f"  ATR Decrement Range: {self.p.short_atr_decrement_min_threshold:.6f} to {self.p.short_atr_decrement_max_threshold:.6f}\n")
-                    self.trade_report_file.write(f"  Angle Range: {self.p.short_min_angle:.2f}° to {self.p.short_max_angle:.2f}°\n")
-                    self.trade_report_file.write(f"  Candle Direction Filter: {'ENABLED (Require bearish candle)' if self.p.short_use_candle_direction_filter else 'DISABLED'}\n")
-                    self.trade_report_file.write(f"  Pullback Mode: {self.p.short_use_pullback_entry}\n\n")
                     
                 # Common parameters
                 self.trade_report_file.write("Common Parameters:\n")
@@ -1104,19 +986,16 @@ class SunriseOgle(bt.Strategy):
                 if self.p.enable_long_trades:
                     self.trade_report_file.write(f"  LONG Stop Loss ATR Multiplier: {self.p.long_atr_sl_multiplier:.1f}\n")
                     self.trade_report_file.write(f"  LONG Take Profit ATR Multiplier: {self.p.long_atr_tp_multiplier:.1f}\n")
-                if self.p.enable_short_trades:
-                    self.trade_report_file.write(f"  SHORT Stop Loss ATR Multiplier: {self.p.short_atr_sl_multiplier:.1f}\n")
-                    self.trade_report_file.write(f"  SHORT Take Profit ATR Multiplier: {self.p.short_atr_tp_multiplier:.1f}\n")
                 
                 self.trade_report_file.write("\n" + "="*80 + "\n")
                 self.trade_report_file.write("TRADE DETAILS\n")
                 self.trade_report_file.write("="*80 + "\n\n")
                 self.trade_report_file.flush()
                 
-                print(f"📊 TRADE REPORT: {report_path}")
+                print(f"TRADE REPORT: {report_path}")
                 
             except Exception as e:
-                print(f"⚠️  Trade reporting initialization failed: {e}")
+                print(f"🚨 Trade reporting initialization failed: {e}")
                 self.trade_report_file = None
 
     def _reset_entry_state(self):
@@ -1130,7 +1009,7 @@ class SunriseOgle(bt.Strategy):
         self.window_bottom_limit = None
         self.window_expiry_bar = None
         self.window_breakout_level = None
-        # 🔧 CRITICAL FIX: Reset stored trigger candle
+        # 🚨 CRITICAL FIX: Reset stored trigger candle
         self.signal_trigger_candle = None
 
     def _phase1_scan_for_signal(self):
@@ -1192,73 +1071,10 @@ class SunriseOgle(bt.Strategy):
                         signal_valid = False
 
                 if signal_valid:
-                    # ✅ CRITICAL FIX: Store ATR when LONG signal is detected 
+                    # âœ… CRITICAL FIX: Store ATR when LONG signal is detected 
                     current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                     self.signal_detection_atr = current_atr
                     return 'LONG'
-
-        # Check SHORT signals
-        if self.p.enable_short_trades:
-            # Previous candle bearish check (optional)
-            try:
-                prev_bear = self.data.close[-1] < self.data.open[-1]
-            except IndexError:
-                prev_bear = False
-
-            # EMA crossover check (ANY of the three) - BELOW for SHORT
-            cross_fast = self._cross_below(self.ema_confirm, self.ema_fast)
-            cross_medium = self._cross_below(self.ema_confirm, self.ema_medium) 
-            cross_slow = self._cross_below(self.ema_confirm, self.ema_slow)
-            cross_any = cross_fast or cross_medium or cross_slow
-            
-            # Check candle direction filter (optional)
-            candle_direction_ok = True
-            if self.p.short_use_candle_direction_filter:
-                candle_direction_ok = prev_bear
-            
-            if candle_direction_ok and cross_any:
-                # Apply additional filters
-                signal_valid = True
-                
-                # EMA order condition (SHORT: confirm < others)
-                if self.p.short_use_ema_order_condition:
-                    ema_order_ok = (
-                        self.ema_confirm[0] < self.ema_fast[0] and
-                        self.ema_confirm[0] < self.ema_medium[0] and
-                        self.ema_confirm[0] < self.ema_slow[0]
-                    )
-                    if not ema_order_ok:
-                        signal_valid = False
-
-                # Price filter EMA (SHORT: close < filter)
-                if signal_valid and self.p.short_use_price_filter_ema:
-                    price_below_filter = self.data.close[0] < self.ema_filter_price[0]
-                    if not price_below_filter:
-                        signal_valid = False
-
-                # Angle filter (SHORT: negative angle range)
-                if signal_valid and self.p.short_use_angle_filter:
-                    current_angle = self._angle()
-                    angle_ok = self.p.short_min_angle <= current_angle <= self.p.short_max_angle
-                    if not angle_ok:
-                        signal_valid = False
-
-                # ATR volatility filter (SHORT)
-                if signal_valid and self.p.short_use_atr_filter:
-                    current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-                    if current_atr < self.p.short_atr_min_threshold or current_atr > self.p.short_atr_max_threshold:
-                        signal_valid = False
-
-                if signal_valid:
-                    # ✅ CRITICAL FIX: Store ATR when SHORT signal is detected
-                    current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-                    self.signal_detection_atr = current_atr
-                    if self.p.print_signals:
-                        print(f"SHORT SIGNAL DETECTED - {self.data.datetime.datetime(0)}:")
-                        print(f"   Previous bearish candle: close[-1]={self.data.close[-1]:.5f} < open[-1]={self.data.open[-1]:.5f}")
-                        print(f"   All filters passed, proceeding to ARMED_SHORT state")
-                        print(f"   Signal detection ATR: {current_atr:.6f}")
-                    return 'SHORT'
 
         return None
 
@@ -1284,9 +1100,8 @@ class SunriseOgle(bt.Strategy):
         if is_pullback_candle:
             self.pullback_candle_count += 1
             
-            # Check if we've reached the required pullback count based on direction
-            max_candles = (self.p.long_pullback_max_candles if armed_direction == 'LONG' 
-                          else self.p.short_pullback_max_candles)
+            # Check if we've reached the required pullback count for LONG direction
+            max_candles = self.p.long_pullback_max_candles
             
             if self.pullback_candle_count >= max_candles:
                 # Capture the last pullback candle data for channel calculation
@@ -1403,23 +1218,6 @@ class SunriseOgle(bt.Strategy):
                 self.window_top_limit, self.window_bottom_limit, self.window_expiry_bar = None, None, None
                 self.window_breakout_level = None
                 return None
-
-        elif armed_direction == 'SHORT':
-            # Check for SUCCESS condition first (break below bottom_limit)
-            if current_low <= self.window_bottom_limit:
-                if self.p.print_signals:
-                    print(f"SUCCESS BREAKOUT (SHORT): Price {current_low:.5f} broke below success level {self.window_bottom_limit:.5f}")
-                return 'SUCCESS'
-
-            # Check for FAILURE condition (break above top_limit - indicates instability)
-            elif current_high >= self.window_top_limit:
-                if self.p.print_signals:
-                    print(f"FAILURE BREAKOUT (SHORT): Price {current_high:.5f} broke above failure level {self.window_top_limit:.5f}. Instability detected.")
-                self.entry_state = "ARMED_SHORT"  # Return to pullback search
-                self.pullback_candle_count = 0
-                self.window_top_limit, self.window_bottom_limit, self.window_expiry_bar = None, None, None
-                self.window_breakout_level = None
-                return None
         
         return None  # No breakout yet, continue monitoring
 
@@ -1521,32 +1319,19 @@ class SunriseOgle(bt.Strategy):
         # =====================================================================
         
         # GLOBAL INVALIDATION RULE: Reset armed states if opposing EMA crossover occurs
-        if self.entry_state in ["ARMED_LONG", "ARMED_SHORT"]:
+        if self.entry_state == "ARMED_LONG":
             opposing_signal = None
             
-            if self.entry_state == "ARMED_LONG":
-                # Check for bearish signal that would invalidate LONG setup
-                try:
-                    prev_bear = self.data.close[-1] < self.data.open[-1]
-                    cross_fast = self._cross_below(self.ema_confirm, self.ema_fast)
-                    cross_medium = self._cross_below(self.ema_confirm, self.ema_medium) 
-                    cross_slow = self._cross_below(self.ema_confirm, self.ema_slow)
-                    if prev_bear and (cross_fast or cross_medium or cross_slow):
-                        opposing_signal = "SHORT"
-                except IndexError:
-                    pass
-                    
-            elif self.entry_state == "ARMED_SHORT":
-                # Check for bullish signal that would invalidate SHORT setup
-                try:
-                    prev_bull = self.data.close[-1] > self.data.open[-1]
-                    cross_fast = self._cross_above(self.ema_confirm, self.ema_fast)
-                    cross_medium = self._cross_above(self.ema_confirm, self.ema_medium) 
-                    cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
-                    if prev_bull and (cross_fast or cross_medium or cross_slow):
-                        opposing_signal = "LONG"
-                except IndexError:
-                    pass
+            # Check for bearish signal that would invalidate LONG setup
+            try:
+                prev_bear = self.data.close[-1] < self.data.open[-1]
+                cross_fast = self._cross_below(self.ema_confirm, self.ema_fast)
+                cross_medium = self._cross_below(self.ema_confirm, self.ema_medium) 
+                cross_slow = self._cross_below(self.ema_confirm, self.ema_slow)
+                if prev_bear and (cross_fast or cross_medium or cross_slow):
+                    opposing_signal = "SHORT"
+            except IndexError:
+                pass
             
             if opposing_signal:
                 if self.p.print_signals:
@@ -1563,7 +1348,7 @@ class SunriseOgle(bt.Strategy):
                 self.armed_direction = signal_direction
                 self.pullback_candle_count = 0
                 
-                # 🔧 CRITICAL FIX: Store the original signal candle for validation
+                # ðŸ”§ CRITICAL FIX: Store the original signal candle for validation
                 self.signal_trigger_candle = {
                     'open': float(self.data.open[-1]),
                     'close': float(self.data.close[-1]),
@@ -1574,18 +1359,8 @@ class SunriseOgle(bt.Strategy):
                     'is_bearish': self.data.close[-1] < self.data.open[-1]
                 }
                 
-                # 🔍 DEBUG: Show trigger candle storage for SHORT signals
-                if signal_direction == 'SHORT':
-                    prev_close = self.data.close[-1]
-                    prev_open = self.data.open[-1]
-                    print(f"\n🔍 SHORT SIGNAL TRIGGER STORAGE - {dt:%Y-%m-%d %H:%M}:")
-                    print(f"   📦 STORING Trigger Candle: O:{prev_open:.5f} C:{prev_close:.5f}")
-                    print(f"   📦 Candle Type: {'BEARISH' if prev_close < prev_open else 'BULLISH' if prev_close > prev_open else 'DOJI'}")
-                    print(f"   📦 Raw Flags: is_bullish={prev_close > prev_open} | is_bearish={prev_close < prev_open}")
-                    print(f"   🎯 This candle will be used for validation when entry executes")
-                
                 if self.p.print_signals:
-                    print(f"STATE TRANSITION: SCANNING → ARMED_{signal_direction} at {dt:%Y-%m-%d %H:%M}")
+                    print(f"STATE TRANSITION: SCANNING ARMED_LONG at {dt:%Y-%m-%d %H:%M}")
                     print(f"   Signal detection candle: close[-1]={self.data.close[-1]:.5f} open[-1]={self.data.open[-1]:.5f}")
                     print(f"   Bearish previous candle: {self.data.close[-1] < self.data.open[-1]}")
                     print(f"   Starting pullback confirmation phase...")
@@ -1597,7 +1372,7 @@ class SunriseOgle(bt.Strategy):
                 self.entry_state = "WINDOW_OPEN"
                 self._phase3_open_breakout_window(self.armed_direction)
                 if self.p.print_signals:
-                    print(f"STATE TRANSITION: ARMED_{self.armed_direction} → WINDOW_OPEN at {dt:%Y-%m-%d %H:%M}")
+                    print(f"STATE TRANSITION: ARMED_{self.armed_direction} WINDOW_OPEN at {dt:%Y-%m-%d %H:%M}")
                     print(f"   Previous candle at window open: close[-1]={self.data.close[-1]:.5f} open[-1]={self.data.open[-1]:.5f}")
                     print(f"   Bearish previous candle: {self.data.close[-1] < self.data.open[-1]} (required for SHORT)")
                     print(f"   Pullback complete, window monitoring begins...")
@@ -1611,41 +1386,22 @@ class SunriseOgle(bt.Strategy):
                 # Check time range filter for final entry execution
                 if not self._is_in_trading_time_range(dt):
                     if self.p.print_signals:
-                        print(f"❌ ENTRY BLOCKED: Breakout detected but outside trading hours - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
+                        print(f"ENTRY BLOCKED: Breakout detected but outside trading hours - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
                     self._reset_entry_state()
                     return
                 
                 # EXECUTE ENTRY
                 signal_direction = self.armed_direction
                 
-                # ✅ CRITICAL: Validate against ORIGINAL signal trigger candle, not current previous candle
+                # âœ… CRITICAL: Validate against ORIGINAL signal trigger candle, not current previous candle
                 if hasattr(self, 'signal_trigger_candle') and self.signal_trigger_candle:
                     trigger_candle = self.signal_trigger_candle
                     candle_body = abs(trigger_candle['close'] - trigger_candle['open'])
                     min_body_size = 0.00001
                     
-                    # Use stored trigger candle colors
+                    # Use stored trigger candle colors for LONG validation
                     current_prev_candle_bullish = trigger_candle['is_bullish'] and candle_body >= min_body_size
                     current_prev_candle_bearish = trigger_candle['is_bearish'] and candle_body >= min_body_size
-                    
-                    # 🔍 CRITICAL DEBUG: Track every SHORT entry validation
-                    if signal_direction == 'SHORT':
-                        print(f"\n🔍 SHORT ENTRY VALIDATION DEBUG - {self.data.datetime.datetime(0)}:")
-                        print(f"   📊 STORED Trigger Candle: {trigger_candle['datetime']}")
-                        print(f"   📊 STORED O:{trigger_candle['open']:.5f} H:{trigger_candle['high']:.5f} L:{trigger_candle['low']:.5f} C:{trigger_candle['close']:.5f}")
-                        print(f"   📊 STORED Body: {candle_body:.5f} | Bullish: {trigger_candle['is_bullish']} | Bearish: {trigger_candle['is_bearish']}")
-                        print(f"   ⚖️  Final Validation: Bullish={current_prev_candle_bullish} | Bearish={current_prev_candle_bearish}")
-                        print(f"   🎯 Current Price: {self.data.close[0]:.5f} | Bar: {len(self)}")
-                        
-                        # 🚨 CRITICAL: Show exactly what candle we're validating against vs current candle
-                        current_candle = f"O:{self.data.open[-1]:.5f} C:{self.data.close[-1]:.5f}"
-                        stored_candle = f"O:{trigger_candle['open']:.5f} C:{trigger_candle['close']:.5f}"
-                        print(f"   🔄 COMPARISON: Current Previous [{current_candle}] vs Stored Trigger [{stored_candle}]")
-                        
-                        if not current_prev_candle_bearish:
-                            print(f"   🚨 CRITICAL ERROR: SHORT entry with NON-BEARISH trigger candle!")
-                            print(f"       Trigger candle is {'BULLISH' if trigger_candle['is_bullish'] else 'DOJI/NEUTRAL'}!")
-                            print(f"       This violates the core strategy rule: SHORT entries require bearish previous candles!")
                     
                 else:
                     # Fallback to current previous candle if trigger candle not stored
@@ -1658,54 +1414,33 @@ class SunriseOgle(bt.Strategy):
                     current_prev_candle_bearish = (prev_close < prev_open) and (candle_body >= min_body_size)
                     
                     if self.p.print_signals:
-                        print(f"⚠️ FALLBACK: Using current previous candle for validation")
+                        print(f"FALLBACK: Using current previous candle for validation")
                 
-                # Validate previous candle color matches signal direction (optional)
-                candle_direction_valid = True
-                
-                if signal_direction == 'LONG' and self.p.long_use_candle_direction_filter:
+                # Validate previous candle color for LONG entries
+                if self.p.long_use_candle_direction_filter:
                     if not current_prev_candle_bullish:
-                        candle_direction_valid = False
                         if self.p.print_signals:
                             trigger_close = trigger_candle['close']
                             trigger_open = trigger_candle['open']
-                            print(f"❌ LONG ENTRY BLOCKED: Previous candle is not bullish (close[-1]={trigger_close:.5f} open[-1]={trigger_open:.5f} body={candle_body:.5f})")
+                            print(f"LONG ENTRY BLOCKED: Previous candle is not bullish (close[-1]={trigger_close:.5f} open[-1]={trigger_open:.5f} body={candle_body:.5f})")
                         self._reset_entry_state()
                         return
-                
-                elif signal_direction == 'SHORT' and self.p.short_use_candle_direction_filter:
-                    if not current_prev_candle_bearish:
-                        candle_direction_valid = False
-                        if self.p.print_signals:
-                            trigger_close = trigger_candle['close']
-                            trigger_open = trigger_candle['open']
-                            print(f"❌ SHORT ENTRY BLOCKED: Previous candle is not bearish (close[-1]={trigger_close:.5f} open[-1]={trigger_open:.5f} body={candle_body:.5f})")
-                            print(f"   🚨 ERROR: SHORT entry attempted after BULLISH candle! This violates strategy rules!")
-                        self._reset_entry_state()
-                        return
-                
-                # 🔧 CRITICAL FIX: Validate ALL entry filters BEFORE any entry execution
-                if signal_direction == 'LONG':
-                    if not self._validate_all_entry_filters():
-                        if self.p.print_signals:
-                            print(f"❌ ENTRY BLOCKED: LONG entry validation failed (angle/ATR filters)")
-                        self._reset_entry_state()
-                        return
-                elif signal_direction == 'SHORT':
-                    if not self._validate_all_short_entry_filters():
-                        if self.p.print_signals:
-                            print(f"❌ ENTRY BLOCKED: SHORT entry validation failed (angle/ATR filters)")
-                        self._reset_entry_state()
-                        return
+
+                # 🚨 CRITICAL FIX: Validate ALL entry filters BEFORE any entry execution
+                if not self._validate_all_entry_filters():
+                    if self.p.print_signals:
+                        print(f"ENTRY BLOCKED: LONG entry validation failed (angle/ATR filters)")
+                    self._reset_entry_state()
+                    return
                 
                 if self.p.print_signals:
                     print(f"✅ PULLBACK ENTRY VALIDATION PASSED: {signal_direction} with prev candle bullish={current_prev_candle_bullish} bearish={current_prev_candle_bearish} body={candle_body:.5f}")
-                
-                # 🔧 FINAL TIME FILTER CHECK: Ensure no entries outside trading hours
+
+                # 🚨 FINAL TIME FILTER CHECK: Ensure no entries outside trading hours
                 dt = bt.num2date(self.data.datetime[0])
                 if not self._is_in_trading_time_range(dt):
                     if self.p.print_signals:
-                        print(f"❌ ENTRY BLOCKED: {signal_direction} entry rejected - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
+                        print(f"ENTRY BLOCKED: {signal_direction} entry rejected - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
                     self._reset_entry_state()
                     return
                 
@@ -1719,22 +1454,15 @@ class SunriseOgle(bt.Strategy):
                 bar_low = float(self.data.low[0])
                 bar_high = float(self.data.high[0])
                 
-                # Set stop and take levels based on signal direction
-                if signal_direction == 'LONG':
-                    self.stop_level = bar_low - atr_now * self.p.long_atr_sl_multiplier
-                    self.take_level = bar_high + atr_now * self.p.long_atr_tp_multiplier
-                elif signal_direction == 'SHORT':
-                    self.stop_level = bar_high + atr_now * self.p.short_atr_sl_multiplier  # Stop above for shorts
-                    self.take_level = bar_low - atr_now * self.p.short_atr_tp_multiplier   # Take below for shorts
+                # Set stop and take levels for LONG entries
+                self.stop_level = bar_low - atr_now * self.p.long_atr_sl_multiplier
+                self.take_level = bar_high + atr_now * self.p.long_atr_tp_multiplier
                 
                 self.initial_stop_level = self.stop_level
 
-                # Position sizing calculation
+                # Position sizing calculation for LONG entries
                 if self.p.enable_risk_sizing:
-                    if signal_direction == 'LONG':
-                        raw_risk = entry_price - self.stop_level
-                    else:  # SHORT
-                        raw_risk = self.stop_level - entry_price
+                    raw_risk = entry_price - self.stop_level
                         
                     if raw_risk <= 0:
                         self._reset_entry_state()
@@ -1755,22 +1483,15 @@ class SunriseOgle(bt.Strategy):
                     
                 bt_size = contracts * self.p.contract_size
 
-                # Place market order based on signal direction
-                if signal_direction == 'LONG':
-                    self.order = self.buy(size=bt_size)
-                    signal_type_display = " LONG BUY"
-                elif signal_direction == 'SHORT':
-                    self.order = self.sell(size=bt_size)
-                    signal_type_display = " SHORT SELL"
+                # Place market order for LONG entry
+                self.order = self.buy(size=bt_size)
+                signal_type_display = " LONG BUY"
 
                 # Print entry confirmation
                 if self.p.print_signals:
-                    if signal_direction == 'LONG':
-                        rr = (self.take_level - entry_price) / (entry_price - self.stop_level) if (entry_price - self.stop_level) > 0 else float('nan')
-                    else:  # SHORT
-                        rr = (entry_price - self.take_level) / (self.stop_level - entry_price) if (self.stop_level - entry_price) > 0 else float('nan')
-                    
-                    print(f"🎯 VOLATILITY EXPANSION ENTRY{signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
+                    rr = (self.take_level - entry_price) / (entry_price - self.stop_level) if (entry_price - self.stop_level) > 0 else float('nan')
+
+                    print(f"VOLATILITY EXPANSION ENTRY{signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
 
                 # ✅ CRITICAL FIX: Calculate ATR change for trade recording
                 # Get current ATR and compare with signal detection ATR if available
@@ -1784,7 +1505,7 @@ class SunriseOgle(bt.Strategy):
                     self.entry_signal_detection_atr = None
 
                 # Record trade entry for reporting
-                self._record_trade_entry(signal_direction, dt, entry_price, bt_size, atr_now)
+                self._record_trade_entry('LONG', dt, entry_price, bt_size, atr_now)
 
                 self.last_entry_price = entry_price
                 self.last_entry_bar = current_bar
@@ -1799,31 +1520,19 @@ class SunriseOgle(bt.Strategy):
         """Return tuple (signal_type, has_signal) for entry constraints.
 
         Returns:
-            ('LONG', True) if LONG entry conditions met
-            ('SHORT', True) if SHORT entry conditions met  
+            ('LONG', True) if LONG entry conditions met  
             (None, False) if no entry conditions met
         """
         dt = bt.num2date(self.data.datetime[0])
         
-        # Check LONG signals if enabled
-        if self.p.enable_long_trades:
-            if self.p.long_use_pullback_entry:
-                long_signal = self._handle_pullback_entry(dt, 'LONG')
-            else:
-                long_signal = self._standard_entry_signal(dt, 'LONG')
-            
-            if long_signal:
-                return ('LONG', True)
+        # Check LONG signals only (since this is a LONG-only strategy)
+        if self.p.long_use_pullback_entry:
+            long_signal = self._handle_pullback_entry(dt, 'LONG')
+        else:
+            long_signal = self._standard_entry_signal(dt, 'LONG')
         
-        # Check SHORT signals if enabled  
-        if self.p.enable_short_trades:
-            if self.p.short_use_pullback_entry:
-                short_signal = self._handle_pullback_entry(dt, 'SHORT')
-            else:
-                short_signal = self._standard_entry_signal(dt, 'SHORT')
-            
-            if short_signal:
-                return ('SHORT', True)
+        if long_signal:
+            return ('LONG', True)
         
         return (None, False)
     
@@ -1887,7 +1596,7 @@ class SunriseOgle(bt.Strategy):
             angle_ok = self.p.long_min_angle <= current_angle <= self.p.long_max_angle
             if not angle_ok:
                 if self.p.verbose_debug:
-                    print(f"Angle Filter: LONG entry rejected - angle {current_angle:.1f}° outside range [{self.p.long_min_angle:.1f}°, {self.p.long_max_angle:.1f}°]")
+                    print(f"Angle Filter: LONG entry rejected - angle {current_angle:.1f}Â° outside range [{self.p.long_min_angle:.1f}Â°, {self.p.long_max_angle:.1f}Â°]")
                 return False
 
         # 6. ATR volatility filter (LONG)
@@ -1904,83 +1613,17 @@ class SunriseOgle(bt.Strategy):
 
         return True
 
-    def _standard_short_entry_signal(self, dt):
-        """Standard SHORT entry logic without pullback system"""        
-        # 1. Previous candle bearish check (optional)
-        try:
-            prev_bear = self.data.close[-1] < self.data.open[-1]
-        except IndexError:
-            prev_bear = False
-
-        # Check candle direction filter (optional)
-        candle_direction_ok = True
-        if self.p.short_use_candle_direction_filter:
-            candle_direction_ok = prev_bear
-            if not candle_direction_ok:
-                return False
-
-        # 2. EMA crossover check (ANY of the three) - BELOW for SHORT
-        cross_fast = self._cross_below(self.ema_confirm, self.ema_fast)
-        cross_medium = self._cross_below(self.ema_confirm, self.ema_medium) 
-        cross_slow = self._cross_below(self.ema_confirm, self.ema_slow)
-        cross_any = cross_fast or cross_medium or cross_slow
-        
-        if not (prev_bear and cross_any):
-            return False
-
-        # 3. EMA order condition (SHORT: confirm < others)
-        if self.p.short_use_ema_order_condition:
-            ema_order_ok = (
-                self.ema_confirm[0] < self.ema_fast[0] and
-                self.ema_confirm[0] < self.ema_medium[0] and
-                self.ema_confirm[0] < self.ema_slow[0]
-            )
-            if not ema_order_ok:
-                return False
-
-        # 4. Price filter EMA (SHORT: close < filter)
-        if self.p.short_use_price_filter_ema:
-            price_below_filter = self.data.close[0] < self.ema_filter_price[0]
-            if not price_below_filter:
-                return False
-
-        # 5. Angle filter (SHORT: negative angle range)
-        if self.p.short_use_angle_filter:
-            current_angle = self._angle()
-            angle_ok = self.p.short_min_angle <= current_angle <= self.p.short_max_angle
-            if not angle_ok:
-                if self.p.verbose_debug:
-                    print(f"Angle Filter: SHORT entry rejected - angle {current_angle:.1f}° outside range [{self.p.short_min_angle:.1f}°, {self.p.short_max_angle:.1f}°]")
-                return False
-
-        # 6. ATR volatility filter (SHORT)
-        if self.p.short_use_atr_filter:
-            current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-            if current_atr < self.p.short_atr_min_threshold:
-                if self.p.verbose_debug:
-                    print(f"ATR Filter: SHORT entry rejected - ATR {current_atr:.6f} < min threshold {self.p.short_atr_min_threshold:.6f}")
-                return False
-            if current_atr > self.p.short_atr_max_threshold:
-                if self.p.verbose_debug:
-                    print(f"ATR Filter: SHORT entry rejected - ATR {current_atr:.6f} > max threshold {self.p.short_atr_max_threshold:.6f}")
-                return False
-
-        return True
-    
     def _handle_pullback_entry(self, dt, direction='LONG'):
-        """Pullback entry state machine logic
+        """LONG-only pullback entry state machine logic
         
         Args:
             dt: Current datetime
-            direction: 'LONG' or 'SHORT' signal direction
+            direction: 'LONG' signal direction only
             
         Returns:
             Boolean indicating if entry should be executed
         """
-        if direction == 'SHORT':
-            return self._handle_short_pullback_entry(dt)
-        else:
-            return self._handle_long_pullback_entry(dt)
+        return self._handle_long_pullback_entry(dt)
     
     def _handle_long_pullback_entry(self, dt):
         """LONG pullback entry state machine logic - 3-phase precise implementation"""
@@ -2054,7 +1697,7 @@ class SunriseOgle(bt.Strategy):
                         atr_change = current_atr - self.signal_detection_atr
                         
                         # ATR CHANGE FILTERING LOGIC
-                        # Rule 1: If ATR is incrementing (positive change: low → high volatility)
+                        # Rule 1: If ATR is incrementing (positive change: low â†’ high volatility)
                         if atr_change > 0:
                             if self.p.long_use_atr_increment_filter:
                                 # Increment filter is ENABLED - check if within allowed range
@@ -2070,7 +1713,7 @@ class SunriseOgle(bt.Strategy):
                                 self._reset_pullback_state()
                                 return False
                         
-                        # Rule 2: If ATR is decrementing (negative change: high → low volatility)
+                        # Rule 2: If ATR is decrementing (negative change: high â†’ low volatility)
                         elif atr_change < 0:
                             if self.p.long_use_atr_decrement_filter:
                                 # Decrement filter is ENABLED - check if atr_change is within optimal negative range
@@ -2101,10 +1744,10 @@ class SunriseOgle(bt.Strategy):
             
             # Entry Trigger Condition: current high >= breakout_target (already includes pip offset)
             if current_high >= self.breakout_target:
-                # 🔧 CRITICAL FIX: Validate ALL filters BEFORE any entry processing
+                #  CRITICAL FIX: Validate ALL filters BEFORE any entry processing
                 if not self._validate_all_entry_filters():
                     if self.p.verbose_debug:
-                        print(f"❌ ENTRY BLOCKED: LONG entry validation failed at breakout")
+                        print(f"ENTRY BLOCKED: LONG entry validation failed at breakout")
                     return False
                 
                 # Breakout detected! All entry conditions passed
@@ -2126,7 +1769,7 @@ class SunriseOgle(bt.Strategy):
                     atr_change = current_atr - self.signal_detection_atr
                     
                     # ATR CHANGE FILTERING LOGIC (ROBUST) 
-                    # Rule 1: If ATR is incrementing (positive change: low → high volatility)
+                    # Rule 1: If ATR is incrementing (positive change: low â†’ high volatility)
                     if atr_change > 0:
                         if self.p.long_use_atr_increment_filter:
                             # Increment filter is ENABLED - check if within allowed range
@@ -2140,7 +1783,7 @@ class SunriseOgle(bt.Strategy):
                                 print(f"ATR INCREMENT Filter: LONG entry rejected - ATR increment {atr_change:+.6f} (increment filter disabled, all increments rejected)")
                             return False
                     
-                    # Rule 2: If ATR is decrementing (negative change: high → low volatility)
+                    # Rule 2: If ATR is decrementing (negative change: high â†’ low volatility)
                     elif atr_change < 0:
                         if self.p.long_use_atr_decrement_filter:
                             # Decrement filter is ENABLED - check if atr_change is within optimal negative range
@@ -2159,25 +1802,25 @@ class SunriseOgle(bt.Strategy):
                             atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: {atr_change:+.6f})"
                         print(f"LONG BREAKOUT ENTRY! High={current_high:.5f} >= target={self.breakout_target:.5f}{atr_info}")
                     
-                    # ✅ CRITICAL FIX: Store ATR values BEFORE reset to preserve them for trade recording
+                    # âœ… CRITICAL FIX: Store ATR values BEFORE reset to preserve them for trade recording
                     temp_signal_detection_atr = self.signal_detection_atr
                     temp_entry_atr_increment = self.entry_atr_increment
-                    print(f"🔍 DEBUG LONG: Before reset - signal_detection_atr={temp_signal_detection_atr}, entry_atr_increment={temp_entry_atr_increment}")  # DEBUG
+                    print(f"DEBUG LONG: Before reset - signal_detection_atr={temp_signal_detection_atr}, entry_atr_increment={temp_entry_atr_increment}")  # DEBUG
                     
                     # Reset state machine and trigger entry
                     self._reset_pullback_state()
-                    
+
                     # ✅ CRITICAL FIX: Restore ATR values AFTER reset for trade recording
                     self.entry_signal_detection_atr = temp_signal_detection_atr
                     self.entry_atr_increment = temp_entry_atr_increment
-                    print(f"🔍 DEBUG LONG: After restore - entry_signal_detection_atr={self.entry_signal_detection_atr}, entry_atr_increment={self.entry_atr_increment}")  # DEBUG
-                    
+                    print(f"DEBUG LONG: After restore - entry_signal_detection_atr={self.entry_signal_detection_atr}, entry_atr_increment={self.entry_atr_increment}")  # DEBUG
+
                     return True
             return False
         
         return False
     
-    def _handle_short_pullback_entry(self, dt):
+    def _is_in_trading_time_range(self, dt):
         """SHORT pullback entry state machine logic - 3-phase precise implementation"""
         # Check time range filter first
         if not self._is_in_trading_time_range(dt):
@@ -2249,7 +1892,7 @@ class SunriseOgle(bt.Strategy):
                         atr_change = current_atr - self.signal_detection_atr
                         
                         # ATR CHANGE FILTERING LOGIC
-                        # Rule 1: If ATR is incrementing (positive change: low → high volatility)
+                        # Rule 1: If ATR is incrementing (positive change: low â†’ high volatility)
                         if atr_change > 0:
                             if self.p.short_use_atr_increment_filter:
                                 # Increment filter is ENABLED - check if within allowed range
@@ -2260,7 +1903,7 @@ class SunriseOgle(bt.Strategy):
                                     return False
                             # If increment filter is DISABLED, allow all increments for SHORT (different strategy)
                         
-                        # Rule 2: If ATR is decrementing (negative change: high → low volatility)
+                        # Rule 2: If ATR is decrementing (negative change: high low volatility)
                         elif atr_change < 0:
                             if self.p.short_use_atr_decrement_filter:
                                 # Decrement filter is ENABLED - check if atr_change is within optimal negative range
@@ -2295,10 +1938,10 @@ class SunriseOgle(bt.Strategy):
             
             # Entry Trigger Condition: current low <= breakout_target (already includes pip offset)
             if current_low <= self.breakout_target:
-                # 🔧 CRITICAL FIX: Validate ALL filters BEFORE any entry processing
+                # ✅ CRITICAL FIX: Validate ALL filters BEFORE any entry processing
                 if not self._validate_all_short_entry_filters():
                     if self.p.verbose_debug:
-                        print(f"❌ ENTRY BLOCKED: SHORT entry validation failed at breakout")
+                        print(f"ENTRY BLOCKED: SHORT entry validation failed at breakout")
                     return False
                 
                 # Breakout detected! All SHORT entry conditions passed
@@ -2320,7 +1963,7 @@ class SunriseOgle(bt.Strategy):
                     atr_change = current_atr - self.signal_detection_atr
                     
                     # ATR CHANGE FILTERING LOGIC (ROBUST)
-                    # Rule 1: If ATR is incrementing (positive change: low → high volatility)
+                    # Rule 1: If ATR is incrementing (positive change: high volatility)
                     if atr_change > 0:
                         if self.p.short_use_atr_increment_filter:
                             # Increment filter is ENABLED - check if within allowed range
@@ -2329,8 +1972,8 @@ class SunriseOgle(bt.Strategy):
                                     print(f"ATR INCREMENT Filter: SHORT entry rejected - ATR increment {atr_change:+.6f} outside range [{self.p.short_atr_increment_min_threshold:.6f}, {self.p.short_atr_increment_max_threshold:.6f}]")
                                 return False
                         # If increment filter is DISABLED, allow all increments for SHORT (different strategy)
-                    
-                    # Rule 2: If ATR is decrementing (negative change: high → low volatility)
+
+                    # Rule 2: If ATR is decrementing (negative change: low volatility)
                     elif atr_change < 0:
                         if self.p.short_use_atr_decrement_filter:
                             # Decrement filter is ENABLED - check if atr_change is within optimal negative range
@@ -2349,19 +1992,19 @@ class SunriseOgle(bt.Strategy):
                         atr_info = f" | ATR: {current_atr:.6f} (signal: {self.signal_detection_atr:.6f}, inc: {atr_change:+.6f})"
                     print(f"SHORT BREAKOUT ENTRY! Low={current_low:.5f} <= target={self.breakout_target:.5f}{atr_info}")
                 
-                # ✅ CRITICAL FIX: Store ATR values BEFORE reset to preserve them for trade recording
+                # âœ… CRITICAL FIX: Store ATR values BEFORE reset to preserve them for trade recording
                 temp_signal_detection_atr = self.signal_detection_atr
                 temp_entry_atr_increment = self.entry_atr_increment
-                print(f"🔍 DEBUG SHORT: Before reset - signal_detection_atr={temp_signal_detection_atr}, entry_atr_increment={temp_entry_atr_increment}")  # DEBUG
+                print(f"DEBUG SHORT: Before reset - signal_detection_atr={temp_signal_detection_atr}, entry_atr_increment={temp_entry_atr_increment}")  # DEBUG
                 
                 # Reset state machine and trigger entry
                 self._reset_pullback_state()
-                
+
                 # ✅ CRITICAL FIX: Restore ATR values AFTER reset for trade recording
                 self.entry_signal_detection_atr = temp_signal_detection_atr
                 self.entry_atr_increment = temp_entry_atr_increment
-                print(f"🔍 DEBUG SHORT: After restore - entry_signal_detection_atr={self.entry_signal_detection_atr}, entry_atr_increment={self.entry_atr_increment}")  # DEBUG
-                
+                print(f"DEBUG SHORT: After restore - entry_signal_detection_atr={self.entry_signal_detection_atr}, entry_atr_increment={self.entry_atr_increment}")  # DEBUG
+
                 return True
             return False
         
@@ -2434,13 +2077,13 @@ class SunriseOgle(bt.Strategy):
             current_angle = self._angle()
             angle_ok = self.p.long_min_angle <= current_angle <= self.p.long_max_angle
             if self.p.verbose_debug:
-                print(f"🔍 ANGLE VALIDATION DEBUG - LONG Pullback Entry:")
-                print(f"   📐 Current Angle: {current_angle:.2f}°")
-                print(f"   📏 Required Range: {self.p.long_min_angle:.1f}° to {self.p.long_max_angle:.1f}°")
+                print(f" ANGLE VALIDATION DEBUG - LONG Pullback Entry:")
+                print(f"   🔍 Current Angle: {current_angle:.2f}°")
+                print(f"   🔍 Required Range: {self.p.long_min_angle:.1f}° to {self.p.long_max_angle:.1f}°")
                 print(f"   ✅ Angle OK: {angle_ok}")
             if not angle_ok:
                 if self.p.verbose_debug:
-                    print(f"❌ ANGLE FILTER REJECTED: LONG entry blocked - angle {current_angle:.2f}° outside range [{self.p.long_min_angle:.1f}°, {self.p.long_max_angle:.1f}°]")
+                    print(f"🔒 ANGLE FILTER REJECTED: LONG entry blocked - angle {current_angle:.2f}° outside range [{self.p.long_min_angle:.1f}°, {self.p.long_max_angle:.1f}°]")
                 return False
 
         return True
@@ -2561,7 +2204,7 @@ class SunriseOgle(bt.Strategy):
                             oco=self.stop_order  # Link to SL order
                         )
                         if self.p.print_signals:
-                            print(f"🛡️  LONG PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                            print(f"🔒  LONG PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
                 
                 else:  # order.issell()
                     # SHORT position entry (SELL order)
@@ -2584,7 +2227,7 @@ class SunriseOgle(bt.Strategy):
                             oco=self.stop_order  # Link to SL order
                         )
                         if self.p.print_signals:
-                            print(f"🛡️  SHORT PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                            print(f"🔒  SHORT PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
                 
                 self.order = None
 
@@ -2607,7 +2250,7 @@ class SunriseOgle(bt.Strategy):
                 position_type = " LONG" if order.issell() else " SHORT"
                 
                 if self.p.print_signals:
-                    print(f"🔚 {position_type} EXIT EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
+                    print(f"🔍 {position_type} EXIT EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
 
                 # Reset all state variables to ensure a clean slate for the next trade
                 self.stop_order = None
@@ -2811,6 +2454,22 @@ class SunriseOgle(bt.Strategy):
             print(f"Error cancelling orders: {e}")
 
 
+class SLTPObserver(bt.Observer):
+    """Stop Loss and Take Profit Observer for plotting SL/TP levels"""
+    lines = ('sl', 'tp',)
+    plotinfo = dict(plot=True, subplot=False)
+    plotlines = dict(sl=dict(color='red', ls='--'), tp=dict(color='green', ls='--'))
+    
+    def next(self):
+        strat = self._owner
+        if strat.position:
+            self.lines.sl[0] = strat.stop_level if strat.stop_level else float('nan')
+            self.lines.tp[0] = strat.take_level if strat.take_level else float('nan')
+        else:
+            self.lines.sl[0] = float('nan')
+            self.lines.tp[0] = float('nan')
+
+
 if __name__ == '__main__':
     from datetime import datetime, timedelta
 
@@ -2821,16 +2480,6 @@ if __name__ == '__main__':
         except Exception:
             pass
 
-    class SLTPObserver(bt.Observer):
-        lines = ('sl','tp',); plotinfo = dict(plot=True, subplot=False)
-        plotlines = dict(sl=dict(color='red', ls='--'), tp=dict(color='green', ls='--'))
-        def next(self):
-            strat = self._owner
-            if strat.position:
-                self.lines.sl[0] = strat.stop_level if strat.stop_level else float('nan')
-                self.lines.tp[0] = strat.take_level if strat.take_level else float('nan')
-            else:
-                self.lines.sl[0] = float('nan'); self.lines.tp[0] = float('nan')
     BASE = Path(__file__).resolve().parent.parent.parent
     DATA_FILE = BASE / 'data' / DATA_FILENAME
     STRAT_KWARGS = dict(
@@ -2889,302 +2538,43 @@ if __name__ == '__main__':
     print(f"=== SUNRISE OGLE === (from {FROMDATE} to {TODATE})")
     if ENABLE_FOREX_CALC:
         print(f">> FOREX MODE ENABLED - Data: {DATA_FILENAME}")
-        print(f">> Instrument: USDCHF (USD/CHF)")
+        print(f">> Instrument: GBPUSD (GBP/USD)")
     else:
         print(f" STANDARD MODE - Data: {DATA_FILENAME}")
 
-    if RUN_DUAL_CEREBRO and ENABLE_LONG_TRADES and ENABLE_SHORT_TRADES:
-        print(" DUAL CEREBRO MODE: Running separate LONG-only and SHORT-only strategies")
-        
-        # === LONG-ONLY CEREBRO ===
-        print("\n RUNNING LONG-ONLY STRATEGY...")
-        cerebro_long = bt.Cerebro(stdstats=False)
-        data_long = bt.feeds.GenericCSVData(**feed_kwargs)
-        cerebro_long.adddata(data_long)
-        cerebro_long.broker.setcash(STARTING_CASH)
-        cerebro_long.broker.setcommission(leverage=30.0)
-        
-        # Override to LONG-only
-        long_kwargs = STRAT_KWARGS.copy()
-        long_kwargs.update({
-            'long_enabled': True,
-            'short_enabled': False,
-            'print_signals': True
-        })
-        cerebro_long.addstrategy(SunriseOgle, **long_kwargs)
-        
-        try: cerebro_long.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgle.params.buy_sell_plotdist)
+    # === LONG-ONLY STRATEGY ===
+    cerebro = bt.Cerebro(stdstats=False)
+    cerebro.adddata(data)
+    cerebro.broker.setcash(STARTING_CASH)
+    cerebro.broker.setcommission(leverage=30.0)
+    cerebro.addstrategy(SunriseOgle, **STRAT_KWARGS)
+    try: cerebro.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgle.params.buy_sell_plotdist)
+    except Exception: pass
+    if SunriseOgle.params.plot_sltp_lines:
+        try: cerebro.addobserver(SLTPObserver)
         except Exception: pass
-        if SunriseOgle.params.plot_sltp_lines:
-            try: cerebro_long.addobserver(SLTPObserver)
-            except Exception: pass
-        try: cerebro_long.addobserver(bt.observers.Value)
-        except Exception: pass
-        
-        results_long = cerebro_long.run()
-        final_value_long = cerebro_long.broker.getvalue()
-        
-        # === SHORT-ONLY CEREBRO ===
-        print("\n RUNNING SHORT-ONLY STRATEGY...")
-        cerebro_short = bt.Cerebro(stdstats=False)
-        data_short = bt.feeds.GenericCSVData(**feed_kwargs)
-        cerebro_short.adddata(data_short)
-        cerebro_short.broker.setcash(STARTING_CASH)
-        cerebro_short.broker.setcommission(leverage=30.0)
-        
-        # Override to SHORT-only
-        short_kwargs = STRAT_KWARGS.copy()
-        short_kwargs.update({
-            'long_enabled': False,
-            'short_enabled': True,
-            'print_signals': True
-        })
-        cerebro_short.addstrategy(SunriseOgle, **short_kwargs)
-        
-        try: cerebro_short.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgle.params.buy_sell_plotdist)
-        except Exception: pass
-        if SunriseOgle.params.plot_sltp_lines:
-            try: cerebro_short.addobserver(SLTPObserver)
-            except Exception: pass
-        try: cerebro_short.addobserver(bt.observers.Value)
-        except Exception: pass
-        
-        results_short = cerebro_short.run()
-        final_value_short = cerebro_short.broker.getvalue()
-        
-        # === COMBINED RESULTS ===
-        print("\n=== DUAL CEREBRO SUMMARY ===")
-        long_pnl = final_value_long - STARTING_CASH
-        short_pnl = final_value_short - STARTING_CASH
-        combined_pnl = long_pnl + short_pnl
-        combined_value = STARTING_CASH + combined_pnl
-        
-        # Extract individual strategy metrics
-        long_strategy = results_long[0]
-        short_strategy = results_short[0]
-        
-        # Calculate combined metrics
-        combined_trades = long_strategy.trades + short_strategy.trades
-        combined_wins = long_strategy.wins + short_strategy.wins
-        combined_losses = long_strategy.losses + short_strategy.losses
-        combined_gross_profit = long_strategy.gross_profit + short_strategy.gross_profit
-        combined_gross_loss = long_strategy.gross_loss + short_strategy.gross_loss
-        
-        # Calculate combined ratios
-        combined_win_rate = (combined_wins / combined_trades * 100) if combined_trades > 0 else 0
-        combined_pf = (combined_gross_profit / abs(combined_gross_loss)) if combined_gross_loss != 0 else float('inf')
-        
-        print(f" LONG-ONLY  PnL: {long_pnl:+,.2f} | Final: {final_value_long:,.2f}")
-        print(f" SHORT-ONLY PnL: {short_pnl:+,.2f} | Final: {final_value_short:,.2f}")
-        print(f" COMBINED   PnL: {combined_pnl:+,.2f} | Final: {combined_value:,.2f}")
-        print(f" COMBINED Stats: Trades: {combined_trades} | Wins: {combined_wins} | Losses: {combined_losses} | WinRate: {combined_win_rate:.2f}% | PF: {combined_pf:.2f}")
-        
-        # === COMBINED PLOT ===
-        if ENABLE_PLOT and getattr(long_strategy.p, 'plot_result', False):
-            print("\n📊 Creating combined portfolio performance chart with 5-minute time axis...")
-            try:
-                import matplotlib.pyplot as plt
-                import numpy as np
-                
-                # Extract actual portfolio values from cerebros
-                long_portfolio_values = []
-                short_portfolio_values = []
-                
-                # Get data from LONG cerebro
-                long_strat = cerebro_long.runstrats[0][0]  # First strategy instance
-                if hasattr(long_strat, '_portfolio_values') and len(long_strat._portfolio_values) > 0:
-                    long_portfolio_values = long_strat._portfolio_values
-                    print(f" LONG portfolio data: {len(long_portfolio_values)} points")
-                else:
-                    print("⚠️  No LONG portfolio tracking data found")
-                    long_portfolio_values = []
-                
-                # Get data from SHORT cerebro  
-                short_strat = cerebro_short.runstrats[0][0]  # First strategy instance
-                if hasattr(short_strat, '_portfolio_values') and len(short_strat._portfolio_values) > 0:
-                    short_portfolio_values = short_strat._portfolio_values
-                    print(f" SHORT portfolio data: {len(short_portfolio_values)} points")
-                else:
-                    print("⚠️  No SHORT portfolio tracking data found")
-                    short_portfolio_values = []
-                
-                # If we have real portfolio data, plot it
-                if len(long_portfolio_values) > 0 and len(short_portfolio_values) > 0:
-                    # Make sure arrays are same length
-                    min_len = min(len(long_portfolio_values), len(short_portfolio_values))
-                    long_values = long_portfolio_values[:min_len]
-                    short_values = short_portfolio_values[:min_len]
-                    
-                    # Calculate combined portfolio values
-                    combined_values = [(l + s - STARTING_CASH) for l, s in zip(long_values, short_values)]
-                    
-                    # Create simple index for x-axis (5-minute intervals)
-                    x_axis = list(range(len(combined_values)))
-                    
-                    # Create the portfolio chart
-                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))
-                    
-                    # Main combined portfolio chart
-                    ax1.plot(x_axis, combined_values, 
-                            label=f' Combined Portfolio (+${combined_pnl:.2f})', 
-                            linewidth=3, color='purple')
-                    ax1.plot(x_axis, long_values, 
-                            label=f' LONG Only (+${long_pnl:.2f})', 
-                            linewidth=2, alpha=0.8, color='green')
-                    ax1.plot(x_axis, short_values, 
-                            label=f' SHORT Only (+${short_pnl:.2f})', 
-                            linewidth=2, alpha=0.8, color='red')
-                    ax1.axhline(y=STARTING_CASH, color='gray', linestyle='--', alpha=0.5, label='Break Even')
-                    
-                    ax1.set_title(f'SUNRISE DUAL CEREBRO - Portfolio Performance (5-minute bars)\n' +
-                                 f'Combined: {combined_trades} trades | Win Rate: {combined_win_rate:.1f}% | PF: {combined_pf:.2f}', 
-                                 fontsize=14, fontweight='bold')
-                    ax1.set_ylabel('Portfolio Value ($)', fontweight='bold')
-                    ax1.set_xlabel('5-Minute Bars', fontweight='bold')
-                    ax1.legend(loc='upper left')
-                    ax1.grid(True, alpha=0.3)
-                    
-                    # Performance metrics comparison
-                    strategies = ['LONG Only', 'SHORT Only', 'Combined']
-                    pnls = [long_pnl, short_pnl, combined_pnl]
-                    colors = ['green', 'red', 'purple']
-                    
-                    bars = ax2.bar(strategies, pnls, color=colors, alpha=0.7)
-                    ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-                    ax2.set_title('Strategy Performance Comparison', fontweight='bold')
-                    ax2.set_ylabel('P&L ($)', fontweight='bold')
-                    ax2.grid(True, alpha=0.3, axis='y')
-                    
-                    # Add value labels on bars
-                    for bar, pnl in zip(bars, pnls):
-                        height = bar.get_height()
-                        ax2.text(bar.get_x() + bar.get_width()/2., height + (100 if height >= 0 else -200),
-                                f'${pnl:.0f}', ha='center', va='bottom' if height >= 0 else 'top', fontweight='bold')
-                    
-                    plt.tight_layout()
-                    plt.show()
-                    
-                    print(f"✅ Combined portfolio chart created with {len(combined_values)} 5-minute intervals!")
-                    
-                else:
-                    print("⚠️  Insufficient portfolio data, using simplified chart")
-                    # Simple final values chart
-                    strategies = ['LONG Only', 'SHORT Only', 'Combined']
-                    final_values = [final_value_long, final_value_short, combined_value]
-                    pnls = [long_pnl, short_pnl, combined_pnl]
-                    colors = ['green', 'red', 'purple']
-                    
-                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
-                    
-                    # Final values
-                    bars1 = ax1.bar(strategies, final_values, color=colors, alpha=0.7)
-                    ax1.axhline(y=STARTING_CASH, color='gray', linestyle='--', alpha=0.5, label='Starting Cash')
-                    ax1.set_title(f'SUNRISE DUAL CEREBRO - Final Portfolio Values\n' +
-                                 f'Combined: {combined_trades} trades | Win Rate: {combined_win_rate:.1f}% | PF: {combined_pf:.2f}', 
-                                 fontweight='bold')
-                    ax1.set_ylabel('Final Portfolio Value ($)', fontweight='bold')
-                    ax1.legend()
-                    ax1.grid(True, alpha=0.3, axis='y')
-                    
-                    # P&L comparison
-                    bars2 = ax2.bar(strategies, pnls, color=colors, alpha=0.7)
-                    ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-                    ax2.set_title('Strategy Performance Comparison', fontweight='bold')
-                    ax2.set_ylabel('P&L ($)', fontweight='bold')
-                    ax2.grid(True, alpha=0.3, axis='y')
-                    
-                    # Add value labels
-                    for bar, val in zip(bars1, final_values):
-                        height = bar.get_height()
-                        ax1.text(bar.get_x() + bar.get_width()/2., height + 500,
-                                f'${val:,.0f}', ha='center', va='bottom', fontweight='bold')
-                    
-                    for bar, pnl in zip(bars2, pnls):
-                        height = bar.get_height()
-                        ax2.text(bar.get_x() + bar.get_width()/2., height + (100 if height >= 0 else -200),
-                                f'${pnl:.0f}', ha='center', va='bottom' if height >= 0 else 'top', fontweight='bold')
-                    
-                    plt.tight_layout()
-                    plt.show()
-                    
-                    print("✅ Simplified portfolio comparison chart created!")
-                
-                # Optional: Show individual strategy plots with backtrader native charts
-                if SHOW_INDIVIDUAL_PLOTS:
-                    try:
-                        user_input = input("\n📊 Show individual Backtrader charts with entries/exits? (y/n): ").lower().strip()
-                        if user_input in ['y', 'yes']:
-                            print(" Showing LONG strategy chart...")
-                            long_title = f'LONG STRATEGY | PnL: +${long_pnl:.2f} | Trades: {long_strategy.trades}'
-                            cerebro_long.plot(style='candlestick', subtitle=long_title)
-                            
-                            print(" Showing SHORT strategy chart...")
-                            short_title = f'SHORT STRATEGY | PnL: +${short_pnl:.2f} | Trades: {short_strategy.trades}'
-                            cerebro_short.plot(style='candlestick', subtitle=short_title)
-                    except:
-                        pass
-                
-            except Exception as e:
-                print(f"Combined plot error: {e}")
-                print("� Falling back to separate strategy plots...")
-                
-                # Fallback: Show LONG strategy plot with combined info
-                plot_title = f'LONG STRATEGY (Part of Dual Cerebro)\nLONG PnL: {long_pnl:+,.0f} ({long_strategy.trades} trades) | COMBINED PnL: {combined_pnl:+,.0f}'
-                print("� Showing LONG strategy plot...")
-                cerebro_long.plot(style='candlestick', subtitle=plot_title)
-                
-                # Ask if user wants to see SHORT plot separately
-                try:
-                    user_input = input("\n Show SHORT strategy plot separately? (y/n): ").lower().strip()
-                    if user_input in ['y', 'yes']:
-                        short_title = f'SHORT STRATEGY (Part of Dual Cerebro)\nSHORT PnL: {short_pnl:+,.0f} ({short_strategy.trades} trades)'
-                        print(" Showing SHORT strategy plot...")
-                        cerebro_short.plot(style='candlestick', subtitle=short_title)
-                except:
-                    pass
-        
-        # Use combined results as the final result
-        final_value = combined_value
-        
-    else:
-        # === SINGLE CEREBRO MODE ===
-        cerebro = bt.Cerebro(stdstats=False)
-        cerebro.adddata(data)
-        cerebro.broker.setcash(STARTING_CASH)
-        cerebro.broker.setcommission(leverage=30.0)
-        cerebro.addstrategy(SunriseOgle, **STRAT_KWARGS)
-        try: cerebro.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgle.params.buy_sell_plotdist)
-        except Exception: pass
-        if SunriseOgle.params.plot_sltp_lines:
-            try: cerebro.addobserver(SLTPObserver)
-            except Exception: pass
-        try: cerebro.addobserver(bt.observers.Value)
-        except Exception: pass
+    try: cerebro.addobserver(bt.observers.Value)
+    except Exception: pass
 
-        if LIMIT_BARS > 0:
-            # Monkey-patch next() to stop early after LIMIT_BARS bars for quick experimentation.
-            orig_next = SunriseOgle.next
-            def limited_next(self):
-                if len(self.data) >= LIMIT_BARS:
-                    self.env.runstop(); return
-                orig_next(self)
-            SunriseOgle.next = limited_next
+    if LIMIT_BARS > 0:
+        # Monkey-patch next() to stop early after LIMIT_BARS bars for quick experimentation.
+        orig_next = SunriseOgle.next
+        def limited_next(self):
+            if len(self.data) >= LIMIT_BARS:
+                self.env.runstop(); return
+            orig_next(self)
+        SunriseOgle.next = limited_next
 
-        results = cerebro.run()
-        final_value = cerebro.broker.getvalue()
+    results = cerebro.run()
+    final_value = cerebro.broker.getvalue()
     
     print(f"Final Value: {final_value:,.2f}")
     
-    # Enhanced plotting logic for single mode - FIX: Include AUTO_PLOT_SINGLE_MODE condition
-    if not RUN_DUAL_CEREBRO and (ENABLE_PLOT or AUTO_PLOT_SINGLE_MODE):
-        # Determine trading mode for plot title
-        trading_mode = []
-        if ENABLE_LONG_TRADES:
-            trading_mode.append("LONG")
-        if ENABLE_SHORT_TRADES:
-            trading_mode.append("SHORT")
-        
-        mode_description = " & ".join(trading_mode) if trading_mode else "NO TRADES"
+    # Enhanced plotting logic for LONG-only strategy
+    if ENABLE_PLOT or AUTO_PLOT_SINGLE_MODE:
+        # Determine trading mode for plot title (LONG-only)
+        trading_mode = ["LONG"]
+        mode_description = "LONG"
         
         if AUTO_PLOT_SINGLE_MODE or getattr(results[0].p, 'plot_result', False):
             try:
@@ -3194,12 +2584,12 @@ if __name__ == '__main__':
                 plot_title += f'Final Value: ${final_value:,.0f} | P&L: {final_pnl:+,.0f} | '
                 plot_title += f'Trades: {strategy_result.trades} | Win Rate: {(strategy_result.wins/strategy_result.trades*100) if strategy_result.trades > 0 else 0:.1f}%'
                 
-                print(f"📊 Showing {mode_description} strategy chart...")
+                print(f" Showing {mode_description} strategy chart...")
                 cerebro.plot(style='candlestick', subtitle=plot_title)
             except Exception as e: 
                 print(f"Plot error: {e}")
         else:
-            print(f"📊 Plotting disabled. Set ENABLE_PLOT=True and AUTO_PLOT_SINGLE_MODE=True to show charts.")
+            print(f" Plotting disabled. Set ENABLE_PLOT=True and AUTO_PLOT_SINGLE_MODE=True to show charts.")
     
-    elif not RUN_DUAL_CEREBRO:
-        print(f"📊 Plotting disabled. Set ENABLE_PLOT=True to show charts.")
+    else:
+        print(f" Plotting disabled. Set ENABLE_PLOT=True to show charts.")

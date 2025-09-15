@@ -460,11 +460,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ---
 
-## 📞 **Support & Contact**
-
-- **GitHub Issues:** [Report bugs and request features](https://github.com/your-repo/issues)
-- **Documentation:** [Wiki and guides](https://github.com/your-repo/wiki)
-- **Community:** [Discussions and Q&A](https://github.com/your-repo/discussions)
 
 **Made with ❤️ for the quantitative trading community**
 
