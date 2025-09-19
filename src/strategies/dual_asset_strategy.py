@@ -53,7 +53,7 @@ BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
 # Import individual strategy classes
-from sunrise_ogle_long_only import SunriseOgle as SunriseOgleEURUSD
+from Portafolio.quant_bot_project.src.strategies.sunrise_ogle_eurusd import SunriseOgle as SunriseOgleEURUSD
 from sunrise_ogle_usdchf import SunriseOgle as SunriseOgleUSDCHF
 from sunrise_ogle_xauusd import SunriseOgle as SunriseOgleXAUUSD
 

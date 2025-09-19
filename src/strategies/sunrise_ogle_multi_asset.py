@@ -41,9 +41,10 @@ BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
 # Import individual strategy classes
-from sunrise_ogle_long_only import SunriseOgle as SunriseOgleEURUSD
+from sunrise_ogle_eurusd import SunriseOgle as SunriseOgleEURUSD
 from sunrise_ogle_usdchf import SunriseOgle as SunriseOgleUSDCHF
 from sunrise_ogle_xauusd import SunriseOgle as SunriseOgleXAUUSD
+from sunrise_ogle_xagusd import SunriseOgle as SunriseOgleXAGUSD
 from sunrise_ogle_gbpusd import SunriseOgle as SunriseOgleGBPUSD
 
 # =============================================================
@@ -53,8 +54,14 @@ from sunrise_ogle_gbpusd import SunriseOgle as SunriseOgleGBPUSD
 # === BACKTEST SETTINGS ===
 FROMDATE = '2020-07-10'               
 TODATE = '2025-07-25'                 
-STARTING_CASH = 100000.0              
+STARTING_CASH = 100000.0  # Adjusted to achieve $100K total with 5 assets at 25% each
 ENABLE_PLOT = True                    
+
+# === ASSET ALLOCATION ===
+DEFAULT_ALLOCATION = 0.20  # 20% allocation for 5 assets (0.20 × 5 = 1.00)
+
+# === TEMP REPORTS DIRECTORY ===
+TEMP_REPORTS_DIR = BASE_DIR.parent.parent / 'temp_reports'
 
 # === ASSET CONFIGURATION ===
 ASSETS = {
@@ -62,25 +69,31 @@ ASSETS = {
         'data_file': 'EURUSD_5m_5Yea.csv',  # Fixed to match sunrise_ogle_long_only.py
         'strategy_class': SunriseOgleEURUSD,  # Using sunrise_ogle_long_only.py (newest, cleanest LONG-only)
         'forex_instrument': 'EURUSD',
-        'allocation': 0.25  # 25% of portfolio
+        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
     },
     'USDCHF': {
         'data_file': 'USDCHF_5m_5Yea.csv', 
         'strategy_class': SunriseOgleUSDCHF,  # Using sunrise_ogle_usdchf.py
         'forex_instrument': 'USDCHF',
-        'allocation': 0.25  # 25% of portfolio
+        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
     },
     'XAUUSD': {
         'data_file': 'XAUUSD_5m_5Yea.csv',  # Gold data file
         'strategy_class': SunriseOgleXAUUSD,  # Using sunrise_ogle_xauusd.py
         'forex_instrument': 'XAUUSD',
-        'allocation': 0.25  # 25% of portfolio
+        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
+    },
+    'XAGUSD': {
+        'data_file': 'XAGUSD_5m_5Yea.csv',  # Silver data file
+        'strategy_class': SunriseOgleXAGUSD,  # Using sunrise_ogle_xagusd.py
+        'forex_instrument': 'XAGUSD',
+        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
     },
     'GBPUSD': {
         'data_file': 'GBPUSD_5m_5Yea.csv',  # British Pound data file
         'strategy_class': SunriseOgleGBPUSD,  # Using sunrise_ogle_gbpusd.py
         'forex_instrument': 'GBPUSD',
-        'allocation': 0.25  # 25% of portfolio
+        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
     }
 }
 
@@ -178,6 +191,23 @@ def run_single_asset_backtest(asset_name, asset_config, fromdate, todate, starti
     drawdown_analyzer = strategy_result.analyzers.drawdown.get_analysis()
     sharpe_analyzer = strategy_result.analyzers.sharpe.get_analysis()
     
+    # Calculate custom Sharpe ratio using the same method as individual strategy
+    custom_sharpe = 0.0
+    if hasattr(strategy_result, '_portfolio_values') and len(strategy_result._portfolio_values) > 10:
+        import numpy as np
+        returns = []
+        for i in range(1, len(strategy_result._portfolio_values)):
+            ret = (strategy_result._portfolio_values[i] - strategy_result._portfolio_values[i-1]) / strategy_result._portfolio_values[i-1]
+            returns.append(ret)
+        
+        if len(returns) > 0:
+            returns_array = np.array(returns)
+            mean_return = np.mean(returns_array)
+            std_return = np.std(returns_array)
+            # Annualized Sharpe (assuming 5-minute data, 252 trading days)
+            periods_per_year = 252 * 24 * 12  # 5-minute periods per year
+            custom_sharpe = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year)) if std_return > 0 else 0.0
+    
     # Calculate Profit Factor (Gross Profit / Gross Loss)
     profit_factor = 0.0
     if trade_analyzer:
@@ -202,7 +232,8 @@ def run_single_asset_backtest(asset_name, asset_config, fromdate, todate, starti
         'return_pct': return_pct,
         'trade_analysis': trade_analyzer,
         'drawdown_analysis': drawdown_analyzer,
-        'sharpe_ratio': sharpe_analyzer.get('sharperatio', 0),
+        'sharpe_ratio': custom_sharpe,  # Use custom calculation like individual strategy
+        'backtrader_sharpe': sharpe_analyzer.get('sharperatio', 0),  # Keep for reference
         'profit_factor': profit_factor,
         'data': data
     }
@@ -313,11 +344,11 @@ def aggregate_portfolio_results(results_list):
     }
 
 def create_portfolio_chart(results_list):
-    """Create interactive portfolio performance chart with mouse hover functionality"""
+    """Create two separate interactive portfolio performance charts with mouse hover functionality"""
     if not ENABLE_PLOT:
         return
         
-    print(f"\n📈 Creating interactive portfolio performance chart...")
+    print(f"\n📈 Creating interactive portfolio performance charts...")
     
     try:
         # Collect portfolio values and timestamps from each strategy
@@ -358,12 +389,88 @@ def create_portfolio_chart(results_list):
         if not portfolio_data:
             print("  No portfolio data available for charting")
             return
+        
+        # Calculate combined portfolio data
+        combined_total = []
+        combined_timestamps = []
+        if len(portfolio_data) >= 2:
+            assets = list(portfolio_data.keys())
+            min_length = min(len(portfolio_data[asset]['values']) for asset in assets)
+            combined_timestamps = portfolio_data[assets[0]]['timestamps'][:min_length]
             
-        # Create the interactive portfolio performance chart
-        fig, ax = plt.subplots(figsize=(16, 10))
+            for i in range(min_length):
+                total_val = sum(portfolio_data[asset]['values'][i] for asset in assets)
+                combined_total.append(total_val)
+        
+        colors = {'EURUSD': '#2E86AB', 'USDCHF': '#A23B72', 'XAUUSD': '#F18F01', 'XAGUSD': '#C73E1D', 'GBPUSD': '#5A7C3E'}
+        
+        # =================================================================
+        # CHART 1: COMBINED PORTFOLIO PERFORMANCE ONLY
+        # =================================================================
+        print(f"  📊 Chart 1: Combined Portfolio Performance")
+        fig1, ax1 = plt.subplots(figsize=(16, 8))
+        
+        if combined_total and combined_timestamps:
+            # Calculate combined performance for title
+            combined_initial = sum(data['initial_value'] for data in portfolio_data.values())
+            combined_final = combined_total[-1] if combined_total else combined_initial
+            combined_pnl_pct = ((combined_final - combined_initial) / combined_initial) * 100
+            
+            # Plot combined portfolio
+            combined_line, = ax1.plot(combined_timestamps, combined_total,
+                                     label=f'Combined Portfolio ({combined_pnl_pct:+.1f}%)',
+                                     color='#1f77b4',  # Professional blue
+                                     linewidth=4,
+                                     alpha=0.9,
+                                     marker='o',
+                                     markersize=2)
+            
+            # Set titles and formatting for Chart 1
+            fig1.suptitle('Combined Multi-Asset Portfolio Performance', 
+                         fontsize=18, fontweight='bold', y=0.95)
+            ax1.set_title(f'Total Return: {combined_pnl_pct:+.2f}% | Initial: ${combined_initial:,.0f} | Final: ${combined_final:,.0f}', 
+                         fontsize=14, pad=20)
+            
+            # Format Chart 1
+            ax1.set_xlabel('Date', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('Portfolio Value ($)', fontsize=12, fontweight='bold')
+            ax1.legend(loc='upper left', fontsize=12, framealpha=0.95)
+            ax1.grid(True, alpha=0.3, linestyle='--')
+            ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+            ax1.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+            plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45, ha='right')
+            ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+            
+            # Interactive hover for Chart 1
+            interactive_text1 = None
+            def on_hover1(event):
+                nonlocal interactive_text1
+                if event.inaxes == ax1:
+                    if event.xdata and event.ydata:
+                        if interactive_text1:
+                            interactive_text1.remove()
+                        date_str = mdates.num2date(event.xdata).strftime('%Y-%m-%d %H:%M')
+                        value_str = f'${event.ydata:,.0f}'
+                        interactive_text1 = fig1.text(0.5, 0.85, f'Date: {date_str} | Value: {value_str}', 
+                                                     fontsize=14, fontweight='bold', ha='center', va='top',
+                                                     bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.8))
+                        fig1.canvas.draw_idle()
+                else:
+                    if interactive_text1:
+                        interactive_text1.remove()
+                        interactive_text1 = None
+                        fig1.canvas.draw_idle()
+            
+            fig1.canvas.mpl_connect('motion_notify_event', on_hover1)
+            plt.tight_layout()
+        
+        # =================================================================
+        # CHART 2: ALL INDIVIDUAL ASSET PORTFOLIOS
+        # =================================================================
+        print(f"  📊 Chart 2: Individual Asset Portfolios")
+        fig2, ax2 = plt.subplots(figsize=(16, 10))
         
         # Calculate performance data for title
-        total_initial = sum(data['initial_value'] for data in portfolio_data.values())
         asset_performance = {}
         for asset, data in portfolio_data.items():
             if data['values']:
@@ -376,21 +483,14 @@ def create_portfolio_chart(results_list):
         title_parts = []
         for asset, perf in asset_performance.items():
             title_parts.append(f"{asset}: {perf:+.1f}%")
-        
-        combined_pnl = sum(asset_performance.values()) if asset_performance else 0
-        title_parts.append(f"Combined: {combined_pnl:+.1f}%")
-        
         performance_title = " | ".join(title_parts)
         
-        # Add main title on the left side
-        fig.text(0.02, 0.95, 'Quad Asset Portfolio Performance (EURUSD + USDCHF + XAUUSD + GBPUSD)', 
-                fontsize=16, fontweight='bold', ha='left', va='top')
-        fig.text(0.02, 0.91, performance_title, 
-                fontsize=12, fontweight='normal', ha='left', va='top')
+        # Set titles for Chart 2
+        fig2.suptitle('Individual Asset Portfolio Performance', 
+                     fontsize=18, fontweight='bold', y=0.95)
+        ax2.set_title(performance_title, fontsize=12, pad=20)
         
-        colors = {'EURUSD': '#2E86AB', 'USDCHF': '#A23B72', 'XAUUSD': '#333333'}
         lines = {}
-        
         # Plot individual asset portfolios with performance in legend
         for asset, data in portfolio_data.items():
             timestamps = data['timestamps']
@@ -405,7 +505,7 @@ def create_portfolio_chart(results_list):
             else:
                 legend_label = f'{asset} Portfolio'
             
-            line, = ax.plot(timestamps, values, 
+            line, = ax2.plot(timestamps, values, 
                            label=legend_label, 
                            color=colors.get(asset, '#333333'),
                            linewidth=2.5,
@@ -414,95 +514,69 @@ def create_portfolio_chart(results_list):
                            markersize=1)
             lines[asset] = line
         
-        # Calculate and plot combined portfolio for all assets
-        if len(portfolio_data) >= 2:
-            assets = list(portfolio_data.keys())
-            
-            # Find minimum length across all assets
-            min_length = min(len(portfolio_data[asset]['values']) for asset in assets)
-            combined_total = []
-            combined_timestamps = portfolio_data[assets[0]]['timestamps'][:min_length]
-            
-            for i in range(min_length):
-                total_val = sum(portfolio_data[asset]['values'][i] for asset in assets)
-                combined_total.append(total_val)
-            
-            # Calculate combined performance for legend
-            combined_initial = sum(data['initial_value'] for data in portfolio_data.values())
-            combined_final = combined_total[-1] if combined_total else combined_initial
-            combined_pnl_pct = ((combined_final - combined_initial) / combined_initial) * 100
-            
-            combined_line, = ax.plot(combined_timestamps, combined_total,
-                                   label=f'Combined Portfolio ({combined_pnl_pct:+.1f}%)',
-                                   color='#F18F01',
-                                   linewidth=3.5,
-                                   alpha=0.9,
-                                   marker='s',
-                                   markersize=1.5)
-            lines['Combined'] = combined_line
+        # Format Chart 2 for interactivity
+        ax2.set_xlabel('Date', fontsize=12, fontweight='bold')
+        ax2.set_ylabel('Portfolio Value ($)', fontsize=12, fontweight='bold')
         
-        # Format the chart for interactivity
-        ax.set_xlabel('Date', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Portfolio Value ($)', fontsize=12, fontweight='bold')
-        
-        # Position legend in the middle-left side to avoid conflicts
-        legend = ax.legend(loc='center left', bbox_to_anchor=(0.02, 0.5), 
-                          fontsize=12, framealpha=0.95, 
+        # Position legend in the upper left
+        legend = ax2.legend(loc='upper left', fontsize=12, framealpha=0.95, 
                           fancybox=True, shadow=True, 
                           borderpad=1.2, handlelength=2)
         
-        ax.grid(True, alpha=0.3, linestyle='--')
+        ax2.grid(True, alpha=0.3, linestyle='--')
         
         # Format x-axis dates for better readability - MONTHLY intervals
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))  # Every 2 months for 5-year span
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        ax2.xaxis.set_major_locator(mdates.MonthLocator(interval=2))  # Every 2 months for 5-year span
         
         # Rotate x-axis labels for better readability
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
         
         # Format y-axis as currency
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
         
-        # Enable interactive features
+        # Enable interactive features for Chart 2
         plt.subplots_adjust(bottom=0.15, top=0.85)
         
-        # Create mouse hover functionality with center positioning
-        interactive_text = None
+        # Create mouse hover functionality for Chart 2
+        interactive_text2 = None
         
-        def on_hover(event):
-            nonlocal interactive_text
-            if event.inaxes == ax:
+        def on_hover2(event):
+            nonlocal interactive_text2
+            if event.inaxes == ax2:
                 # Find closest data point
                 if event.xdata and event.ydata:
                     # Remove previous interactive text
-                    if interactive_text:
-                        interactive_text.remove()
+                    if interactive_text2:
+                        interactive_text2.remove()
                     
-                    # Update interactive data in center area
+                    # Update interactive data
                     date_str = mdates.num2date(event.xdata).strftime('%Y-%m-%d %H:%M')
                     value_str = f'${event.ydata:,.0f}'
                     
-                    # Display interactive data in center of chart
-                    interactive_text = fig.text(0.5, 0.95, f'Date: {date_str} | Value: {value_str}', 
+                    # Display interactive data
+                    interactive_text2 = fig2.text(0.5, 0.85, f'Date: {date_str} | Value: {value_str}', 
                                               fontsize=14, fontweight='bold', ha='center', va='top',
                                               bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.8))
-                    fig.canvas.draw_idle()
+                    fig2.canvas.draw_idle()
             else:
                 # Remove interactive text when mouse leaves the plot area
-                if interactive_text:
-                    interactive_text.remove()
-                    interactive_text = None
-                    fig.canvas.draw_idle()
+                if interactive_text2:
+                    interactive_text2.remove()
+                    interactive_text2 = None
+                    fig2.canvas.draw_idle()
         
-        fig.canvas.mpl_connect('motion_notify_event', on_hover)
+        fig2.canvas.mpl_connect('motion_notify_event', on_hover2)
         
         plt.tight_layout()
         plt.show()
-        print(f"  ✅ Interactive portfolio chart displayed successfully!")
-        print(f"  💡 Move your mouse over the chart to see detailed data points")
+        print(f"  ✅ Two interactive portfolio charts displayed successfully!")
+        print(f"  � Chart 1: Combined portfolio performance only")
+        print(f"  📊 Chart 2: Individual asset portfolios comparison")
+        print(f"  �💡 Move your mouse over the charts to see detailed data points")
         
     except Exception as e:
-        print(f"  ❌ Error creating portfolio chart: {e}")
+        print(f"  ❌ Error creating portfolio charts: {e}")
         import traceback
         traceback.print_exc()
 
@@ -568,8 +642,8 @@ def cleanup_auxiliary_files():
     import glob
     
     cleanup_patterns = [
-        # Temporary trade reports
-        str(BASE_DIR / 'temp_reports' / '*.txt'),
+        # Temporary trade reports - use global TEMP_REPORTS_DIR
+        str(TEMP_REPORTS_DIR / '*.txt'),
         # Python cache files
         str(BASE_DIR / '__pycache__'),
         # Chart files
@@ -606,10 +680,9 @@ def cleanup_auxiliary_files():
                     pass  # Ignore errors for files in use
     
     # Clean up temp_reports directory if empty
-    temp_reports_dir = BASE_DIR / 'temp_reports'
-    if temp_reports_dir.exists() and not any(temp_reports_dir.iterdir()):
-        temp_reports_dir.rmdir()
-        print(f"  Removed empty directory: temp_reports")
+    if TEMP_REPORTS_DIR.exists() and not any(TEMP_REPORTS_DIR.iterdir()):
+        TEMP_REPORTS_DIR.rmdir()
+        print(f"  Removed empty directory: {TEMP_REPORTS_DIR.name}")
         cleaned_count += 1
     
     if cleaned_count > 0:
