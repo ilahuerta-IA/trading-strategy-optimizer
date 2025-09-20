@@ -1,19 +1,21 @@
-"""Quad Asset Strategy - Multi-Asset Trading Portfolio System
+"""Hexa Asset Strategy - Multi-Asset Trading Portfolio System
 ==========================================================
-Quad Cerebro Implementation using SunriseOgle strategies
+Hexa Cerebro Implementation using SunriseOgle strategies
 
-This system runs four separate cerebro instances with the following assets:
-1. EURUSD using sunrise_ogle_long_only.py strategy  
+This system runs six separate cerebro instances with the following assets:
+1. EURUSD using sunrise_ogle_eurusd.py strategy  
 2. USDCHF using sunrise_ogle_usdchf.py strategy
 3. XAUUSD using sunrise_ogle_xauusd.py strategy
-4. GBPUSD using sunrise_ogle_gbpusd.py strategy
+4. XAGUSD using sunrise_ogle_xagusd.py strategy
+5. GBPUSD using sunrise_ogle_gbpusd.py strategy
+6. AUDUSD using sunrise_ogle_audusd.py strategy
 
 Each asset runs independently with its own optimized parameters,
-with equal 25% portfolio allocation per asset, then results are 
+with equal 16.67% portfolio allocation per asset, then results are 
 aggregated for comprehensive portfolio-level reporting.
 
 Features:
-- Multi-asset diversification across major forex pairs and gold
+- Multi-asset diversification across major forex pairs, gold, and silver
 - Independent strategy optimization for each asset
 - Portfolio-level risk and performance aggregation
 - Interactive Backtrader charts with mouse hover functionality
@@ -46,6 +48,7 @@ from sunrise_ogle_usdchf import SunriseOgle as SunriseOgleUSDCHF
 from sunrise_ogle_xauusd import SunriseOgle as SunriseOgleXAUUSD
 from sunrise_ogle_xagusd import SunriseOgle as SunriseOgleXAGUSD
 from sunrise_ogle_gbpusd import SunriseOgle as SunriseOgleGBPUSD
+from sunrise_ogle_audusd import SunriseOgle as SunriseOgleAUDUSD
 
 # =============================================================
 # CONFIGURATION PARAMETERS
@@ -54,11 +57,19 @@ from sunrise_ogle_gbpusd import SunriseOgle as SunriseOgleGBPUSD
 # === BACKTEST SETTINGS ===
 FROMDATE = '2020-07-10'               
 TODATE = '2025-07-25'                 
-STARTING_CASH = 100000.0  # Adjusted to achieve $100K total with 5 assets at 25% each
+STARTING_CASH = 100000  # Adjusted for 6 assets at 16.67% each to achieve $100K total
 ENABLE_PLOT = True                    
 
 # === ASSET ALLOCATION ===
-DEFAULT_ALLOCATION = 0.20  # 20% allocation for 5 assets (0.20 × 5 = 1.00)
+# Optimized for Ray Dalio's 4 Economic Environments
+# Enhanced allocation to deflation-hedge assets (USDCHF, XAUUSD)
+DEFAULT_ALLOCATION = 0.1667  # Base allocation for balanced assets
+
+# Enhanced allocations for economic environment coverage (Total = 100%):
+DEFLATION_HEDGE_ALLOCATION = 0.20    # Higher allocation for USD/CHF (deflation hedge)
+INFLATION_HEDGE_ALLOCATION = 0.18    # Solid allocation for Gold (inflation hedge) 
+STANDARD_ALLOCATION = 0.16          # Standard allocation for major forex pairs
+COMMODITY_ALLOCATION = 0.15         # Moderate allocation for commodity-sensitive assets
 
 # === TEMP REPORTS DIRECTORY ===
 TEMP_REPORTS_DIR = BASE_DIR.parent.parent / 'temp_reports'
@@ -69,31 +80,37 @@ ASSETS = {
         'data_file': 'EURUSD_5m_5Yea.csv',  # Fixed to match sunrise_ogle_long_only.py
         'strategy_class': SunriseOgleEURUSD,  # Using sunrise_ogle_long_only.py (newest, cleanest LONG-only)
         'forex_instrument': 'EURUSD',
-        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
+        'allocation': STANDARD_ALLOCATION  # 16% - Balanced developed market exposure
     },
     'USDCHF': {
         'data_file': 'USDCHF_5m_5Yea.csv', 
         'strategy_class': SunriseOgleUSDCHF,  # Using sunrise_ogle_usdchf.py
         'forex_instrument': 'USDCHF',
-        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
+        'allocation': DEFLATION_HEDGE_ALLOCATION  # 20% - Enhanced deflation protection (CHF safe haven)
     },
     'XAUUSD': {
         'data_file': 'XAUUSD_5m_5Yea.csv',  # Gold data file
         'strategy_class': SunriseOgleXAUUSD,  # Using sunrise_ogle_xauusd.py
         'forex_instrument': 'XAUUSD',
-        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
+        'allocation': INFLATION_HEDGE_ALLOCATION  # 18% - Strong inflation hedge
     },
     'XAGUSD': {
         'data_file': 'XAGUSD_5m_5Yea.csv',  # Silver data file
         'strategy_class': SunriseOgleXAGUSD,  # Using sunrise_ogle_xagusd.py
         'forex_instrument': 'XAGUSD',
-        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
+        'allocation': COMMODITY_ALLOCATION  # 15% - Moderate commodity exposure
     },
     'GBPUSD': {
         'data_file': 'GBPUSD_5m_5Yea.csv',  # British Pound data file
         'strategy_class': SunriseOgleGBPUSD,  # Using sunrise_ogle_gbpusd.py
         'forex_instrument': 'GBPUSD',
-        'allocation': DEFAULT_ALLOCATION  # 25% of portfolio
+        'allocation': STANDARD_ALLOCATION  # 16% - Balanced developed market exposure
+    },
+    'AUDUSD': {
+        'data_file': 'AUDUSD_5m_5Yea.csv',  # Australian Dollar data file
+        'strategy_class': SunriseOgleAUDUSD,  # Using sunrise_ogle_audusd.py
+        'forex_instrument': 'AUDUSD',
+        'allocation': COMMODITY_ALLOCATION  # 15% - Moderate commodity currency exposure
     }
 }
 
@@ -241,7 +258,7 @@ def run_single_asset_backtest(asset_name, asset_config, fromdate, todate, starti
 def aggregate_portfolio_results(results_list):
     """Aggregate results from multiple asset backtests"""
     print(f"\n" + "="*80)
-    print(f"📊 QUAD CEREBRO PORTFOLIO AGGREGATION")
+    print(f"📊 HEXA CEREBRO PORTFOLIO AGGREGATION")
     print(f"="*80)
     
     total_initial = sum(r['initial_value'] for r in results_list)
@@ -602,7 +619,7 @@ def create_simple_individual_charts(results_list):
 
 def run_triple_cerebro_backtest():
     """Main function to run dual cerebro backtest"""
-    print(f"🤖 QUAD CEREBRO MULTI-ASSET BACKTEST")
+    print(f"🤖 HEXA CEREBRO MULTI-ASSET BACKTEST")
     print(f"📅 Period: {FROMDATE} to {TODATE}")
     print(f"💰 Starting Cash: ${STARTING_CASH:,.2f}")
     print(f"📊 Assets: {', '.join(ASSETS.keys())}")
