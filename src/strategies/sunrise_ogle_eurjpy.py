@@ -23,9 +23,9 @@ import backtrader as bt
 DATA_FILENAME = 'EURJPY_5m_5Yea.csv'     # EURJPY Data File
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-01-01'               # Start date for backtesting (YYYY-MM-DD)
-TODATE = '2025-11-01'                 # End date for backtesting (YYYY-MM-DD)
-STARTING_CASH = 100000.0              # Initial account balance in USD
+FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
+TODATE = '2025-07-25'                 # End date for backtesting (YYYY-MM-DD)
+STARTING_CASH = 10000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
 LIMIT_BARS = 0                        # >0: Stop after N bars processed (0 = no limit)
 ENABLE_PLOT = True                    # Show final chart with trades (requires matplotlib)

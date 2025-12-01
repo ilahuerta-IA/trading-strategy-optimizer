@@ -1848,178 +1848,179 @@ class USDJPYCommission(bt.CommInfoBase):
                 return pnl_usd
         return 0.0
 
-BASE = Path(__file__).resolve().parent.parent.parent
-DATA_FILE = BASE / 'data' / DATA_FILENAME
-STRAT_KWARGS = dict(
-    plot_result=ENABLE_PLOT,
-    use_forex_position_calc=ENABLE_FOREX_CALC,
-    forex_instrument=FOREX_INSTRUMENT
-)
+if __name__ == '__main__':
+    BASE = Path(__file__).resolve().parent.parent.parent
+    DATA_FILE = BASE / 'data' / DATA_FILENAME
+    STRAT_KWARGS = dict(
+        plot_result=ENABLE_PLOT,
+        use_forex_position_calc=ENABLE_FOREX_CALC,
+        forex_instrument=FOREX_INSTRUMENT
+    )
 
-if TEST_FOREX_MODE:
-    try:
-        td_obj = datetime.strptime(TODATE, '%Y-%m-%d')
-        FROMDATE = (td_obj - timedelta(days=30)).strftime('%Y-%m-%d')
-        print(f"FOREX TEST MODE: Testing period reduced to {FROMDATE} - {TODATE}")
-    except Exception:
-        pass
-
-def parse_date(s):
-    if not s: return None
-    try: return datetime.strptime(s, '%Y-%m-%d')
-    except Exception: return None
-
-if not DATA_FILE.exists():
-    print(f"Data file not found: {DATA_FILE}"); raise SystemExit(1)
-
-feed_kwargs = dict(dataname=str(DATA_FILE), dtformat='%Y%m%d', tmformat='%H:%M:%S',
-                   datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6,
-                   timeframe=bt.TimeFrame.Minutes, compression=5)
-fd = parse_date(FROMDATE); td = parse_date(TODATE)
-if fd: feed_kwargs['fromdate'] = fd
-if td: feed_kwargs['todate'] = td
-data = bt.feeds.GenericCSVData(**feed_kwargs)
-
-cerebro = bt.Cerebro(stdstats=False)
-cerebro.adddata(data, name='USDJPY')
-cerebro.broker.setcash(STARTING_CASH)
-
-# Add custom commission for USDJPY
-cerebro.broker.addcommissioninfo(USDJPYCommission(), name='USDJPY')
-
-cerebro.addstrategy(SunriseOgleUSDJPY, **STRAT_KWARGS)
-try: cerebro.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgleUSDJPY.params.buy_sell_plotdist)
-except Exception: pass
-if SunriseOgleUSDJPY.params.plot_sltp_lines:
-    try: cerebro.addobserver(SLTPObserver)
-    except Exception: pass
-try: cerebro.addobserver(bt.observers.Value)
-except Exception: pass
-
-if LIMIT_BARS > 0:
-    orig_next = SunriseOgleUSDJPY.next
-    def limited_next(self):
-        if len(self.data) >= LIMIT_BARS:
-            self.env.runstop(); return
-        orig_next(self)
-    SunriseOgleUSDJPY.next = limited_next
-
-print(f"=== SUNRISE OGLE USDJPY === (from {FROMDATE} to {TODATE})")
-if ENABLE_FOREX_CALC:
-    print(f">> FOREX MODE ENABLED - Data: {DATA_FILENAME}")
-    print(f">> Instrument: USDJPY")
-else:
-    print(f" STANDARD MODE - Data: {DATA_FILENAME}")
-
-if RUN_DUAL_CEREBRO and ENABLE_LONG_TRADES and ENABLE_SHORT_TRADES:
-    print(" DUAL CEREBRO MODE: Running separate LONG-only and SHORT-only strategies")
-    
-    print("\n RUNNING LONG-ONLY STRATEGY...")
-    cerebro_long = bt.Cerebro(stdstats=False)
-    data_long = bt.feeds.GenericCSVData(**feed_kwargs)
-    cerebro_long.adddata(data_long)
-    cerebro_long.broker.setcash(STARTING_CASH)
-    cerebro_long.broker.setcommission(leverage=30.0)
-    
-    long_kwargs = STRAT_KWARGS.copy()
-    long_kwargs.update({
-        'long_enabled': True,
-        'short_enabled': False,
-        'print_signals': True
-    })
-    cerebro_long.addstrategy(SunriseOgleUSDJPY, **long_kwargs)
-    
-    try: cerebro_long.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgleUSDJPY.params.buy_sell_plotdist)
-    except Exception: pass
-    if SunriseOgleUSDJPY.params.plot_sltp_lines:
-        try: cerebro_long.addobserver(SLTPObserver)
-        except Exception: pass
-    try: cerebro_long.addobserver(bt.observers.Value)
-    except Exception: pass
-    
-    results_long = cerebro_long.run()
-    final_value_long = cerebro_long.broker.getvalue()
-    
-    print("\n RUNNING SHORT-ONLY STRATEGY...")
-    cerebro_short = bt.Cerebro(stdstats=False)
-    data_short = bt.feeds.GenericCSVData(**feed_kwargs)
-    cerebro_short.adddata(data_short)
-    cerebro_short.broker.setcash(STARTING_CASH)
-    cerebro_short.broker.setcommission(leverage=30.0)
-    
-    short_kwargs = STRAT_KWARGS.copy()
-    short_kwargs.update({
-        'long_enabled': False,
-        'short_enabled': True,
-        'print_signals': True
-    })
-    cerebro_short.addstrategy(SunriseOgleUSDJPY, **short_kwargs)
-    
-    try: cerebro_short.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgleUSDJPY.params.buy_sell_plotdist)
-    except Exception: pass
-    if SunriseOgleUSDJPY.params.plot_sltp_lines:
-        try: cerebro_short.addobserver(SLTPObserver)
-        except Exception: pass
-    try: cerebro_short.addobserver(bt.observers.Value)
-    except Exception: pass
-    
-    results_short = cerebro_short.run()
-    final_value_short = cerebro_short.broker.getvalue()
-    
-    print("\n=== DUAL CEREBRO SUMMARY ===")
-    long_pnl = final_value_long - STARTING_CASH
-    short_pnl = final_value_short - STARTING_CASH
-    combined_pnl = long_pnl + short_pnl
-    combined_value = STARTING_CASH + combined_pnl
-    
-    long_strategy = results_long[0]
-    short_strategy = results_short[0]
-    
-    combined_trades = long_strategy.trades + short_strategy.trades
-    combined_wins = long_strategy.wins + short_strategy.wins
-    combined_losses = long_strategy.losses + short_strategy.losses
-    combined_gross_profit = long_strategy.gross_profit + short_strategy.gross_profit
-    combined_gross_loss = long_strategy.gross_loss + short_strategy.gross_loss
-    
-    combined_win_rate = (combined_wins / combined_trades * 100) if combined_trades > 0 else 0
-    combined_pf = (combined_gross_profit / abs(combined_gross_loss)) if combined_gross_loss != 0 else float('inf')
-    
-    print(f" LONG-ONLY  PnL: {long_pnl:+,.2f} | Final: {final_value_long:,.2f}")
-    print(f" SHORT-ONLY PnL: {short_pnl:+,.2f} | Final: {final_value_short:,.2f}")
-    print(f" COMBINED   PnL: {combined_pnl:+,.2f} | Final: {combined_value:,.2f}")
-    print(f" COMBINED Stats: Trades: {combined_trades} | Wins: {combined_wins} | Losses: {combined_losses} | WinRate: {combined_win_rate:.2f}% | PF: {combined_pf:.2f}")
-    
-    final_value = combined_value
-    
-else:
-    results = cerebro.run()
-    final_value = cerebro.broker.getvalue()
-    
-print(f"Final Value: {final_value:,.2f}")
-    
-if not RUN_DUAL_CEREBRO and (ENABLE_PLOT or AUTO_PLOT_SINGLE_MODE):
-    trading_mode = []
-    if ENABLE_LONG_TRADES:
-        trading_mode.append("LONG")
-    if ENABLE_SHORT_TRADES:
-        trading_mode.append("SHORT")
-    
-    mode_description = " & ".join(trading_mode) if trading_mode else "NO TRADES"
-    
-    if AUTO_PLOT_SINGLE_MODE or getattr(results[0].p, 'plot_result', False):
+    if TEST_FOREX_MODE:
         try:
-            strategy_result = results[0]
-            final_pnl = final_value - STARTING_CASH
-            plot_title = f'SUNRISE STRATEGY ({mode_description} MODE)\n'
-            plot_title += f'Final Value: ${final_value:,.0f} | P&L: {final_pnl:+,.0f} | '
-            plot_title += f'Trades: {strategy_result.trades} | Win Rate: {(strategy_result.wins/strategy_result.trades*100) if strategy_result.trades > 0 else 0:.1f}%'
-            
-            print(f"📊 Showing {mode_description} strategy chart...")
-            cerebro.plot(style='candlestick', subtitle=plot_title)
-        except Exception as e: 
-            print(f"Plot error: {e}")
+            td_obj = datetime.strptime(TODATE, '%Y-%m-%d')
+            FROMDATE = (td_obj - timedelta(days=30)).strftime('%Y-%m-%d')
+            print(f"FOREX TEST MODE: Testing period reduced to {FROMDATE} - {TODATE}")
+        except Exception:
+            pass
+
+    def parse_date(s):
+        if not s: return None
+        try: return datetime.strptime(s, '%Y-%m-%d')
+        except Exception: return None
+
+    if not DATA_FILE.exists():
+        print(f"Data file not found: {DATA_FILE}"); raise SystemExit(1)
+
+    feed_kwargs = dict(dataname=str(DATA_FILE), dtformat='%Y%m%d', tmformat='%H:%M:%S',
+                       datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6,
+                       timeframe=bt.TimeFrame.Minutes, compression=5)
+    fd = parse_date(FROMDATE); td = parse_date(TODATE)
+    if fd: feed_kwargs['fromdate'] = fd
+    if td: feed_kwargs['todate'] = td
+    data = bt.feeds.GenericCSVData(**feed_kwargs)
+
+    cerebro = bt.Cerebro(stdstats=False)
+    cerebro.adddata(data, name='USDJPY')
+    cerebro.broker.setcash(STARTING_CASH)
+
+    # Add custom commission for USDJPY
+    cerebro.broker.addcommissioninfo(USDJPYCommission(), name='USDJPY')
+
+    cerebro.addstrategy(SunriseOgleUSDJPY, **STRAT_KWARGS)
+    try: cerebro.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgleUSDJPY.params.buy_sell_plotdist)
+    except Exception: pass
+    if SunriseOgleUSDJPY.params.plot_sltp_lines:
+        try: cerebro.addobserver(SLTPObserver)
+        except Exception: pass
+    try: cerebro.addobserver(bt.observers.Value)
+    except Exception: pass
+
+    if LIMIT_BARS > 0:
+        orig_next = SunriseOgleUSDJPY.next
+        def limited_next(self):
+            if len(self.data) >= LIMIT_BARS:
+                self.env.runstop(); return
+            orig_next(self)
+        SunriseOgleUSDJPY.next = limited_next
+
+    print(f"=== SUNRISE OGLE USDJPY === (from {FROMDATE} to {TODATE})")
+    if ENABLE_FOREX_CALC:
+        print(f">> FOREX MODE ENABLED - Data: {DATA_FILENAME}")
+        print(f">> Instrument: USDJPY")
     else:
-        print(f"📊 Plotting disabled. Set ENABLE_PLOT=True and AUTO_PLOT_SINGLE_MODE=True to show charts.")
+        print(f" STANDARD MODE - Data: {DATA_FILENAME}")
+
+    if RUN_DUAL_CEREBRO and ENABLE_LONG_TRADES and ENABLE_SHORT_TRADES:
+        print(" DUAL CEREBRO MODE: Running separate LONG-only and SHORT-only strategies")
+        
+        print("\n RUNNING LONG-ONLY STRATEGY...")
+        cerebro_long = bt.Cerebro(stdstats=False)
+        data_long = bt.feeds.GenericCSVData(**feed_kwargs)
+        cerebro_long.adddata(data_long)
+        cerebro_long.broker.setcash(STARTING_CASH)
+        cerebro_long.broker.setcommission(leverage=30.0)
+        
+        long_kwargs = STRAT_KWARGS.copy()
+        long_kwargs.update({
+            'long_enabled': True,
+            'short_enabled': False,
+            'print_signals': True
+        })
+        cerebro_long.addstrategy(SunriseOgleUSDJPY, **long_kwargs)
+        
+        try: cerebro_long.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgleUSDJPY.params.buy_sell_plotdist)
+        except Exception: pass
+        if SunriseOgleUSDJPY.params.plot_sltp_lines:
+            try: cerebro_long.addobserver(SLTPObserver)
+            except Exception: pass
+        try: cerebro_long.addobserver(bt.observers.Value)
+        except Exception: pass
+        
+        results_long = cerebro_long.run()
+        final_value_long = cerebro_long.broker.getvalue()
+        
+        print("\n RUNNING SHORT-ONLY STRATEGY...")
+        cerebro_short = bt.Cerebro(stdstats=False)
+        data_short = bt.feeds.GenericCSVData(**feed_kwargs)
+        cerebro_short.adddata(data_short)
+        cerebro_short.broker.setcash(STARTING_CASH)
+        cerebro_short.broker.setcommission(leverage=30.0)
+        
+        short_kwargs = STRAT_KWARGS.copy()
+        short_kwargs.update({
+            'long_enabled': False,
+            'short_enabled': True,
+            'print_signals': True
+        })
+        cerebro_short.addstrategy(SunriseOgleUSDJPY, **short_kwargs)
+        
+        try: cerebro_short.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgleUSDJPY.params.buy_sell_plotdist)
+        except Exception: pass
+        if SunriseOgleUSDJPY.params.plot_sltp_lines:
+            try: cerebro_short.addobserver(SLTPObserver)
+            except Exception: pass
+        try: cerebro_short.addobserver(bt.observers.Value)
+        except Exception: pass
+        
+        results_short = cerebro_short.run()
+        final_value_short = cerebro_short.broker.getvalue()
+        
+        print("\n=== DUAL CEREBRO SUMMARY ===")
+        long_pnl = final_value_long - STARTING_CASH
+        short_pnl = final_value_short - STARTING_CASH
+        combined_pnl = long_pnl + short_pnl
+        combined_value = STARTING_CASH + combined_pnl
+        
+        long_strategy = results_long[0]
+        short_strategy = results_short[0]
+        
+        combined_trades = long_strategy.trades + short_strategy.trades
+        combined_wins = long_strategy.wins + short_strategy.wins
+        combined_losses = long_strategy.losses + short_strategy.losses
+        combined_gross_profit = long_strategy.gross_profit + short_strategy.gross_profit
+        combined_gross_loss = long_strategy.gross_loss + short_strategy.gross_loss
+        
+        combined_win_rate = (combined_wins / combined_trades * 100) if combined_trades > 0 else 0
+        combined_pf = (combined_gross_profit / abs(combined_gross_loss)) if combined_gross_loss != 0 else float('inf')
+        
+        print(f" LONG-ONLY  PnL: {long_pnl:+,.2f} | Final: {final_value_long:,.2f}")
+        print(f" SHORT-ONLY PnL: {short_pnl:+,.2f} | Final: {final_value_short:,.2f}")
+        print(f" COMBINED   PnL: {combined_pnl:+,.2f} | Final: {combined_value:,.2f}")
+        print(f" COMBINED Stats: Trades: {combined_trades} | Wins: {combined_wins} | Losses: {combined_losses} | WinRate: {combined_win_rate:.2f}% | PF: {combined_pf:.2f}")
+        
+        final_value = combined_value
+        
+    else:
+        results = cerebro.run()
+        final_value = cerebro.broker.getvalue()
+        
+    print(f"Final Value: {final_value:,.2f}")
+        
+    if not RUN_DUAL_CEREBRO and (ENABLE_PLOT or AUTO_PLOT_SINGLE_MODE):
+        trading_mode = []
+        if ENABLE_LONG_TRADES:
+            trading_mode.append("LONG")
+        if ENABLE_SHORT_TRADES:
+            trading_mode.append("SHORT")
+        
+        mode_description = " & ".join(trading_mode) if trading_mode else "NO TRADES"
+        
+        if AUTO_PLOT_SINGLE_MODE or getattr(results[0].p, 'plot_result', False):
+            try:
+                strategy_result = results[0]
+                final_pnl = final_value - STARTING_CASH
+                plot_title = f'SUNRISE STRATEGY ({mode_description} MODE)\n'
+                plot_title += f'Final Value: ${final_value:,.0f} | P&L: {final_pnl:+,.0f} | '
+                plot_title += f'Trades: {strategy_result.trades} | Win Rate: {(strategy_result.wins/strategy_result.trades*100) if strategy_result.trades > 0 else 0:.1f}%'
+                
+                print(f"📊 Showing {mode_description} strategy chart...")
+                cerebro.plot(style='candlestick', subtitle=plot_title)
+            except Exception as e: 
+                print(f"Plot error: {e}")
+        else:
+            print(f"📊 Plotting disabled. Set ENABLE_PLOT=True and AUTO_PLOT_SINGLE_MODE=True to show charts.")
     
 elif not RUN_DUAL_CEREBRO:
     print(f"📊 Plotting disabled. Set ENABLE_PLOT=True to show charts.")

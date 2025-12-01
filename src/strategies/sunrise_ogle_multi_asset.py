@@ -94,35 +94,6 @@ class USDJPYCommission(bt.CommInfoBase):
                 return pnl_usd
         return 0.0
 
-class EURJPYCommission(bt.CommInfoBase):
-    """
-    Commission scheme for EUR/JPY.
-    - Price is in JPY (e.g., 160.00).
-    - PnL is in JPY.
-    - Account is USD.
-    - Conversion: PnL_USD = PnL_JPY / USDJPY_Rate.
-    - SIMPLIFICATION: Assume fixed USDJPY rate of 150.0 for conversion.
-    """
-    params = (
-        ('stocklike', False),
-        ('commtype', bt.CommInfoBase.COMM_PERC),
-        ('perc', 0.0),
-        ('leverage', 30.0),
-        ('automargin', False),
-        ('mult', 1.0),
-    )
-
-    def profitandloss(self, size, price, newprice):
-        pnl_jpy = size * (newprice - price)
-        # Assume fixed USDJPY rate for conversion
-        usdjpy_rate = 150.0
-        return pnl_jpy / usdjpy_rate
-
-    def cashadjust(self, size, price, newprice):
-        pnl_jpy = size * (newprice - price)
-        usdjpy_rate = 150.0
-        return pnl_jpy / usdjpy_rate
-
 # =============================================================
 # CONFIGURATION PARAMETERS
 # =============================================================
@@ -267,9 +238,9 @@ def run_single_asset_backtest(asset_name, asset_config, fromdate, todate, starti
     # Set commission scheme based on asset
     if asset_name == 'USDJPY':
         cerebro.broker.addcommissioninfo(USDJPYCommission())
-    elif asset_name == 'EURJPY':
-        cerebro.broker.addcommissioninfo(EURJPYCommission())
     else:
+        # Standard leverage for all other assets (including EURJPY)
+        # EURJPY strategy handles PnL conversion internally by scaling position size
         cerebro.broker.setcommission(leverage=30.0)
     
     # Add strategy with asset-specific configuration
