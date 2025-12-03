@@ -145,14 +145,14 @@ LONG_USE_EMA_BELOW_PRICE_FILTER = False     # NEW: Require fast, medium & slow E
 
 # === LONG PULLBACK ENTRY SYSTEM ===
 LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
-LONG_PULLBACK_MAX_CANDLES = 2              # Max red candles in pullback for long entries (1-3 recommended)
-LONG_ENTRY_WINDOW_PERIODS = 5              # Bars to wait for breakout after pullback (long entries)
+LONG_PULLBACK_MAX_CANDLES = 1              # Max red candles in pullback for long entries (1-3 recommended)
+LONG_ENTRY_WINDOW_PERIODS = 10              # Bars to wait for breakout after pullback (long entries)
 
 # ===============================================================
 # ⚡ VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS ⚡
 # ===============================================================
 # 🔧 USE_WINDOW_TIME_OFFSET: Enable/disable time delay for window opening
-USE_WINDOW_TIME_OFFSET = True              # NEW: Enable/disable the time delay for window opening
+USE_WINDOW_TIME_OFFSET = False              # NEW: Enable/disable the time delay for window opening
 # 🔧 WINDOW_OFFSET_MULTIPLIER: Controls delay between pullback and window opening (only if USE_WINDOW_TIME_OFFSET=True)
 WINDOW_OFFSET_MULTIPLIER = 1.0             # Window delay multiplier (0.5=fast, 1.0=standard, 2.0=conservative)
 # 🔧 WINDOW_PRICE_OFFSET_MULTIPLIER: Controls the price expansion of the two-sided channel
@@ -171,7 +171,7 @@ class SunriseOgle(bt.Strategy):
     params = dict(
         # === TECHNICAL INDICATORS ===
         ema_fast_length=14,              # Fast EMA period for trend detection
-        ema_medium_length=14,            # Medium EMA period for trend confirmation
+        ema_medium_length=18,            # Medium EMA period for trend confirmation
         ema_slow_length=24,              # Slow EMA period for trend strength
         ema_confirm_length=1,            # Confirmation EMA (usually 1 for immediate response)
         ema_filter_price_length=70,      # Price filter EMA to avoid counter-trend trades
@@ -205,7 +205,7 @@ class SunriseOgle(bt.Strategy):
         long_max_angle=LONG_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (long entries)
         long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (long entries - 10000.0 for NZDUSD)
         long_use_ema_below_price_filter=LONG_USE_EMA_BELOW_PRICE_FILTER,  # NEW: Require fast, medium & slow EMAs below price for long entries
-        long_atr_sl_multiplier=2.5,                          # Stop Loss multiplier for LONG trades
+        long_atr_sl_multiplier=4.5,                          # Stop Loss multiplier for LONG trades
         long_atr_tp_multiplier=6.5,                          # Take Profit multiplier for LONG trades
         
         # === LONG PULLBACK ENTRY SYSTEM ===
