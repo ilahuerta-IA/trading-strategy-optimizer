@@ -162,8 +162,8 @@ import backtrader as bt
 DATA_FILENAME = 'EURUSD_5m_5Yea.csv'     # ðŸ‡¦ðŸ‡º EURO Dollar vs US Dollar - Major Forex Pair
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-07-10'               # Start date for backtesting (YYYY-MM-DD)
-TODATE = '2025-07-25'                 # End date for backtesting (YYYY-MM-DD)
+FROMDATE = '2025-12-01'               # Start date for backtesting (YYYY-MM-DD)
+TODATE = '2025-12-05'                 # End date for backtesting (YYYY-MM-DD)
 STARTING_CASH = 100000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
 LIMIT_BARS = 0                        # >0: Stop after N bars processed (0 = no limit)
