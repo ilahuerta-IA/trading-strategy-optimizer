@@ -199,7 +199,7 @@ import backtrader as bt
 DATA_FILENAME = 'USDCHF_5m_5Yea.csv'     # 🇭 USD vs Swiss Franc - Major Forex Pair
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2025-12-01'               # Start date for backtesting (YYYY-MM-DD)
+FROMDATE = '2020-01-01'               # Start date for backtesting (YYYY-MM-DD)
 TODATE = '2025-12-05'                 # End date for backtesting (YYYY-MM-DD)
 STARTING_CASH = 100000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing

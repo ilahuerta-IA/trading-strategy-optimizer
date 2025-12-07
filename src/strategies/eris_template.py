@@ -46,8 +46,8 @@ import backtrader as bt
 DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-09-01'
-TODATE = '2025-11-01'
+FROMDATE = '2020-01-01'
+TODATE = '2025-12-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True
 
@@ -72,17 +72,18 @@ LONG_BREAKOUT_DELAY_CANDLES = 1
 LONG_ENTRY_MAX_CANDLES = 5  # OPTIMIZED: Reduced from 7 to 5
 
 # Require N green candles before the bullish trigger candle
-LONG_BEFORE_CANDLES = False  # OPTIMIZED: Enabled
+LONG_BEFORE_CANDLES = True  # OPTIMIZED: Enabled
 LONG_BEFORE_NUM_CANDLES = 1
 
 # =============================================================================
 # TIME FILTER PARAMETERS
 # =============================================================================
 
-# Enable time range filter (avoid low liquidity periods)
-USE_TIME_RANGE_FILTER = False
-TRADING_START_HOUR = 8   # Start trading at 08:00
-TRADING_END_HOUR = 20    # Stop trading at 20:00
+# Enable time range filter (best performing hours)
+# Analysis: [14:00-22:00) has PF 1.51 with 239 trades
+USE_TIME_RANGE_FILTER = False  # OPTIMIZED: Enabled for better quality entries
+TRADING_START_HOUR = 14   # Start trading at 14:00 (US session overlap)
+TRADING_END_HOUR = 22     # Stop trading at 22:00
 
 # =============================================================================
 # ATR FILTER PARAMETERS  
@@ -98,22 +99,23 @@ ATR_MAX_THRESHOLD = 0.00040  # Maximum ATR for trade (based on analysis)
 # =============================================================================
 
 # Enable filter to avoid specific hours with poor performance
-# Based on analysis: certain hours have very low win rates
-USE_HOURS_TO_AVOID_FILTER = False
+# Disabled: Using TIME_RANGE_FILTER instead for simpler implementation
+USE_HOURS_TO_AVOID_FILTER = False  # Disabled, using TIME_RANGE_FILTER
 
-# Hours to avoid (UTC) - based on analysis showing negative avg PnL
-# Hour 20: 12% WR, -$106 avg | Hour 13: 29% WR, -$53 avg | Hour 07: 29% WR, -$27 avg
-# Hour 06: 31% WR, -$13 avg | Hour 12: 37% WR, -$20 avg
-HOURS_TO_AVOID = [6, 7, 12, 13, 20]
+# Hours to avoid (UTC) - based on analysis showing PF < 1.0
+# Hour 3: PF 0.93 | Hour 6: PF 0.89 | Hour 7: PF 0.88 | Hour 10: PF 0.77
+# Hour 13: PF 0.71 | Hour 20: PF 0.38
+# Avoiding these hours: 515 trades, WR 45.4%, PF 1.59, Net $30,182
+HOURS_TO_AVOID = [3, 6, 7, 10, 13, 20]
 
 # =============================================================================
 # RISK MANAGEMENT PARAMETERS
 # =============================================================================
 
 # ATR settings for SL/TP calculation
-ATR_LENGTH = 14  # OPTIMIZED: Increased from 10 to 14
+ATR_LENGTH = 10  # OPTIMIZED: Increased from 10 to 14
 LONG_ATR_SL_MULTIPLIER = 1.0  # Restored to 1.0 for proper risk management
-LONG_ATR_TP_MULTIPLIER = 2.0  # Restored to 2.0 for 1:2 R:R
+LONG_ATR_TP_MULTIPLIER = 5.0  # Restored to 2.0 for 1:2 R:R
 
 # Position sizing
 RISK_PERCENT = 0.01  # 1% risk per trade
@@ -129,7 +131,7 @@ USE_MEAN_REVERSION_INDICATOR = True
 MEAN_REVERSION_EMA_PERIOD = 70
 
 # ATR period for deviation calculation
-MEAN_REVERSION_ATR_PERIOD = 14
+MEAN_REVERSION_ATR_PERIOD = 10
 
 # Deviation multiplier (how many ATRs from mean to draw bands)
 MEAN_REVERSION_DEVIATION_MULT = 2.0
@@ -148,7 +150,7 @@ USE_MEAN_REVERSION_ENTRY_FILTER = True
 # Z-Score range for valid entries (only enter when Z-Score is within this range)
 # Analysis: Z-Score -3.0 to -2.0 has PF=1.44 with 234 trades (good balance)
 MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (more oversold limit)
-MR_ENTRY_ZSCORE_MAX = -2.0   # Maximum Z-Score (more restrictive for quality)
+MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (more restrictive for quality)
 
 # =============================================================================
 # OVERSOLD DURATION FILTER PARAMETERS
@@ -160,8 +162,8 @@ USE_OVERSOLD_DURATION_FILTER = True
 
 # Minimum candles price must be in oversold zone (Z-Score < threshold) before entry
 # Too few = likely noise/quick bounce, not real reversal
-# Analysis shows 3-5 candles have PF=0.71, while 6+ candles have PF=1.35+
-OVERSOLD_MIN_CANDLES = 6
+# Analysis: Avoid hours [3,6,7,10,13,20] + candles >= 6 -> 515 trades, PF 1.59
+OVERSOLD_MIN_CANDLES = 6  # Restored to 6, hours filter handles quality
 
 # Maximum candles price can be in oversold zone before entry
 # Too many = likely strong downtrend, may not revert
