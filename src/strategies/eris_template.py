@@ -46,7 +46,7 @@ import backtrader as bt
 DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-09-01'
+FROMDATE = '2024-09-01'
 TODATE = '2025-11-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True
@@ -105,6 +105,106 @@ LONG_ATR_TP_MULTIPLIER = 2.0  # Restored to 2.0 for 1:2 R:R
 # Position sizing
 RISK_PERCENT = 0.01  # 1% risk per trade
 
+# =============================================================================
+# MEAN REVERSION INDICATOR PARAMETERS (Ernest P. Chan)
+# =============================================================================
+
+# Enable Mean Reversion visualization indicator
+USE_MEAN_REVERSION_INDICATOR = True
+
+# EMA period for the mean (center line)
+MEAN_REVERSION_EMA_PERIOD = 70
+
+# ATR period for deviation calculation
+MEAN_REVERSION_ATR_PERIOD = 14
+
+# Deviation multiplier (how many ATRs from mean to draw bands)
+MEAN_REVERSION_DEVIATION_MULT = 2.0
+
+# Z-Score thresholds for overbought/oversold zones
+MEAN_REVERSION_ZSCORE_UPPER = 2.0   # Above this = overbought
+MEAN_REVERSION_ZSCORE_LOWER = -2.0  # Below this = oversold
+
+
+# =============================================================================
+# CUSTOM INDICATORS FOR MEAN REVERSION
+# =============================================================================
+
+class MeanReversionBands(bt.Indicator):
+    """
+    Mean Reversion Bands Indicator (Ernest P. Chan)
+    
+    Plots:
+    - Central EMA (mean)
+    - Upper band: EMA + (multiplier x ATR)
+    - Lower band: EMA - (multiplier x ATR)
+    """
+    lines = ('mean', 'upper', 'lower',)
+    
+    params = (
+        ('ema_period', 70),
+        ('atr_period', 14),
+        ('deviation_mult', 2.0),
+    )
+    
+    plotinfo = dict(
+        plot=True,
+        subplot=False,  # Plot on main price chart
+    )
+    
+    plotlines = dict(
+        mean=dict(color='blue', linewidth=1.0),
+        upper=dict(color='red', linestyle='--', linewidth=0.8),
+        lower=dict(color='green', linestyle='--', linewidth=0.8),
+    )
+    
+    def __init__(self):
+        self.ema = bt.ind.EMA(self.data.close, period=self.p.ema_period)
+        self.atr = bt.ind.ATR(self.data, period=self.p.atr_period)
+        
+        self.lines.mean = self.ema
+        self.lines.upper = self.ema + (self.atr * self.p.deviation_mult)
+        self.lines.lower = self.ema - (self.atr * self.p.deviation_mult)
+
+
+class ZScoreIndicator(bt.Indicator):
+    """
+    Z-Score Oscillator: (Price - EMA) / ATR
+    
+    Shows how many ATRs the price has deviated from the mean.
+    """
+    lines = ('zscore',)
+    
+    params = (
+        ('ema_period', 70),
+        ('atr_period', 14),
+        ('upper_threshold', 2.0),
+        ('lower_threshold', -2.0),
+    )
+    
+    plotinfo = dict(
+        plot=True,
+        subplot=True,  # Separate subplot
+        plotname='Z-Score',
+    )
+    
+    plotlines = dict(
+        zscore=dict(color='purple', linewidth=1.0),
+    )
+    
+    def __init__(self):
+        self.ema = bt.ind.EMA(self.data.close, period=self.p.ema_period)
+        self.atr = bt.ind.ATR(self.data, period=self.p.atr_period)
+        
+        self.lines.zscore = (self.data.close - self.ema) / self.atr
+        
+        # Add horizontal lines for thresholds
+        self.plotinfo.plotyhlines = [
+            self.p.upper_threshold,
+            0,
+            self.p.lower_threshold
+        ]
+
 
 class Eris(bt.Strategy):
     """
@@ -152,12 +252,41 @@ class Eris(bt.Strategy):
         
         # Display settings
         print_signals=True,
+        
+        # Mean Reversion Indicator parameters
+        use_mean_reversion_indicator=USE_MEAN_REVERSION_INDICATOR,
+        mean_reversion_ema_period=MEAN_REVERSION_EMA_PERIOD,
+        mean_reversion_atr_period=MEAN_REVERSION_ATR_PERIOD,
+        mean_reversion_deviation_mult=MEAN_REVERSION_DEVIATION_MULT,
+        mean_reversion_zscore_upper=MEAN_REVERSION_ZSCORE_UPPER,
+        mean_reversion_zscore_lower=MEAN_REVERSION_ZSCORE_LOWER,
     )
 
     def __init__(self):
         """Initialize strategy indicators and state variables."""
         # ATR indicator for SL/TP calculation
         self.atr = bt.ind.ATR(self.data, period=self.p.atr_length)
+        
+        # =================================================================
+        # MEAN REVERSION INDICATOR (Ernest P. Chan)
+        # =================================================================
+        if self.p.use_mean_reversion_indicator:
+            # Mean Reversion Bands (EMA + Upper/Lower bands)
+            self.mr_bands = MeanReversionBands(
+                self.data,
+                ema_period=self.p.mean_reversion_ema_period,
+                atr_period=self.p.mean_reversion_atr_period,
+                deviation_mult=self.p.mean_reversion_deviation_mult,
+            )
+            
+            # Z-Score Oscillator (separate subplot)
+            self.mr_zscore = ZScoreIndicator(
+                self.data,
+                ema_period=self.p.mean_reversion_ema_period,
+                atr_period=self.p.mean_reversion_atr_period,
+                upper_threshold=self.p.mean_reversion_zscore_upper,
+                lower_threshold=self.p.mean_reversion_zscore_lower,
+            )
         
         # Order management
         self.order = None
