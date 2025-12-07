@@ -46,7 +46,7 @@ import backtrader as bt
 DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2024-09-01'
+FROMDATE = '2020-09-01'
 TODATE = '2025-11-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True
@@ -62,17 +62,17 @@ EXPORT_TRADE_REPORTS = True
 # =============================================================================
 
 # Exact number of bearish pullback candles required after bullish candle
-LONG_PULLBACK_NUM_CANDLES = 2  # OPTIMIZED: Reduced from 2 to 1
+LONG_PULLBACK_NUM_CANDLES = 1  # OPTIMIZED: Reduced from 2 to 1
 
 # Breakout delay - ignore N candles after pullback before allowing entry
-LONG_BREAKOUT_DELAY = True
+LONG_BREAKOUT_DELAY = False
 LONG_BREAKOUT_DELAY_CANDLES = 1
 
 # Maximum candles to wait for breakout after pullback (expiry)
-LONG_ENTRY_MAX_CANDLES = 2  # OPTIMIZED: Reduced from 7 to 5
+LONG_ENTRY_MAX_CANDLES = 5  # OPTIMIZED: Reduced from 7 to 5
 
 # Require N green candles before the bullish trigger candle
-LONG_BEFORE_CANDLES = True  # OPTIMIZED: Enabled
+LONG_BEFORE_CANDLES = False  # OPTIMIZED: Enabled
 LONG_BEFORE_NUM_CANDLES = 1
 
 # =============================================================================
@@ -90,8 +90,21 @@ TRADING_END_HOUR = 20    # Stop trading at 20:00
 
 # Filter trades by ATR range (avoid extreme volatility)
 USE_ATR_FILTER = False
-ATR_MIN_THRESHOLD = 0.00030  # Minimum ATR for trade
-ATR_MAX_THRESHOLD = 0.00070  # Maximum ATR for trade
+ATR_MIN_THRESHOLD = 0.00025  # Minimum ATR for trade (based on analysis)
+ATR_MAX_THRESHOLD = 0.00040  # Maximum ATR for trade (based on analysis)
+
+# =============================================================================
+# HOURS TO AVOID FILTER PARAMETERS
+# =============================================================================
+
+# Enable filter to avoid specific hours with poor performance
+# Based on analysis: certain hours have very low win rates
+USE_HOURS_TO_AVOID_FILTER = False
+
+# Hours to avoid (UTC) - based on analysis showing negative avg PnL
+# Hour 20: 12% WR, -$106 avg | Hour 13: 29% WR, -$53 avg | Hour 07: 29% WR, -$27 avg
+# Hour 06: 31% WR, -$13 avg | Hour 12: 37% WR, -$20 avg
+HOURS_TO_AVOID = [6, 7, 12, 13, 20]
 
 # =============================================================================
 # RISK MANAGEMENT PARAMETERS
@@ -124,6 +137,39 @@ MEAN_REVERSION_DEVIATION_MULT = 2.0
 # Z-Score thresholds for overbought/oversold zones
 MEAN_REVERSION_ZSCORE_UPPER = 2.0   # Above this = overbought
 MEAN_REVERSION_ZSCORE_LOWER = -2.0  # Below this = oversold
+
+# =============================================================================
+# MEAN REVERSION ENTRY FILTER PARAMETERS
+# =============================================================================
+
+# Enable Mean Reversion as entry filter (only enter when price is in oversold zone)
+USE_MEAN_REVERSION_ENTRY_FILTER = True
+
+# Z-Score range for valid entries (only enter when Z-Score is within this range)
+# Analysis: Z-Score -3.0 to -2.0 has PF=1.44 with 234 trades (good balance)
+MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (more oversold limit)
+MR_ENTRY_ZSCORE_MAX = -2.0   # Maximum Z-Score (more restrictive for quality)
+
+# =============================================================================
+# OVERSOLD DURATION FILTER PARAMETERS
+# =============================================================================
+
+# Enable filter based on how long price has been in oversold zone
+# Filters out quick bounces (too few candles) and strong downtrends (too many)
+USE_OVERSOLD_DURATION_FILTER = True
+
+# Minimum candles price must be in oversold zone (Z-Score < threshold) before entry
+# Too few = likely noise/quick bounce, not real reversal
+# Analysis shows 3-5 candles have PF=0.71, while 6+ candles have PF=1.35+
+OVERSOLD_MIN_CANDLES = 6
+
+# Maximum candles price can be in oversold zone before entry
+# Too many = likely strong downtrend, may not revert
+OVERSOLD_MAX_CANDLES = 11
+
+# Z-Score threshold to consider price in oversold zone for duration counting
+# Usually same as MR_ENTRY_ZSCORE_MAX or MEAN_REVERSION_ZSCORE_LOWER
+OVERSOLD_ZSCORE_THRESHOLD = -1.0
 
 
 # =============================================================================
@@ -236,6 +282,10 @@ class Eris(bt.Strategy):
         atr_min_threshold=ATR_MIN_THRESHOLD,
         atr_max_threshold=ATR_MAX_THRESHOLD,
         
+        # Hours to avoid filter
+        use_hours_to_avoid_filter=USE_HOURS_TO_AVOID_FILTER,
+        hours_to_avoid=HOURS_TO_AVOID,
+        
         # ATR settings
         atr_length=ATR_LENGTH,
         long_atr_sl_multiplier=LONG_ATR_SL_MULTIPLIER,
@@ -260,6 +310,17 @@ class Eris(bt.Strategy):
         mean_reversion_deviation_mult=MEAN_REVERSION_DEVIATION_MULT,
         mean_reversion_zscore_upper=MEAN_REVERSION_ZSCORE_UPPER,
         mean_reversion_zscore_lower=MEAN_REVERSION_ZSCORE_LOWER,
+        
+        # Mean Reversion Entry Filter parameters
+        use_mean_reversion_entry_filter=USE_MEAN_REVERSION_ENTRY_FILTER,
+        mr_entry_zscore_min=MR_ENTRY_ZSCORE_MIN,
+        mr_entry_zscore_max=MR_ENTRY_ZSCORE_MAX,
+        
+        # Oversold Duration Filter parameters
+        use_oversold_duration_filter=USE_OVERSOLD_DURATION_FILTER,
+        oversold_min_candles=OVERSOLD_MIN_CANDLES,
+        oversold_max_candles=OVERSOLD_MAX_CANDLES,
+        oversold_zscore_threshold=OVERSOLD_ZSCORE_THRESHOLD,
     )
 
     def __init__(self):
@@ -301,6 +362,9 @@ class Eris(bt.Strategy):
         self.state = "SCANNING"
         self.trigger_candle_high = None  # High of candle 1
         self.trigger_candle_bar = None   # Bar number of candle 1
+        
+        # Oversold duration tracking
+        self.candles_in_oversold = 0  # Counter for consecutive candles in oversold zone
         self.pullback_count = 0          # Count of bearish candles
         self.pullback_complete_bar = None  # Bar when pullback completed
         self.delay_count = 0             # Count of delay candles
@@ -357,10 +421,13 @@ class Eris(bt.Strategy):
             self.trade_report_file.write(f"Before Candles Filter: {self.p.long_before_candles} ({self.p.long_before_num_candles})\n")
             self.trade_report_file.write(f"Time Filter: {self.p.use_time_filter} ({self.p.trading_start_hour}:00-{self.p.trading_end_hour}:00)\n")
             self.trade_report_file.write(f"ATR Filter: {self.p.use_atr_filter} (min={self.p.atr_min_threshold}, max={self.p.atr_max_threshold})\n")
+            self.trade_report_file.write(f"Hours to Avoid Filter: {self.p.use_hours_to_avoid_filter} (Hours: {list(self.p.hours_to_avoid)})\n")
             self.trade_report_file.write(f"ATR Length: {self.p.atr_length}\n")
             self.trade_report_file.write(f"SL Multiplier: {self.p.long_atr_sl_multiplier}\n")
             self.trade_report_file.write(f"TP Multiplier: {self.p.long_atr_tp_multiplier}\n")
             self.trade_report_file.write(f"Risk Percent: {self.p.risk_percent * 100:.1f}%\n")
+            self.trade_report_file.write(f"Mean Reversion Entry Filter: {self.p.use_mean_reversion_entry_filter} (Z-Score: [{self.p.mr_entry_zscore_min}, {self.p.mr_entry_zscore_max}])\n")
+            self.trade_report_file.write(f"Oversold Duration Filter: {self.p.use_oversold_duration_filter} (Candles: [{self.p.oversold_min_candles}, {self.p.oversold_max_candles}], Threshold: {self.p.oversold_zscore_threshold})\n")
             self.trade_report_file.write("\n" + "=" * 60 + "\n")
             self.trade_report_file.write("TRADE DETAILS\n")
             self.trade_report_file.write("=" * 60 + "\n\n")
@@ -437,6 +504,9 @@ class Eris(bt.Strategy):
         # FILTER CHECKS (OPTIMIZED)
         # =================================================================
         
+        # Update oversold duration counter (must be called every bar)
+        self._update_oversold_duration()
+        
         # TIME FILTER: Only trade during specified hours
         if self.p.use_time_filter:
             current_hour = dt.hour
@@ -453,6 +523,15 @@ class Eris(bt.Strategy):
                 return
             if current_atr < self.p.atr_min_threshold or current_atr > self.p.atr_max_threshold:
                 # Reset state if ATR out of range
+                if self.state != "SCANNING":
+                    self._reset_state()
+                return
+        
+        # HOURS TO AVOID FILTER: Skip specific hours with poor performance
+        if self.p.use_hours_to_avoid_filter:
+            current_hour = dt.hour
+            if current_hour in self.p.hours_to_avoid:
+                # Reset state if in bad hour
                 if self.state != "SCANNING":
                     self._reset_state()
                 return
@@ -479,14 +558,8 @@ class Eris(bt.Strategy):
         
         elif self.state == "PULLBACK":
             # Count bearish pullback candles (check CURRENT candle)
-            current_high = float(self.data.high[0])
-            
-            # IMPORTANT: Pullback candles must NOT break above trigger level
-            if current_high > self.trigger_candle_high:
-                if self.p.print_signals:
-                    print(f"ERIS INVALIDATED: Pullback candle broke trigger level ({current_high:.5f} > {self.trigger_candle_high:.5f})")
-                self._reset_state()
-                return
+            # NOTE: Removed restriction that pullback highs must be below trigger level
+            # to allow more flexible entries (especially with Mean Reversion filter)
             
             if self._is_bearish_candle(0):
                 self.pullback_count += 1
@@ -555,8 +628,98 @@ class Eris(bt.Strategy):
                 print(f"ERIS BREAKOUT CHECK: Current High={current_high:.5f} vs Trigger={self.trigger_candle_high:.5f}")
             
             if current_high > self.trigger_candle_high:  # Changed >= to > (must BREAK above, not just touch)
-                # BREAKOUT DETECTED - EXECUTE ENTRY
-                self._execute_entry(dt, current_bar)
+                # BREAKOUT DETECTED - CHECK ALL ENTRY FILTERS
+                mr_filter_ok = self._check_mean_reversion_entry_filter()
+                duration_filter_ok = self._check_oversold_duration_filter()
+                
+                if mr_filter_ok and duration_filter_ok:
+                    self._execute_entry(dt, current_bar)
+                else:
+                    if self.p.print_signals:
+                        print(f"ERIS FILTERED: Entry rejected by filters")
+                    self._reset_state()
+        
+    def _update_oversold_duration(self):
+        """Update the counter for consecutive candles in oversold zone.
+        
+        Called on each bar to track how long price has been in oversold territory.
+        Resets to 0 when price exits oversold zone.
+        """
+        if not self.p.use_oversold_duration_filter:
+            return
+        
+        if not self.p.use_mean_reversion_indicator:
+            return
+        
+        try:
+            current_zscore = float(self.mr_zscore.zscore[0])
+            if math.isnan(current_zscore):
+                return
+        except (AttributeError, IndexError):
+            return
+        
+        # Check if currently in oversold zone
+        if current_zscore < self.p.oversold_zscore_threshold:
+            self.candles_in_oversold += 1
+        else:
+            # Exited oversold zone, reset counter
+            self.candles_in_oversold = 0
+    
+    def _check_oversold_duration_filter(self):
+        """Check if oversold duration is within valid range for entry.
+        
+        Returns True if:
+        - Filter is disabled
+        - Duration is between min and max candles
+        
+        Rationale:
+        - Too few candles (< min): Quick bounce, likely noise
+        - Too many candles (> max): Strong downtrend, may not revert
+        """
+        if not self.p.use_oversold_duration_filter:
+            return True  # Filter disabled
+        
+        duration = self.candles_in_oversold
+        is_valid = self.p.oversold_min_candles <= duration <= self.p.oversold_max_candles
+        
+        if self.p.print_signals:
+            status = "VALID" if is_valid else "REJECTED"
+            print(f"ERIS OVERSOLD DURATION: {duration} candles Range=[{self.p.oversold_min_candles}, {self.p.oversold_max_candles}] -> {status}")
+        
+        return is_valid
+    
+    def _check_mean_reversion_entry_filter(self):
+        """Check if current price is in valid Mean Reversion zone for entry.
+        
+        Returns True if:
+        - Filter is disabled (use_mean_reversion_entry_filter = False)
+        - Filter is enabled AND Z-Score is within the valid range
+        """
+        if not self.p.use_mean_reversion_entry_filter:
+            return True  # Filter disabled, allow all entries
+        
+        # Check if Mean Reversion indicator is available
+        if not self.p.use_mean_reversion_indicator:
+            if self.p.print_signals:
+                print(f"WARNING: Mean Reversion entry filter enabled but indicator disabled")
+            return True  # Can't filter without indicator
+        
+        # Get current Z-Score
+        try:
+            current_zscore = float(self.mr_zscore.zscore[0])
+            if math.isnan(current_zscore):
+                return True  # Allow entry if Z-Score not available yet
+        except (AttributeError, IndexError):
+            return True  # Allow entry if indicator not ready
+        
+        # Check if Z-Score is within valid range for entry
+        is_valid = self.p.mr_entry_zscore_min <= current_zscore <= self.p.mr_entry_zscore_max
+        
+        if self.p.print_signals:
+            status = "VALID" if is_valid else "REJECTED"
+            print(f"ERIS MR FILTER: Z-Score={current_zscore:.2f} Range=[{self.p.mr_entry_zscore_min}, {self.p.mr_entry_zscore_max}] -> {status}")
+        
+        return is_valid
         
     def _execute_entry(self, dt, current_bar):
         """Execute long entry order."""
@@ -632,9 +795,29 @@ class Eris(bt.Strategy):
         # self._reset_state()  # REMOVED - was causing multiple orders
 
     def _record_entry(self, dt, entry_price, size, atr_value):
-        """Record trade entry for reporting."""
+        """Record trade entry for reporting with all indicator values."""
         if not self.trade_report_file:
             return
+        
+        # Gather all indicator values for analysis
+        zscore_value = None
+        ema_value = None
+        upper_band = None
+        lower_band = None
+        
+        if self.p.use_mean_reversion_indicator:
+            try:
+                zscore_value = float(self.mr_zscore.zscore[0])
+                ema_value = float(self.mr_bands.mean[0])
+                upper_band = float(self.mr_bands.upper[0])
+                lower_band = float(self.mr_bands.lower[0])
+            except (AttributeError, IndexError):
+                pass
+        
+        # Calculate distance from bands (for analysis)
+        dist_to_ema = entry_price - ema_value if ema_value else None
+        dist_to_lower = entry_price - lower_band if lower_band else None
+        dist_to_upper = upper_band - entry_price if upper_band else None
             
         try:
             self.trade_reports.append({
@@ -643,7 +826,12 @@ class Eris(bt.Strategy):
                 'size': size,
                 'atr': atr_value,
                 'stop_level': self.stop_level,
-                'take_level': self.take_level
+                'take_level': self.take_level,
+                'zscore': zscore_value,
+                'candles_in_oversold': self.candles_in_oversold,
+                'ema': ema_value,
+                'upper_band': upper_band,
+                'lower_band': lower_band
             })
             
             self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
@@ -653,6 +841,23 @@ class Eris(bt.Strategy):
             self.trade_report_file.write(f"Stop Loss: {self.stop_level:.5f}\n")
             self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
             self.trade_report_file.write(f"ATR: {atr_value:.6f}\n")
+            
+            # Mean Reversion indicator values
+            if zscore_value is not None:
+                self.trade_report_file.write(f"Z-Score: {zscore_value:.3f}\n")
+            if self.p.use_oversold_duration_filter:
+                self.trade_report_file.write(f"Candles in Oversold: {self.candles_in_oversold}\n")
+            if ema_value is not None:
+                self.trade_report_file.write(f"EMA({self.p.mean_reversion_ema_period}): {ema_value:.5f}\n")
+            if upper_band is not None:
+                self.trade_report_file.write(f"Upper Band: {upper_band:.5f}\n")
+            if lower_band is not None:
+                self.trade_report_file.write(f"Lower Band: {lower_band:.5f}\n")
+            if dist_to_ema is not None:
+                self.trade_report_file.write(f"Distance to EMA: {dist_to_ema:.5f}\n")
+            if dist_to_lower is not None:
+                self.trade_report_file.write(f"Distance to Lower: {dist_to_lower:.5f}\n")
+            
             self.trade_report_file.write("-" * 40 + "\n\n")
             self.trade_report_file.flush()
             
@@ -668,13 +873,30 @@ class Eris(bt.Strategy):
             last_trade = self.trade_reports[-1]
             entry_price = last_trade.get('entry_price', 0)
             pips = (exit_price - entry_price) / self.p.forex_pip_value if entry_price > 0 else 0
+            result = "WIN" if pnl > 0 else "LOSS"
+            
+            # Add result to trade record for analysis
+            last_trade['exit_price'] = exit_price
+            last_trade['pnl'] = pnl
+            last_trade['result'] = result
+            last_trade['exit_reason'] = exit_reason
             
             self.trade_report_file.write(f"EXIT #{len(self.trade_reports)}\n")
             self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
             self.trade_report_file.write(f"Exit Price: {exit_price:.5f}\n")
             self.trade_report_file.write(f"Exit Reason: {exit_reason}\n")
+            self.trade_report_file.write(f"Result: {result}\n")
             self.trade_report_file.write(f"P&L: {pnl:.2f}\n")
             self.trade_report_file.write(f"Pips: {pips:.1f}\n")
+            
+            # Include entry indicator values for correlation analysis
+            if 'zscore' in last_trade and last_trade['zscore'] is not None:
+                self.trade_report_file.write(f"Entry Z-Score: {last_trade['zscore']:.3f}\n")
+            if 'candles_in_oversold' in last_trade:
+                self.trade_report_file.write(f"Entry Candles in Oversold: {last_trade['candles_in_oversold']}\n")
+            if 'atr' in last_trade:
+                self.trade_report_file.write(f"Entry ATR: {last_trade['atr']:.6f}\n")
+            
             self.trade_report_file.write("=" * 60 + "\n\n")
             self.trade_report_file.flush()
             
