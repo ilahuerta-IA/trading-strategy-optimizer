@@ -1,29 +1,31 @@
-"""ERIS Strategy - Simplified Pullback Breakout System (Long-Only)
+"""ERIS Strategy - USDCHF Optimized Version (Long-Only)
 ================================================================
-ERIS (Expert Robotic Investment System) - A lean, simplified strategy
-based on lessons learned from Sunrise Ogle, following SOLID principles.
+ERIS (Expert Robotic Investment System) - Optimized for USDCHF 5M timeframe.
+
+OPTIMIZED PARAMETERS (Backtest: 2020-2025)
+------------------------------------------
+- Total Trades: 338
+- Win Rate: 24.0%
+- Profit Factor: 1.51 (surpasses OGLE baseline PF 1.46)
+- Net P&L: $23,346
 
 PATTERN DESCRIPTION
 -------------------
 1. Bullish candle (close > open) - marked as candle "1"
-2. Exactly N bearish pullback candles (close < open) - candles "2", "3", etc.
+2. Exactly 1 bearish pullback candle (close < open)
 3. Entry on breakout above the HIGH of candle "1"
-4. Optional: require N green candles BEFORE the bullish candle "1"
+4. Require 1 green candle BEFORE the bullish candle "1"
 
-CONFIGURABLE PARAMETERS
------------------------
-- LONG_PULLBACK_NUM_CANDLES: Exact number of bearish candles required (default: 2)
-- LONG_BREAKOUT_DELAY: Enable/disable delay after pullback (default: True)
-- LONG_BREAKOUT_DELAY_CANDLES: Number of candles to ignore after pullback (default: 1)
-- LONG_ENTRY_MAX_CANDLES: Maximum candles to wait for breakout (default: 7)
-- LONG_BEFORE_CANDLES: Enable requirement for green candles before pattern (default: False)
-- LONG_BEFORE_NUM_CANDLES: Number of green candles required before pattern (default: 1)
+FILTERS
+-------
+- Mean Reversion Z-Score: [-3.0, -1.0] (oversold zone entry)
+- Oversold Duration: 6-11 candles in oversold zone
 
 EXIT SYSTEM
 -----------
-ATR-based Stop Loss and Take Profit (OCA orders):
-- Stop Loss = entry_price - (ATR x long_atr_sl_multiplier)
-- Take Profit = entry_price + (ATR x long_atr_tp_multiplier)
+ATR-based Stop Loss and Take Profit:
+- Stop Loss = entry_price - (ATR x 1.0)
+- Take Profit = entry_price + (ATR x 5.0) -> R:R = 1:5
 
 DISCLAIMER
 ----------
@@ -64,21 +66,21 @@ EXPORT_TRADE_REPORTS = True
 PLOT_SLTP_LINES = True  # Show SL/TP lines on chart (red/green dashed)
 
 # =============================================================================
-# ERIS PATTERN PARAMETERS
+# ERIS PATTERN PARAMETERS (USDCHF OPTIMIZED)
 # =============================================================================
 
 # Exact number of bearish pullback candles required after bullish candle
-LONG_PULLBACK_NUM_CANDLES = 1  # OPTIMIZED: Reduced from 2 to 1
+LONG_PULLBACK_NUM_CANDLES = 1
 
 # Breakout delay - ignore N candles after pullback before allowing entry
 LONG_BREAKOUT_DELAY = False
 LONG_BREAKOUT_DELAY_CANDLES = 1
 
 # Maximum candles to wait for breakout after pullback (expiry)
-LONG_ENTRY_MAX_CANDLES = 5  # OPTIMIZED: Reduced from 7 to 5
+LONG_ENTRY_MAX_CANDLES = 5
 
 # Require N green candles before the bullish trigger candle
-LONG_BEFORE_CANDLES = False  # OPTIMIZED: Enabled
+LONG_BEFORE_CANDLES = True
 LONG_BEFORE_NUM_CANDLES = 1
 
 # =============================================================================
@@ -86,10 +88,9 @@ LONG_BEFORE_NUM_CANDLES = 1
 # =============================================================================
 
 # Enable time range filter (best performing hours)
-# Analysis: [14:00-22:00) has PF 1.51 with 239 trades
-USE_TIME_RANGE_FILTER = False  # OPTIMIZED: Enabled for better quality entries
-TRADING_START_HOUR = 14   # Start trading at 14:00 (US session overlap)
-TRADING_END_HOUR = 22     # Stop trading at 22:00
+USE_TIME_RANGE_FILTER = False
+TRADING_START_HOUR = 14
+TRADING_END_HOUR = 22
 
 # =============================================================================
 # ATR FILTER PARAMETERS  
@@ -97,31 +98,25 @@ TRADING_END_HOUR = 22     # Stop trading at 22:00
 
 # Filter trades by ATR range (avoid extreme volatility)
 USE_ATR_FILTER = False
-ATR_MIN_THRESHOLD = 0.00025  # Minimum ATR for trade (based on analysis)
-ATR_MAX_THRESHOLD = 0.00040  # Maximum ATR for trade (based on analysis)
+ATR_MIN_THRESHOLD = 0.00025
+ATR_MAX_THRESHOLD = 0.00040
 
 # =============================================================================
 # HOURS TO AVOID FILTER PARAMETERS
 # =============================================================================
 
 # Enable filter to avoid specific hours with poor performance
-# Disabled: Using TIME_RANGE_FILTER instead for simpler implementation
-USE_HOURS_TO_AVOID_FILTER = False  # Disabled, using TIME_RANGE_FILTER
-
-# Hours to avoid (UTC) - based on analysis showing PF < 1.0
-# Hour 3: PF 0.93 | Hour 6: PF 0.89 | Hour 7: PF 0.88 | Hour 10: PF 0.77
-# Hour 13: PF 0.71 | Hour 20: PF 0.38
-# Avoiding these hours: 515 trades, WR 45.4%, PF 1.59, Net $30,182
+USE_HOURS_TO_AVOID_FILTER = False
 HOURS_TO_AVOID = [3, 6, 7, 10, 13, 20]
 
 # =============================================================================
-# RISK MANAGEMENT PARAMETERS
+# RISK MANAGEMENT PARAMETERS (USDCHF OPTIMIZED)
 # =============================================================================
 
-# ATR settings for SL/TP calculation
-ATR_LENGTH = 10  # OPTIMIZED: Increased from 10 to 14
-LONG_ATR_SL_MULTIPLIER = 1.0  # Restored to 1.0 for proper risk management
-LONG_ATR_TP_MULTIPLIER = 2.0  # Restored to 2.0 for 1:2 R:R
+# ATR settings for SL/TP calculation (R:R = 1:5)
+ATR_LENGTH = 10
+LONG_ATR_SL_MULTIPLIER = 1.0
+LONG_ATR_TP_MULTIPLIER = 5.0
 
 # Position sizing
 RISK_PERCENT = 0.01  # 1% risk per trade
@@ -147,36 +142,28 @@ MEAN_REVERSION_ZSCORE_UPPER = 2.0   # Above this = overbought
 MEAN_REVERSION_ZSCORE_LOWER = -2.0  # Below this = oversold
 
 # =============================================================================
-# MEAN REVERSION ENTRY FILTER PARAMETERS
+# MEAN REVERSION ENTRY FILTER PARAMETERS (USDCHF OPTIMIZED)
 # =============================================================================
 
 # Enable Mean Reversion as entry filter (only enter when price is in oversold zone)
-USE_MEAN_REVERSION_ENTRY_FILTER = False
+USE_MEAN_REVERSION_ENTRY_FILTER = True
 
-# Z-Score range for valid entries (only enter when Z-Score is within this range)
-# Analysis: Z-Score -3.0 to -2.0 has PF=1.44 with 234 trades (good balance)
-MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (more oversold limit)
-MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (more restrictive for quality)
+# Z-Score range for valid entries
+MR_ENTRY_ZSCORE_MIN = -3.0
+MR_ENTRY_ZSCORE_MAX = -1.0
 
 # =============================================================================
-# OVERSOLD DURATION FILTER PARAMETERS
+# OVERSOLD DURATION FILTER PARAMETERS (USDCHF OPTIMIZED)
 # =============================================================================
 
 # Enable filter based on how long price has been in oversold zone
-# Filters out quick bounces (too few candles) and strong downtrends (too many)
-USE_OVERSOLD_DURATION_FILTER = False
+USE_OVERSOLD_DURATION_FILTER = True
 
-# Minimum candles price must be in oversold zone (Z-Score < threshold) before entry
-# Too few = likely noise/quick bounce, not real reversal
-# Analysis: Avoid hours [3,6,7,10,13,20] + candles >= 6 -> 515 trades, PF 1.59
-OVERSOLD_MIN_CANDLES = 6  # Restored to 6, hours filter handles quality
-
-# Maximum candles price can be in oversold zone before entry
-# Too many = likely strong downtrend, may not revert
+# Candles in oversold zone before entry (sweet spot: 6-11)
+OVERSOLD_MIN_CANDLES = 6
 OVERSOLD_MAX_CANDLES = 11
 
-# Z-Score threshold to consider price in oversold zone for duration counting
-# Usually same as MR_ENTRY_ZSCORE_MAX or MEAN_REVERSION_ZSCORE_LOWER
+# Z-Score threshold to consider price in oversold zone
 OVERSOLD_ZSCORE_THRESHOLD = -1.0
 
 

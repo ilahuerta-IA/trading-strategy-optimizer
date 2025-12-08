@@ -1,35 +1,20 @@
-"""ERIS Strategy - Simplified Pullback Breakout System (Long-Only)
+"""ERIS Strategy - USDCAD (Long-Only)
 ================================================================
-ERIS (Expert Robotic Investment System) - A lean, simplified strategy
-based on lessons learned from Sunrise Ogle, following SOLID principles.
+ERIS (Expert Robotic Investment System) - Optimized for USDCAD.
 
-PATTERN DESCRIPTION
--------------------
-1. Bullish candle (close > open) - marked as candle "1"
-2. Exactly N bearish pullback candles (close < open) - candles "2", "3", etc.
-3. Entry on breakout above the HIGH of candle "1"
-4. Optional: require N green candles BEFORE the bullish candle "1"
+PATTERN: Bullish breakout after pullback with Mean Reversion filter.
+1. Bullish candle (close > open) - trigger candle
+2. Exactly N bearish pullback candles
+3. Entry on breakout above trigger high
+4. Filters: Z-Score extremes (|Z| >= 0.4), best hours only
 
-CONFIGURABLE PARAMETERS
------------------------
-- LONG_PULLBACK_NUM_CANDLES: Exact number of bearish candles required (default: 2)
-- LONG_BREAKOUT_DELAY: Enable/disable delay after pullback (default: True)
-- LONG_BREAKOUT_DELAY_CANDLES: Number of candles to ignore after pullback (default: 1)
-- LONG_ENTRY_MAX_CANDLES: Maximum candles to wait for breakout (default: 7)
-- LONG_BEFORE_CANDLES: Enable requirement for green candles before pattern (default: False)
-- LONG_BEFORE_NUM_CANDLES: Number of green candles required before pattern (default: 1)
+PERFORMANCE (2020-2025):
+- Profit Factor: 1.55
+- Win Rate: 43.4%
+- Max Drawdown: 1.21%
+- Sharpe Ratio: 1.175
 
-EXIT SYSTEM
------------
-ATR-based Stop Loss and Take Profit (OCA orders):
-- Stop Loss = entry_price - (ATR x long_atr_sl_multiplier)
-- Take Profit = entry_price + (ATR x long_atr_tp_multiplier)
-
-DISCLAIMER
-----------
-Educational and research purposes ONLY. Not investment advice.
-Trading involves substantial risk of loss. Past performance does not
-guarantee future results.
+DISCLAIMER: Educational purposes only. Not investment advice.
 """
 from __future__ import annotations
 import math
@@ -46,7 +31,7 @@ import numpy as np
 # =============================================================================
 
 # === INSTRUMENT SELECTION ===
-DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
+DATA_FILENAME = 'USDCAD_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
 FROMDATE = '2020-01-01'
@@ -55,7 +40,7 @@ STARTING_CASH = 100000.0
 ENABLE_PLOT = True
 
 # === FOREX CONFIGURATION ===
-FOREX_INSTRUMENT = 'USDCHF'
+FOREX_INSTRUMENT = 'USDCAD'
 
 # === TRADE REPORTING ===
 EXPORT_TRADE_REPORTS = True
@@ -67,116 +52,91 @@ PLOT_SLTP_LINES = True  # Show SL/TP lines on chart (red/green dashed)
 # ERIS PATTERN PARAMETERS
 # =============================================================================
 
-# Exact number of bearish pullback candles required after bullish candle
-LONG_PULLBACK_NUM_CANDLES = 1  # OPTIMIZED: Reduced from 2 to 1
+# Number of bearish pullback candles required after bullish candle
+LONG_PULLBACK_NUM_CANDLES = 1
 
 # Breakout delay - ignore N candles after pullback before allowing entry
 LONG_BREAKOUT_DELAY = False
 LONG_BREAKOUT_DELAY_CANDLES = 1
 
 # Maximum candles to wait for breakout after pullback (expiry)
-LONG_ENTRY_MAX_CANDLES = 5  # OPTIMIZED: Reduced from 7 to 5
+LONG_ENTRY_MAX_CANDLES = 5
 
 # Require N green candles before the bullish trigger candle
-LONG_BEFORE_CANDLES = False  # OPTIMIZED: Enabled
+LONG_BEFORE_CANDLES = True
 LONG_BEFORE_NUM_CANDLES = 1
 
 # =============================================================================
 # TIME FILTER PARAMETERS
 # =============================================================================
 
-# Enable time range filter (best performing hours)
-# Analysis: [14:00-22:00) has PF 1.51 with 239 trades
-USE_TIME_RANGE_FILTER = False  # OPTIMIZED: Enabled for better quality entries
-TRADING_START_HOUR = 14   # Start trading at 14:00 (US session overlap)
-TRADING_END_HOUR = 22     # Stop trading at 22:00
+# Time range filter (disabled - using HOURS_TO_AVOID instead)
+USE_TIME_RANGE_FILTER = False
+TRADING_START_HOUR = 0   
+TRADING_END_HOUR = 14
 
 # =============================================================================
 # ATR FILTER PARAMETERS  
 # =============================================================================
 
-# Filter trades by ATR range (avoid extreme volatility)
-USE_ATR_FILTER = False
-ATR_MIN_THRESHOLD = 0.00025  # Minimum ATR for trade (based on analysis)
-ATR_MAX_THRESHOLD = 0.00040  # Maximum ATR for trade (based on analysis)
+# Filter trades by ATR range (1-3 pips for low volatility)
+USE_ATR_FILTER = True
+ATR_MIN_THRESHOLD = 0.0001   # Minimum ATR (1 pip)
+ATR_MAX_THRESHOLD = 0.0003   # Maximum ATR (3 pips)
 
 # =============================================================================
 # HOURS TO AVOID FILTER PARAMETERS
 # =============================================================================
 
-# Enable filter to avoid specific hours with poor performance
-# Disabled: Using TIME_RANGE_FILTER instead for simpler implementation
-USE_HOURS_TO_AVOID_FILTER = False  # Disabled, using TIME_RANGE_FILTER
-
-# Hours to avoid (UTC) - based on analysis showing PF < 1.0
-# Hour 3: PF 0.93 | Hour 6: PF 0.89 | Hour 7: PF 0.88 | Hour 10: PF 0.77
-# Hour 13: PF 0.71 | Hour 20: PF 0.38
-# Avoiding these hours: 515 trades, WR 45.4%, PF 1.59, Net $30,182
-HOURS_TO_AVOID = [3, 6, 7, 10, 13, 20]
+# Only allow best performing hours (UTC): 0, 1, 6, 7, 13, 14, 16, 17
+USE_HOURS_TO_AVOID_FILTER = True
+HOURS_TO_AVOID = [2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 18, 19, 20, 21, 22, 23]
 
 # =============================================================================
 # RISK MANAGEMENT PARAMETERS
 # =============================================================================
 
 # ATR settings for SL/TP calculation
-ATR_LENGTH = 10  # OPTIMIZED: Increased from 10 to 14
-LONG_ATR_SL_MULTIPLIER = 1.0  # Restored to 1.0 for proper risk management
-LONG_ATR_TP_MULTIPLIER = 2.0  # Restored to 2.0 for 1:2 R:R
+ATR_LENGTH = 10
+LONG_ATR_SL_MULTIPLIER = 1.0
+LONG_ATR_TP_MULTIPLIER = 2.0  # 1:2 Risk/Reward
 
 # Position sizing
 RISK_PERCENT = 0.01  # 1% risk per trade
 
 # =============================================================================
-# MEAN REVERSION INDICATOR PARAMETERS (Ernest P. Chan)
+# MEAN REVERSION INDICATOR PARAMETERS
 # =============================================================================
 
-# Enable Mean Reversion visualization indicator
 USE_MEAN_REVERSION_INDICATOR = True
-
-# EMA period for the mean (center line)
 MEAN_REVERSION_EMA_PERIOD = 70
-
-# ATR period for deviation calculation
 MEAN_REVERSION_ATR_PERIOD = 10
-
-# Deviation multiplier (how many ATRs from mean to draw bands)
 MEAN_REVERSION_DEVIATION_MULT = 2.0
-
-# Z-Score thresholds for overbought/oversold zones
-MEAN_REVERSION_ZSCORE_UPPER = 2.0   # Above this = overbought
-MEAN_REVERSION_ZSCORE_LOWER = -2.0  # Below this = oversold
+MEAN_REVERSION_ZSCORE_UPPER = 2.0
+MEAN_REVERSION_ZSCORE_LOWER = -2.0
 
 # =============================================================================
 # MEAN REVERSION ENTRY FILTER PARAMETERS
 # =============================================================================
 
-# Enable Mean Reversion as entry filter (only enter when price is in oversold zone)
-USE_MEAN_REVERSION_ENTRY_FILTER = False
+# Z-Score filter: only enter when |Z| >= 0.4 (avoid neutral zone)
+USE_MEAN_REVERSION_ENTRY_FILTER = True
+MR_ENTRY_ZSCORE_MIN = -1.0
+MR_ENTRY_ZSCORE_MAX = 1.0
 
-# Z-Score range for valid entries (only enter when Z-Score is within this range)
-# Analysis: Z-Score -3.0 to -2.0 has PF=1.44 with 234 trades (good balance)
-MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (more oversold limit)
-MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (more restrictive for quality)
+# Exclude neutral zone: reject entries where -0.4 <= Z < 0.4
+MR_EXCLUDE_NEUTRAL_ZONE = True
+MR_NEUTRAL_ZONE_MIN = -0.4
+MR_NEUTRAL_ZONE_MAX = 0.4
 
 # =============================================================================
 # OVERSOLD DURATION FILTER PARAMETERS
 # =============================================================================
 
-# Enable filter based on how long price has been in oversold zone
-# Filters out quick bounces (too few candles) and strong downtrends (too many)
+# Oversold duration filter (disabled for this strategy)
 USE_OVERSOLD_DURATION_FILTER = False
-
-# Minimum candles price must be in oversold zone (Z-Score < threshold) before entry
-# Too few = likely noise/quick bounce, not real reversal
-# Analysis: Avoid hours [3,6,7,10,13,20] + candles >= 6 -> 515 trades, PF 1.59
-OVERSOLD_MIN_CANDLES = 6  # Restored to 6, hours filter handles quality
-
-# Maximum candles price can be in oversold zone before entry
-# Too many = likely strong downtrend, may not revert
-OVERSOLD_MAX_CANDLES = 11
-
-# Z-Score threshold to consider price in oversold zone for duration counting
-# Usually same as MR_ENTRY_ZSCORE_MAX or MEAN_REVERSION_ZSCORE_LOWER
+OVERSOLD_MIN_CANDLES = 0
+OVERSOLD_MAX_CANDLES = 999
 OVERSOLD_ZSCORE_THRESHOLD = -1.0
 
 
@@ -323,6 +283,9 @@ class Eris(bt.Strategy):
         use_mean_reversion_entry_filter=USE_MEAN_REVERSION_ENTRY_FILTER,
         mr_entry_zscore_min=MR_ENTRY_ZSCORE_MIN,
         mr_entry_zscore_max=MR_ENTRY_ZSCORE_MAX,
+        mr_exclude_neutral_zone=MR_EXCLUDE_NEUTRAL_ZONE,
+        mr_neutral_zone_min=MR_NEUTRAL_ZONE_MIN,
+        mr_neutral_zone_max=MR_NEUTRAL_ZONE_MAX,
         
         # Oversold Duration Filter parameters
         use_oversold_duration_filter=USE_OVERSOLD_DURATION_FILTER,
@@ -443,6 +406,7 @@ class Eris(bt.Strategy):
             self.trade_report_file.write(f"TP Multiplier: {self.p.long_atr_tp_multiplier}\n")
             self.trade_report_file.write(f"Risk Percent: {self.p.risk_percent * 100:.1f}%\n")
             self.trade_report_file.write(f"Mean Reversion Entry Filter: {self.p.use_mean_reversion_entry_filter} (Z-Score: [{self.p.mr_entry_zscore_min}, {self.p.mr_entry_zscore_max}])\n")
+            self.trade_report_file.write(f"Neutral Zone Exclusion: {self.p.mr_exclude_neutral_zone} (Z-Score: [{self.p.mr_neutral_zone_min}, {self.p.mr_neutral_zone_max}])\n")
             self.trade_report_file.write(f"Oversold Duration Filter: {self.p.use_oversold_duration_filter} (Candles: [{self.p.oversold_min_candles}, {self.p.oversold_max_candles}], Threshold: {self.p.oversold_zscore_threshold})\n")
             self.trade_report_file.write("\n" + "=" * 60 + "\n")
             self.trade_report_file.write("TRADE DETAILS\n")
@@ -738,9 +702,16 @@ class Eris(bt.Strategy):
         # Check if Z-Score is within valid range for entry
         is_valid = self.p.mr_entry_zscore_min <= current_zscore <= self.p.mr_entry_zscore_max
         
+        # NEW: Exclude neutral zone if enabled (PF 0.87 in [-0.2, +0.2))
+        if is_valid and self.p.mr_exclude_neutral_zone:
+            in_neutral = self.p.mr_neutral_zone_min <= current_zscore < self.p.mr_neutral_zone_max
+            if in_neutral:
+                is_valid = False
+        
         if self.p.print_signals:
             status = "VALID" if is_valid else "REJECTED"
-            print(f"ERIS MR FILTER: Z-Score={current_zscore:.2f} Range=[{self.p.mr_entry_zscore_min}, {self.p.mr_entry_zscore_max}] -> {status}")
+            neutral_info = f" (Neutral zone excluded)" if self.p.mr_exclude_neutral_zone else ""
+            print(f"ERIS MR FILTER: Z-Score={current_zscore:.2f} Range=[{self.p.mr_entry_zscore_min}, {self.p.mr_entry_zscore_max}]{neutral_info} -> {status}")
         
         return is_valid
         
