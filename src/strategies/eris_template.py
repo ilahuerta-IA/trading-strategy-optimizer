@@ -46,6 +46,7 @@ import numpy as np
 # =============================================================================
 
 # === INSTRUMENT SELECTION ===
+# Template para USD/CHF - copiar y modificar para otros pares
 DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
@@ -56,6 +57,7 @@ ENABLE_PLOT = True
 
 # === FOREX CONFIGURATION ===
 FOREX_INSTRUMENT = 'USDCHF'
+PIP_VALUE = 0.0001  # Standard for CHF pairs
 
 # === TRADE REPORTING ===
 EXPORT_TRADE_REPORTS = True
@@ -96,9 +98,10 @@ TRADING_END_HOUR = 22     # Stop trading at 22:00
 # =============================================================================
 
 # Filter trades by ATR range (avoid extreme volatility)
+# USDCHF: típico 0.00025 - 0.00045
 USE_ATR_FILTER = False
-ATR_MIN_THRESHOLD = 0.00025  # Minimum ATR for trade (based on analysis)
-ATR_MAX_THRESHOLD = 0.00040  # Maximum ATR for trade (based on analysis)
+ATR_MIN_THRESHOLD = 0.00025
+ATR_MAX_THRESHOLD = 0.00040
 
 # =============================================================================
 # HOURS TO AVOID FILTER PARAMETERS
@@ -303,10 +306,12 @@ class Eris(bt.Strategy):
         risk_percent=RISK_PERCENT,
         contract_size=100000,
         
-        # Forex settings
+        # Forex settings (auto-configured from instrument)
         forex_instrument=FOREX_INSTRUMENT,
-        forex_pip_value=0.0001,
-        forex_lot_size=100000,
+        forex_pip_value=_CURRENT_CONFIG['pip_value'],
+        forex_pip_decimal_places=_CURRENT_CONFIG['pip_decimal_places'],
+        forex_lot_size=_CURRENT_CONFIG['lot_size'],
+        forex_atr_scale=_CURRENT_CONFIG['atr_scale'],
         
         # Display settings
         print_signals=True,
@@ -519,8 +524,8 @@ class Eris(bt.Strategy):
         if self.order:
             return
         
-        # Skip entry logic if in position
-        if self.position:
+        # Skip entry logic if in position OR if we have pending SL/TP orders
+        if self.position or self.stop_order or self.limit_order:
             return
         
         # =================================================================
@@ -760,42 +765,47 @@ class Eris(bt.Strategy):
         self.stop_level = entry_price - (atr_value * self.p.long_atr_sl_multiplier)
         self.take_level = entry_price + (atr_value * self.p.long_atr_tp_multiplier)
         
-        # Position sizing
+        # Position sizing (simplified for all forex pairs)
         risk_distance = entry_price - self.stop_level
         if risk_distance <= 0:
             self._reset_state()
             return
-            
-        equity = self.broker.get_value()
-        risk_amount = equity * self.p.risk_percent
-        risk_per_contract = risk_distance * self.p.contract_size
         
-        if risk_per_contract <= 0:
+        # Risk calculation
+        equity = self.broker.get_value()
+        risk_amount = equity * self.p.risk_percent  # e.g., $1000 for 1% of $100k
+        
+        # Calculate pip risk and value per pip per lot
+        pip_risk = risk_distance / self.p.forex_pip_value  # Convert to pips
+        
+        # For JPY pairs: value per pip per lot = lot_size * pip_value / price
+        # For USD pairs: value per pip per lot = lot_size * pip_value
+        if 'JPY' in self.p.forex_instrument:
+            # JPY pairs: pip value in account currency = (lot_size * pip_value) / current_price
+            value_per_pip_per_lot = (self.p.forex_lot_size * self.p.forex_pip_value) / entry_price
+        else:
+            # Standard pairs (USDCHF, EURUSD, etc.)
+            value_per_pip_per_lot = self.p.forex_lot_size * self.p.forex_pip_value
+        
+        # Calculate optimal lot size
+        if pip_risk > 0 and value_per_pip_per_lot > 0:
+            optimal_lots = risk_amount / (pip_risk * value_per_pip_per_lot)
+        else:
             self._reset_state()
             return
-            
-        contracts = max(int(risk_amount / risk_per_contract), 1)
         
-        # For Forex: Use simple lot sizing (max 5 lots)
-        max_lots = 5
-        contracts = min(contracts, max_lots)
-        bt_size = contracts * self.p.contract_size
+        # Round to standard lot sizes (min 0.01, max 5.0)
+        optimal_lots = max(0.01, min(5.0, round(optimal_lots, 2)))
         
-        # Safety check: ensure we have enough margin (leverage=30)
-        # Margin required = position_value / leverage
-        position_value = bt_size * entry_price
-        margin_required = position_value / 30.0
-        available_cash = self.broker.get_cash()
+        # Convert to Backtrader size
+        bt_size = int(optimal_lots * self.p.forex_lot_size)
         
-        if margin_required > available_cash * 0.8:  # Use max 80% of available cash
-            # Reduce size to fit margin
-            max_position = available_cash * 0.8 * 30.0  # Max position with 80% margin usage
-            bt_size = int(max_position / entry_price / self.p.contract_size) * self.p.contract_size
-            if bt_size < self.p.contract_size:
-                bt_size = self.p.contract_size
+        # Minimum size check
+        if bt_size < 1000:
+            bt_size = 1000  # Minimum micro lot
         
         if self.p.print_signals:
-            print(f"   Position: {bt_size/self.p.contract_size:.1f} lots | Value: {bt_size * entry_price:,.0f} | Margin: {margin_required:,.0f}")
+            print(f"   Position: {optimal_lots:.2f} lots ({bt_size:,} units) | Risk: ${risk_amount:.0f} | Pip Risk: {pip_risk:.1f}")
         
         # Place buy order
         self.order = self.buy(size=bt_size)
@@ -1209,6 +1219,46 @@ class SLTPObserver(bt.Observer):
 
 
 # =============================================================================
+# CUSTOM COMMISSION FOR USDJPY (converts PnL from JPY to USD)
+# =============================================================================
+
+class USDJPYCommission(bt.CommInfoBase):
+    """
+    Custom Commission Scheme for USDJPY when Account Currency is USD.
+    
+    Logic:
+    - PnL in JPY = (Price_Exit - Price_Entry) * Size
+    - PnL in USD = PnL in JPY / Price_Exit (approximate)
+    """
+    params = (
+        ('stocklike', False),
+        ('commtype', bt.CommInfoBase.COMM_PERC),
+        ('percabs', True),
+        ('leverage', 30.0),
+    )
+
+    def profitandloss(self, size, price, newprice):
+        # Standard PnL calculation (in Quote Currency JPY)
+        pnl_jpy = size * (newprice - price)
+        
+        # Convert JPY to USD using the closing price
+        if newprice > 0:
+            pnl_usd = pnl_jpy / newprice
+            return pnl_usd
+        else:
+            return pnl_jpy
+
+    def cashadjust(self, size, price, newprice):
+        '''Calculates cash adjustment for a given price difference'''
+        if not self._stocklike:
+            pnl_jpy = size * (newprice - price)
+            if newprice > 0:
+                pnl_usd = pnl_jpy / newprice
+                return pnl_usd
+        return 0.0
+
+
+# =============================================================================
 # MAIN EXECUTION
 # =============================================================================
 
@@ -1255,17 +1305,22 @@ if __name__ == '__main__':
     
     # Create cerebro
     cerebro = bt.Cerebro(stdstats=False)
-    cerebro.adddata(data)
+    cerebro.adddata(data, name=FOREX_INSTRUMENT)
     cerebro.broker.setcash(STARTING_CASH)
     
-    # Forex broker configuration - proper margin/leverage setup
-    cerebro.broker.setcommission(
-        commission=0.0,       # No commission (spread included in price)
-        leverage=100.0,       # 100:1 leverage for Forex
-        mult=1.0,             # Multiplier (1 for Forex)
-        margin=None,          # Auto-calculate margin from leverage
-        automargin=True       # Enable auto margin calculation
-    )
+    # Forex broker configuration - use custom commission for JPY pairs
+    if 'JPY' in FOREX_INSTRUMENT:
+        # Add custom commission for USDJPY (converts PnL from JPY to USD)
+        cerebro.broker.addcommissioninfo(USDJPYCommission(), name=FOREX_INSTRUMENT)
+    else:
+        # Standard forex configuration
+        cerebro.broker.setcommission(
+            commission=0.0,       # No commission (spread included in price)
+            leverage=100.0,       # 100:1 leverage for Forex
+            mult=1.0,             # Multiplier (1 for Forex)
+            margin=None,          # Auto-calculate margin from leverage
+            automargin=True       # Enable auto margin calculation
+        )
     
     cerebro.addstrategy(Eris)
     
@@ -1286,6 +1341,7 @@ if __name__ == '__main__':
     
     print(f"=== ERIS STRATEGY === ({FROMDATE} to {TODATE})")
     print(f"Data: {DATA_FILENAME}")
+    print(f"Instrument: {FOREX_INSTRUMENT} (Pip Value: {_CURRENT_CONFIG['pip_value']})")
     print(f"Pullback Candles: {LONG_PULLBACK_NUM_CANDLES}")
     print(f"Breakout Delay: {LONG_BREAKOUT_DELAY} ({LONG_BREAKOUT_DELAY_CANDLES} candles)")
     print(f"Max Entry Candles: {LONG_ENTRY_MAX_CANDLES}")

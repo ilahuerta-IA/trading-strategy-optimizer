@@ -134,8 +134,8 @@ import backtrader as bt
 DATA_FILENAME = 'USDJPY_5m_5Yea.csv'     # 💴 USDJPY - US Dollar vs Japanese Yen
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2023-12-01'               # Start date for backtesting (YYYY-MM-DD)
-TODATE = '2025-12-05'                 # End date for backtesting (YYYY-MM-DD)
+FROMDATE = '2020-01-10'               # Start date for backtesting (YYYY-MM-DD)
+TODATE = '2025-12-01'                 # End date for backtesting (YYYY-MM-DD)
 STARTING_CASH = 100000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
 LIMIT_BARS = 0                        # >0: Stop after N bars processed (0 = no limit)
@@ -575,7 +575,7 @@ class SunriseOgleUSDJPY(bt.Strategy):
                 
                 self.trade_report_file.write("="*80 + "\n")
                 self.trade_report_file.close()
-                print(f"📊 Trade report completed: {total_trades} trades recorded")
+                print(f"Trade report completed: {total_trades} trades recorded")
                 
             except Exception as e:
                 print(f"Trade reporting close error: {e}")
@@ -989,10 +989,10 @@ class SunriseOgleUSDJPY(bt.Strategy):
                 self.trade_report_file.write("="*80 + "\n\n")
                 self.trade_report_file.flush()
                 
-                print(f"📊 TRADE REPORT: {report_path}")
+                print(f"TRADE REPORT: {report_path}")
                 
             except Exception as e:
-                print(f"⚠️  Trade reporting initialization failed: {e}")
+                print(f"Trade reporting initialization failed: {e}")
                 self.trade_report_file = None
 
     def _reset_entry_state(self):
@@ -1465,7 +1465,7 @@ class SunriseOgleUSDJPY(bt.Strategy):
                     signal_type_display = " SHORT SELL"
 
                 if self.p.print_signals:
-                    print(f"🎯 VOLATILITY EXPANSION ENTRY{signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                    print(f"VOLATILITY EXPANSION ENTRY{signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f}")
 
                 current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                 
@@ -1622,7 +1622,7 @@ class SunriseOgleUSDJPY(bt.Strategy):
                             oco=self.stop_order
                         )
                         if self.p.print_signals:
-                            print(f"🛡️  LONG PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                            print(f"LONG PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
                 
                 else:
                     entry_type = " SHORT SELL"
@@ -1643,7 +1643,7 @@ class SunriseOgleUSDJPY(bt.Strategy):
                             oco=self.stop_order
                         )
                         if self.p.print_signals:
-                            print(f"🛡️  SHORT PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                            print(f"SHORT PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
                 
                 self.order = None
 
@@ -2015,12 +2015,12 @@ if __name__ == '__main__':
                 plot_title += f'Final Value: ${final_value:,.0f} | P&L: {final_pnl:+,.0f} | '
                 plot_title += f'Trades: {strategy_result.trades} | Win Rate: {(strategy_result.wins/strategy_result.trades*100) if strategy_result.trades > 0 else 0:.1f}%'
                 
-                print(f"📊 Showing {mode_description} strategy chart...")
+                print(f"Showing {mode_description} strategy chart...")
                 cerebro.plot(style='candlestick', subtitle=plot_title)
             except Exception as e: 
                 print(f"Plot error: {e}")
         else:
-            print(f"📊 Plotting disabled. Set ENABLE_PLOT=True and AUTO_PLOT_SINGLE_MODE=True to show charts.")
+            print(f"Plotting disabled. Set ENABLE_PLOT=True and AUTO_PLOT_SINGLE_MODE=True to show charts.")
     
 elif not RUN_DUAL_CEREBRO:
-    print(f"📊 Plotting disabled. Set ENABLE_PLOT=True to show charts.")
+    print(f"Plotting disabled. Set ENABLE_PLOT=True to show charts.")
