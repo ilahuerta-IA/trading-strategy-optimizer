@@ -58,7 +58,7 @@ ENABLE_PLOT = True
 # Resample 5M data to higher timeframes for testing
 # Options: 5 (original), 15, 30, 60 (1H), 240 (4H)
 # Higher TF = larger ATR = larger SL = less margin issues = less trades
-RESAMPLE_MINUTES = 5  # Change this to test different timeframes
+RESAMPLE_MINUTES = 60  # Change this to test different timeframes
 
 # === FOREX CONFIGURATION ===
 FOREX_INSTRUMENT = 'USDJPY'
@@ -1149,6 +1149,7 @@ class Eris(bt.Strategy):
                     exit_reason = "MANUAL_CLOSE"
                 
                 self.last_exit_reason = exit_reason
+                self.last_exit_price = exit_price  # Store for notify_trade
                 
                 if self.p.print_signals:
                     print(f"ERIS: EXIT at {exit_price:.5f} reason={exit_reason}")
@@ -1187,25 +1188,12 @@ class Eris(bt.Strategy):
         dt = self.data.datetime.datetime(0)
         pnl = trade.pnlcomm
         
-        # Get entry and exit prices
+        # Get entry and exit prices from stored values
         entry_price = self.last_entry_price if self.last_entry_price else 0
-        
-        # Calculate exit price correctly
-        if entry_price > 0 and abs(trade.size) > 0:
-            # PnL = (exit - entry) * size for LONG
-            exit_price = entry_price + (pnl / abs(trade.size))
-        else:
-            exit_price = trade.price
+        exit_price = getattr(self, 'last_exit_price', 0)
         
         # Use stored exit reason from notify_order
         exit_reason = getattr(self, 'last_exit_reason', 'UNKNOWN')
-        
-        # Fallback: price comparison
-        if exit_reason == 'UNKNOWN':
-            if self.stop_level and abs(exit_price - self.stop_level) < 0.0002:
-                exit_reason = "STOP_LOSS"
-            elif self.take_level and abs(exit_price - self.take_level) < 0.0002:
-                exit_reason = "TAKE_PROFIT"
         
         # Update statistics
         self.trades += 1
