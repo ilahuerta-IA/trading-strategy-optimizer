@@ -58,7 +58,7 @@ ENABLE_PLOT = True
 # Resample 5M data to higher timeframes for testing
 # Options: 5 (original), 15, 30, 60 (1H), 240 (4H)
 # Higher TF = larger ATR = larger SL = less margin issues = less trades
-RESAMPLE_MINUTES = 60  # Change this to test different timeframes
+RESAMPLE_MINUTES = 5  # Change this to test different timeframes
 
 # === FOREX CONFIGURATION ===
 FOREX_INSTRUMENT = 'USDJPY'
@@ -215,12 +215,15 @@ LONG_ATR_SL_MULTIPLIER = 1.0  # Restored to 1.0 for proper risk management
 LONG_ATR_TP_MULTIPLIER = 2.0  # Restored to 2.0 for 1:2 R:R
 
 # =============================================================================
-# MINIMUM SL FILTER - For realistic trading with spread costs
+# SL RANGE FILTER - Optimal range found via analysis
 # =============================================================================
-# With 0.7 pips spread, SL should be at least 7 pips for spread to be max 10% of risk
-# Rule of thumb: min_sl_pips >= spread * 10 (keeps spread cost under 10%)
-USE_MIN_SL_FILTER = False          # Disabled for higher TF (15M+)
-MIN_SL_PIPS = 7.0                   # Minimum SL distance in pips
+# Analysis of 2085 trades found optimal range: 12-15 pips
+# - 625 trades | 37.1% WR | PF 1.15 | $43,342 total
+# - 2024: $10,411 | 2025: $18,582 (both positive!)
+# Rule: Only take trades where SL is between MIN and MAX pips
+USE_MIN_SL_FILTER = False            # Enable SL range filter
+MIN_SL_PIPS = 12.0                  # Minimum SL distance in pips (was 10)
+MAX_SL_PIPS = 15.0                  # Maximum SL distance in pips (NEW!)
 SPREAD_PIPS = 0.7                   # Broker spread for cost calculation
 
 # Position sizing
@@ -398,9 +401,10 @@ class Eris(bt.Strategy):
         atr_length=ATR_LENGTH,
         long_atr_sl_multiplier=LONG_ATR_SL_MULTIPLIER,
         
-        # Minimum SL filter (realistic trading)
+        # SL Range filter (optimal: 12-15 pips)
         use_min_sl_filter=USE_MIN_SL_FILTER,
         min_sl_pips=MIN_SL_PIPS,
+        max_sl_pips=MAX_SL_PIPS,
         spread_pips=SPREAD_PIPS,
         long_atr_tp_multiplier=LONG_ATR_TP_MULTIPLIER,
         
@@ -897,14 +901,23 @@ class Eris(bt.Strategy):
         pip_risk = risk_distance / self.p.forex_pip_value  # Convert to pips
         
         # =================================================================
-        # MINIMUM SL FILTER - Skip entries with SL too tight for spread costs
+        # SL RANGE FILTER - Only take trades with SL in optimal range
         # =================================================================
-        if self.p.use_min_sl_filter and pip_risk < self.p.min_sl_pips:
-            spread_ratio = (self.p.spread_pips / pip_risk) * 100 if pip_risk > 0 else 100
-            if self.p.print_signals:
-                print(f"   SKIPPED: SL too tight ({pip_risk:.1f} pips < {self.p.min_sl_pips:.1f} min) | Spread would be {spread_ratio:.0f}% of risk")
-            self._reset_state()
-            return
+        if self.p.use_min_sl_filter:
+            # Check minimum SL (too tight = high spread cost)
+            if pip_risk < self.p.min_sl_pips:
+                spread_ratio = (self.p.spread_pips / pip_risk) * 100 if pip_risk > 0 else 100
+                if self.p.print_signals:
+                    print(f"   SKIPPED: SL too tight ({pip_risk:.1f} pips < {self.p.min_sl_pips:.1f} min) | Spread would be {spread_ratio:.0f}% of risk")
+                self._reset_state()
+                return
+            
+            # Check maximum SL (too wide = lower quality setups)
+            if pip_risk > self.p.max_sl_pips:
+                if self.p.print_signals:
+                    print(f"   SKIPPED: SL too wide ({pip_risk:.1f} pips > {self.p.max_sl_pips:.1f} max) | Outside optimal range")
+                self._reset_state()
+                return
         
         # =================================================================
         # PIP VALUE CALCULATION (CORRECTED - matches MT5 bot)

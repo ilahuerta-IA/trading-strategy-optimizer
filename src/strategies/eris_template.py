@@ -55,9 +55,26 @@ TODATE = '2025-12-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True
 
+# === TIMEFRAME RESAMPLING ===
+# Resample 5M data to higher timeframes for testing
+# Options: 5 (original), 15, 30, 60 (1H), 240 (4H)
+# Higher TF = larger ATR = larger SL = less trades
+RESAMPLE_MINUTES = 5  # Change this to test different timeframes
+
 # === FOREX CONFIGURATION ===
 FOREX_INSTRUMENT = 'USDCHF'
-PIP_VALUE = 0.0001  # Standard for CHF pairs
+PIP_VALUE = 0.0001  # Standard for CHF pairs (0.01 for JPY pairs)
+
+# === COMMISSION SETTINGS (Darwinex Zero USDCHF) ===
+# From broker specs:
+# - Spread: 0.7 pips (already in price, not simulated separately)
+# - Margin: 3.33% (30:1 leverage)
+# - Commission: $2.50 per lot per order (entry + exit)
+# Note: Backtrader calls _getcommission on EACH order (entry + exit)
+USE_FIXED_COMMISSION = False      # Disable commission for testing
+COMMISSION_PER_LOT_PER_ORDER = 2.50  # USD per lot per order
+SPREAD_PIPS = 0.7                 # Broker spread for cost calculation
+MARGIN_PERCENT = 3.33             # 3.33% margin = 30:1 leverage
 
 # === TRADE REPORTING ===
 EXPORT_TRADE_REPORTS = True
@@ -80,7 +97,8 @@ LONG_BREAKOUT_DELAY_CANDLES = 1
 LONG_ENTRY_MAX_CANDLES = 5  # OPTIMIZED: Reduced from 7 to 5
 
 # Require N green candles before the bullish trigger candle
-LONG_BEFORE_CANDLES = False  # OPTIMIZED: Enabled
+# USDCHF OPTIMIZED: Require 1 green candle before trigger for confirmation
+LONG_BEFORE_CANDLES = True  # ENABLED for USDCHF
 LONG_BEFORE_NUM_CANDLES = 1
 
 # =============================================================================
@@ -108,26 +126,38 @@ ATR_MAX_THRESHOLD = 0.00040
 # =============================================================================
 
 # Enable filter to avoid specific hours with poor performance
-# Disabled: Using TIME_RANGE_FILTER instead for simpler implementation
-USE_HOURS_TO_AVOID_FILTER = False  # Disabled, using TIME_RANGE_FILTER
+# USDCHF Analysis: These hours have PF < 1.0
+# Hour 3: PF 0.93 | Hour 6: PF 0.89 | Hour 7: PF 0.88 | Hour 10: PF 0.77
+# Hour 13: PF 0.71 | Hour 20: PF 0.38
+USE_HOURS_TO_AVOID_FILTER = False  # DISABLED by default - enable after analysis
 
 # Hours to avoid (UTC) - based on analysis showing PF < 1.0
 # Hour 3: PF 0.93 | Hour 6: PF 0.89 | Hour 7: PF 0.88 | Hour 10: PF 0.77
 # Hour 13: PF 0.71 | Hour 20: PF 0.38
-# Avoiding these hours: 515 trades, WR 45.4%, PF 1.59, Net $30,182
 HOURS_TO_AVOID = [3, 6, 7, 10, 13, 20]
 
 # =============================================================================
 # RISK MANAGEMENT PARAMETERS
 # =============================================================================
 
-# ATR settings for SL/TP calculation
-ATR_LENGTH = 10  # OPTIMIZED: Increased from 10 to 14
-LONG_ATR_SL_MULTIPLIER = 1.0  # Restored to 1.0 for proper risk management
-LONG_ATR_TP_MULTIPLIER = 2.0  # Restored to 2.0 for 1:2 R:R
+# ATR settings for SL/TP calculation (USDCHF OPTIMIZED: R:R = 1:5)
+ATR_LENGTH = 10
+LONG_ATR_SL_MULTIPLIER = 1.0  # SL = ATR x 1.0
+LONG_ATR_TP_MULTIPLIER = 5.0  # TP = ATR x 5.0 -> R:R = 1:5
+
+# =============================================================================
+# SL RANGE FILTER - Optimal range found via analysis
+# =============================================================================
+# Rule: Only take trades where SL is between MIN and MAX pips
+# Too tight = high spread cost relative to risk
+# Too wide = lower quality setups, may indicate high volatility
+USE_MIN_SL_FILTER = False           # Enable SL range filter
+MIN_SL_PIPS = 10.0                  # Minimum SL distance in pips
+MAX_SL_PIPS = 25.0                  # Maximum SL distance in pips
 
 # Position sizing
-RISK_PERCENT = 0.01  # 1% risk per trade
+RISK_PERCENT = 0.005  # 0.5% risk per trade
+MARGIN_PERCENT = 3.33  # 3.33% margin = 30:1 leverage (Darwinex Zero)
 
 # =============================================================================
 # MEAN REVERSION INDICATOR PARAMETERS (Ernest P. Chan)
@@ -154,12 +184,13 @@ MEAN_REVERSION_ZSCORE_LOWER = -2.0  # Below this = oversold
 # =============================================================================
 
 # Enable Mean Reversion as entry filter (only enter when price is in oversold zone)
-USE_MEAN_REVERSION_ENTRY_FILTER = False
+# USDCHF OPTIMIZED: Z-Score [-3.0, -1.0] filters for oversold entries
+USE_MEAN_REVERSION_ENTRY_FILTER = True  # ENABLED for USDCHF
 
 # Z-Score range for valid entries (only enter when Z-Score is within this range)
-# Analysis: Z-Score -3.0 to -2.0 has PF=1.44 with 234 trades (good balance)
-MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (more oversold limit)
-MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (more restrictive for quality)
+# Analysis: Z-Score -3.0 to -1.0 captures oversold bounce opportunities
+MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (deep oversold limit)
+MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (must be in oversold zone)
 
 # =============================================================================
 # OVERSOLD DURATION FILTER PARAMETERS
@@ -167,20 +198,120 @@ MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (more restrictive for quality)
 
 # Enable filter based on how long price has been in oversold zone
 # Filters out quick bounces (too few candles) and strong downtrends (too many)
-USE_OVERSOLD_DURATION_FILTER = False
+# USDCHF OPTIMIZED: Duration 6-11 candles is sweet spot
+USE_OVERSOLD_DURATION_FILTER = True  # ENABLED for USDCHF
 
 # Minimum candles price must be in oversold zone (Z-Score < threshold) before entry
 # Too few = likely noise/quick bounce, not real reversal
-# Analysis: Avoid hours [3,6,7,10,13,20] + candles >= 6 -> 515 trades, PF 1.59
-OVERSOLD_MIN_CANDLES = 6  # Restored to 6, hours filter handles quality
+# USDCHF Analysis: 6-11 candles gives best quality entries
+OVERSOLD_MIN_CANDLES = 6  # Min candles in oversold before entry
 
 # Maximum candles price can be in oversold zone before entry
 # Too many = likely strong downtrend, may not revert
-OVERSOLD_MAX_CANDLES = 11
+OVERSOLD_MAX_CANDLES = 11  # Max candles in oversold
 
 # Z-Score threshold to consider price in oversold zone for duration counting
 # Usually same as MR_ENTRY_ZSCORE_MAX or MEAN_REVERSION_ZSCORE_LOWER
 OVERSOLD_ZSCORE_THRESHOLD = -1.0
+
+
+# =============================================================================
+# INSTRUMENT CONFIGURATION - Auto-detect JPY pairs vs Standard pairs
+# =============================================================================
+# Configuration per instrument type:
+# - JPY pairs: pip_value=0.01, 3 decimal places, need P&L conversion
+# - Standard pairs: pip_value=0.0001, 5 decimal places, direct USD P&L
+
+INSTRUMENT_CONFIGS = {
+    'USDJPY': {'pip_value': 0.01, 'pip_decimal_places': 3, 'lot_size': 100000, 'atr_scale': 100.0, 'is_jpy': True},
+    'EURJPY': {'pip_value': 0.01, 'pip_decimal_places': 3, 'lot_size': 100000, 'atr_scale': 100.0, 'is_jpy': True},
+    'GBPJPY': {'pip_value': 0.01, 'pip_decimal_places': 3, 'lot_size': 100000, 'atr_scale': 100.0, 'is_jpy': True},
+    'USDCHF': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False},
+    'EURUSD': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False},
+    'GBPUSD': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False},
+    'XAUUSD': {'pip_value': 0.01, 'pip_decimal_places': 2, 'lot_size': 100, 'atr_scale': 1.0, 'is_jpy': False},
+}
+
+# Get config for current instrument (default to USDCHF-like if not found)
+_CURRENT_CONFIG = INSTRUMENT_CONFIGS.get(FOREX_INSTRUMENT, {
+    'pip_value': PIP_VALUE,
+    'pip_decimal_places': 5,
+    'lot_size': 100000,
+    'atr_scale': 1.0,
+    'is_jpy': 'JPY' in FOREX_INSTRUMENT
+})
+
+
+# =============================================================================
+# COMMISSION CLASS - Supports both JPY and Standard pairs
+# =============================================================================
+class ForexCommission(bt.CommInfoBase):
+    """
+    Commission scheme for Forex pairs with fixed commission per lot.
+    Supports both JPY pairs (P&L conversion) and standard pairs.
+    
+    Darwinex Zero specs (USDCHF):
+    - Commission: $2.50 per lot per order
+    - Spread: 0.7 pips (in price)
+    - Margin: 3.33% (30:1 leverage)
+    """
+    params = (
+        ('stocklike', False),
+        ('commtype', bt.CommInfoBase.COMM_FIXED),
+        ('percabs', True),
+        ('leverage', 500.0),  # High leverage for backtest (margin enforced in sizing)
+        ('automargin', True),
+        ('commission', 2.50),  # $2.50 per order
+        ('is_jpy_pair', False),  # Set True for JPY pairs
+        ('jpy_rate', 150.0),  # Approximate USDJPY rate for P&L conversion
+    )
+    
+    # Debug counters (class-level)
+    commission_calls = 0
+    total_commission = 0.0
+    total_lots = 0.0
+
+    def _getcommission(self, size, price, pseudoexec):
+        """Return commission based on lot size."""
+        if USE_FIXED_COMMISSION:
+            lots = abs(size) / 100000.0
+            comm = lots * COMMISSION_PER_LOT_PER_ORDER
+            
+            if not pseudoexec:
+                ForexCommission.commission_calls += 1
+                ForexCommission.total_commission += comm
+                ForexCommission.total_lots += lots
+            
+            return comm
+        return 0.0
+
+    def profitandloss(self, size, price, newprice):
+        """Calculate P&L - convert from quote currency to USD if needed.
+        
+        For USDXXX pairs (USD is base):
+        - P&L is in quote currency (CHF, JPY, CAD, etc.)
+        - Must divide by exit price to get USD
+        
+        For XXXUSD pairs (USD is quote):
+        - P&L is directly in USD
+        """
+        pnl_quote = size * (newprice - price)
+        
+        if self.p.is_jpy_pair:
+            # JPY pairs: size was normalized, compensate
+            pnl_quote = pnl_quote * self.p.jpy_rate
+        
+        # Convert quote currency P&L to USD by dividing by price
+        # This works for USDCHF, USDJPY, USDCAD, etc.
+        if newprice > 0:
+            return pnl_quote / newprice
+        return pnl_quote
+
+    def cashadjust(self, size, price, newprice):
+        """Adjust cash for non-stocklike instruments."""
+        if not self._stocklike:
+            return self.profitandloss(size, price, newprice)
+        return 0.0
 
 
 # =============================================================================
@@ -302,8 +433,15 @@ class Eris(bt.Strategy):
         long_atr_sl_multiplier=LONG_ATR_SL_MULTIPLIER,
         long_atr_tp_multiplier=LONG_ATR_TP_MULTIPLIER,
         
+        # SL Range filter
+        use_min_sl_filter=USE_MIN_SL_FILTER,
+        min_sl_pips=MIN_SL_PIPS,
+        max_sl_pips=MAX_SL_PIPS,
+        spread_pips=SPREAD_PIPS,
+        
         # Position sizing
         risk_percent=RISK_PERCENT,
+        margin_pct=MARGIN_PERCENT,
         contract_size=100000,
         
         # Forex settings (auto-configured from instrument)
@@ -370,10 +508,12 @@ class Eris(bt.Strategy):
         self.order = None
         self.stop_order = None
         self.limit_order = None
+        self.exit_this_bar = False  # Flag to prevent entry on same bar as exit
         
         # Price levels
         self.stop_level = None
         self.take_level = None
+        self.last_exit_price = None  # Store actual exit price for pips calculation
         
         # State machine variables
         self.state = "SCANNING"
@@ -750,7 +890,7 @@ class Eris(bt.Strategy):
         return is_valid
         
     def _execute_entry(self, dt, current_bar):
-        """Execute long entry order."""
+        """Execute long entry order with proper position sizing and SL range filter."""
         # Get ATR for SL/TP calculation
         atr_value = float(self.atr[0])
         if math.isnan(atr_value) or atr_value <= 0:
@@ -765,7 +905,7 @@ class Eris(bt.Strategy):
         self.stop_level = entry_price - (atr_value * self.p.long_atr_sl_multiplier)
         self.take_level = entry_price + (atr_value * self.p.long_atr_tp_multiplier)
         
-        # Position sizing (simplified for all forex pairs)
+        # Position sizing
         risk_distance = entry_price - self.stop_level
         if risk_distance <= 0:
             self._reset_state()
@@ -775,27 +915,91 @@ class Eris(bt.Strategy):
         equity = self.broker.get_value()
         risk_amount = equity * self.p.risk_percent  # e.g., $1000 for 1% of $100k
         
-        # Calculate pip risk and value per pip per lot
+        # Calculate pip risk (distance in pips)
         pip_risk = risk_distance / self.p.forex_pip_value  # Convert to pips
         
-        # For JPY pairs: value per pip per lot = lot_size * pip_value / price
-        # For USD pairs: value per pip per lot = lot_size * pip_value
-        if 'JPY' in self.p.forex_instrument:
-            # JPY pairs: pip value in account currency = (lot_size * pip_value) / current_price
-            value_per_pip_per_lot = (self.p.forex_lot_size * self.p.forex_pip_value) / entry_price
-        else:
-            # Standard pairs (USDCHF, EURUSD, etc.)
-            value_per_pip_per_lot = self.p.forex_lot_size * self.p.forex_pip_value
+        # =================================================================
+        # SL RANGE FILTER - Only take trades with SL in optimal range
+        # =================================================================
+        if self.p.use_min_sl_filter:
+            # Check minimum SL (too tight = high spread cost)
+            if pip_risk < self.p.min_sl_pips:
+                spread_ratio = (self.p.spread_pips / pip_risk) * 100 if pip_risk > 0 else 100
+                if self.p.print_signals:
+                    print(f"   SKIPPED: SL too tight ({pip_risk:.1f} pips < {self.p.min_sl_pips:.1f} min) | Spread would be {spread_ratio:.0f}% of risk")
+                self._reset_state()
+                return
+            
+            # Check maximum SL (too wide = lower quality setups)
+            if pip_risk > self.p.max_sl_pips:
+                if self.p.print_signals:
+                    print(f"   SKIPPED: SL too wide ({pip_risk:.1f} pips > {self.p.max_sl_pips:.1f} max) | Outside optimal range")
+                self._reset_state()
+                return
         
-        # Calculate optimal lot size
+        # =================================================================
+        # PIP VALUE CALCULATION (CORRECTED FOR QUOTE CURRENCY)
+        # =================================================================
+        # For 1 standard lot (100,000 units):
+        #
+        # JPY pairs (USDJPY, EURJPY, etc.):
+        #   - 1 pip = 0.01 price change
+        #   - P&L is in JPY, must convert to USD
+        #   - pip_value = 100,000 * 0.01 = 1,000 JPY per pip
+        #   - In USD: 1,000 / USDJPY_rate = ~$6.67 per pip per lot
+        #
+        # USDXXX pairs (USDCHF, USDCAD, etc.):
+        #   - 1 pip = 0.0001 price change
+        #   - P&L is in QUOTE currency (CHF, CAD), must convert to USD
+        #   - pip_value = 100,000 * 0.0001 = 10 CHF per pip
+        #   - In USD: 10 / USDCHF_rate = ~$10.30 per pip per lot
+        #
+        # XXXUSD pairs (EURUSD, GBPUSD, etc.):
+        #   - 1 pip = 0.0001 price change
+        #   - P&L is directly in USD
+        #   - pip_value = 100,000 * 0.0001 = $10 per pip per lot
+        # =================================================================
+        
+        if 'JPY' in self.p.forex_instrument:
+            # JPY pairs: pip value in JPY, convert to USD
+            pip_value_in_jpy = self.p.forex_lot_size * self.p.forex_pip_value  # 1000 JPY
+            value_per_pip_per_lot = pip_value_in_jpy / entry_price  # Convert to USD
+        elif self.p.forex_instrument.startswith('USD'):
+            # USDXXX pairs: pip value in quote currency, convert to USD
+            pip_value_in_quote = self.p.forex_lot_size * self.p.forex_pip_value  # 10 CHF
+            value_per_pip_per_lot = pip_value_in_quote / entry_price  # Convert to USD
+        else:
+            # XXXUSD pairs: pip value directly in USD
+            value_per_pip_per_lot = self.p.forex_lot_size * self.p.forex_pip_value  # $10
+        
+        # Calculate optimal lot size: lots = risk_amount / (pips * pip_value_per_lot)
         if pip_risk > 0 and value_per_pip_per_lot > 0:
             optimal_lots = risk_amount / (pip_risk * value_per_pip_per_lot)
         else:
             self._reset_state()
             return
         
-        # Round to standard lot sizes (min 0.01, max 5.0)
-        optimal_lots = max(0.01, min(5.0, round(optimal_lots, 2)))
+        # =====================================================================
+        # MARGIN CHECK - Limit lots based on available margin
+        # =====================================================================
+        # For Forex: 1 lot = $100,000 notional value
+        # Margin required per lot = $100,000 * margin_pct%
+        # Darwinex Zero: 3.33% margin = 30:1 leverage
+        # Note: With small SL and high risk%, margin may limit position size
+        margin_per_lot = self.p.forex_lot_size * (self.p.margin_pct / 100.0)
+        available_margin = equity  # Use 100% of equity for margin calculation
+        max_lots_by_margin = available_margin / margin_per_lot
+        
+        margin_limited = False
+        if optimal_lots > max_lots_by_margin:
+            margin_limited = True
+            if self.p.print_signals:
+                actual_risk_pct = (max_lots_by_margin * pip_risk * value_per_pip_per_lot / equity) * 100
+                print(f"   MARGIN LIMIT: {optimal_lots:.2f} -> {max_lots_by_margin:.2f} lots (actual risk: {actual_risk_pct:.2f}%)")
+            optimal_lots = max_lots_by_margin
+        
+        # Round to standard lot sizes (min 0.01)
+        optimal_lots = max(0.01, round(optimal_lots, 2))
         
         # Convert to Backtrader size
         bt_size = int(optimal_lots * self.p.forex_lot_size)
@@ -804,8 +1008,11 @@ class Eris(bt.Strategy):
         if bt_size < 1000:
             bt_size = 1000  # Minimum micro lot
         
+        # Calculate ACTUAL risk (after lot size limits applied)
+        actual_risk = optimal_lots * pip_risk * value_per_pip_per_lot
+        
         if self.p.print_signals:
-            print(f"   Position: {optimal_lots:.2f} lots ({bt_size:,} units) | Risk: ${risk_amount:.0f} | Pip Risk: {pip_risk:.1f}")
+            print(f"   Position: {optimal_lots:.2f} lots ({bt_size:,} units) | Target Risk: ${risk_amount:.0f} | Actual Risk: ${actual_risk:.0f} | Pips to SL: {pip_risk:.1f}")
         
         # Place buy order
         self.order = self.buy(size=bt_size)
@@ -825,7 +1032,6 @@ class Eris(bt.Strategy):
         self.last_entry_bar = current_bar
         
         # DO NOT reset state here - will be reset in notify_order when order completes
-        # self._reset_state()  # REMOVED - was causing multiple orders
 
     def _record_entry(self, dt, entry_price, size, atr_value):
         """Record trade entry for reporting with all indicator values."""
@@ -984,6 +1190,7 @@ class Eris(bt.Strategy):
                     exit_reason = "MANUAL_CLOSE"
                 
                 self.last_exit_reason = exit_reason
+                self.last_exit_price = exit_price  # Store for notify_trade pips calculation
                 
                 if self.p.print_signals:
                     print(f"ERIS: EXIT at {exit_price:.5f} reason={exit_reason}")
@@ -1015,32 +1222,19 @@ class Eris(bt.Strategy):
                 self.limit_order = None
 
     def notify_trade(self, trade):
-        """Handle trade notifications (same as Ogle)."""
+        """Handle trade notifications - use stored exit price for correct pips calculation."""
         if not trade.isclosed:
             return
         
         dt = self.data.datetime.datetime(0)
         pnl = trade.pnlcomm
         
-        # Get entry and exit prices
+        # Get entry and exit prices from stored values (set in notify_order)
         entry_price = self.last_entry_price if self.last_entry_price else 0
-        
-        # Calculate exit price correctly
-        if entry_price > 0 and abs(trade.size) > 0:
-            # PnL = (exit - entry) * size for LONG
-            exit_price = entry_price + (pnl / abs(trade.size))
-        else:
-            exit_price = trade.price
+        exit_price = getattr(self, 'last_exit_price', 0)
         
         # Use stored exit reason from notify_order
         exit_reason = getattr(self, 'last_exit_reason', 'UNKNOWN')
-        
-        # Fallback: price comparison
-        if exit_reason == 'UNKNOWN':
-            if self.stop_level and abs(exit_price - self.stop_level) < 0.0002:
-                exit_reason = "STOP_LOSS"
-            elif self.take_level and abs(exit_price - self.take_level) < 0.0002:
-                exit_reason = "TAKE_PROFIT"
         
         # Update statistics
         self.trades += 1
@@ -1061,11 +1255,14 @@ class Eris(bt.Strategy):
         })
         
         if self.p.print_signals:
-            pips = (exit_price - entry_price) / self.p.forex_pip_value if entry_price > 0 and self.p.forex_pip_value > 0 else 0
+            pips = (exit_price - entry_price) / self.p.forex_pip_value if entry_price > 0 and exit_price > 0 and self.p.forex_pip_value > 0 else 0
             print(f"ERIS TRADE CLOSED: Entry={entry_price:.5f} Exit={exit_price:.5f} P&L={pnl:.2f} Pips={pips:.1f} ({exit_reason})")
         
         # Record exit
         self._record_exit(dt, exit_price, pnl, exit_reason)
+        
+        # Mark that exit occurred this bar (prevents re-entry same bar)
+        self.exit_this_bar = True
         
         # Reset levels after trade close
         self.stop_level = None
@@ -1117,78 +1314,223 @@ class Eris(bt.Strategy):
                     sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
         # =================================================================
-        # YEARLY STATISTICS
+        # ADVANCED METRICS: CAGR, Sortino, Calmar, Monte Carlo
         # =================================================================
-        yearly_stats = defaultdict(lambda: {'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0})
+        cagr = 0.0
+        sortino_ratio = 0.0
+        calmar_ratio = 0.0
+        monte_carlo_dd_95 = 0.0
+        monte_carlo_dd_99 = 0.0
+        
+        # Calculate CAGR
+        if len(self._portfolio_values) > 1 and STARTING_CASH > 0:
+            total_return = final_value / STARTING_CASH
+            # Calculate years from actual trading period
+            if self._trade_pnls:
+                first_date = self._trade_pnls[0]['date']
+                last_date = self._trade_pnls[-1]['date']
+                days = (last_date - first_date).days
+                years = max(days / 365.25, 0.1)
+            else:
+                years = len(self._portfolio_values) / (252 * 24 * 12)
+                years = max(years, 0.1)
+            
+            if total_return > 0:
+                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
+        
+        # Calculate Sortino Ratio (uses downside deviation)
+        if len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                
+                # Downside deviation: std of negative returns only
+                negative_returns = returns_array[returns_array < 0]
+                if len(negative_returns) > 0:
+                    downside_dev = np.std(negative_returns)
+                    periods_per_year = 252 * 24 * 12
+                    if downside_dev > 0:
+                        sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
+        
+        # Calculate Calmar Ratio (CAGR / Max Drawdown)
+        if max_drawdown_pct > 0:
+            calmar_ratio = cagr / max_drawdown_pct
+        
+        # Monte Carlo Simulation
+        if len(self._trade_pnls) >= 20:
+            n_simulations = 10000
+            pnl_list = [t['pnl'] for t in self._trade_pnls]
+            mc_max_drawdowns = []
+            
+            for _ in range(n_simulations):
+                shuffled_pnl = np.random.permutation(pnl_list)
+                equity = STARTING_CASH
+                peak = equity
+                max_dd = 0.0
+                
+                for pnl in shuffled_pnl:
+                    equity += pnl
+                    if equity > peak:
+                        peak = equity
+                    dd = (peak - equity) / peak * 100.0 if peak > 0 else 0.0
+                    if dd > max_dd:
+                        max_dd = dd
+                
+                mc_max_drawdowns.append(max_dd)
+            
+            mc_max_drawdowns = np.array(mc_max_drawdowns)
+            monte_carlo_dd_95 = np.percentile(mc_max_drawdowns, 95)
+            monte_carlo_dd_99 = np.percentile(mc_max_drawdowns, 99)
+        
+        # =================================================================
+        # YEARLY STATISTICS WITH SHARPE/SORTINO
+        # =================================================================
+        yearly_stats = defaultdict(lambda: {
+            'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0,
+            'gross_profit': 0.0, 'gross_loss': 0.0, 'pnls': []
+        })
         
         for trade in self._trade_pnls:
             year = trade['year']
             yearly_stats[year]['trades'] += 1
             yearly_stats[year]['pnl'] += trade['pnl']
+            yearly_stats[year]['pnls'].append(trade['pnl'])
             if trade['is_winner']:
                 yearly_stats[year]['wins'] += 1
+                yearly_stats[year]['gross_profit'] += trade['pnl']
             else:
                 yearly_stats[year]['losses'] += 1
+                yearly_stats[year]['gross_loss'] += abs(trade['pnl'])
+        
+        # Calculate yearly Sharpe and Sortino
+        for year in yearly_stats:
+            pnls = yearly_stats[year]['pnls']
+            if len(pnls) > 1:
+                pnl_array = np.array(pnls)
+                mean_pnl = np.mean(pnl_array)
+                std_pnl = np.std(pnl_array)
+                
+                if std_pnl > 0:
+                    yearly_stats[year]['sharpe'] = (mean_pnl / std_pnl) * np.sqrt(len(pnls))
+                else:
+                    yearly_stats[year]['sharpe'] = 0.0
+                
+                neg_pnls = pnl_array[pnl_array < 0]
+                if len(neg_pnls) > 0:
+                    downside_std = np.std(neg_pnls)
+                    if downside_std > 0:
+                        yearly_stats[year]['sortino'] = (mean_pnl / downside_std) * np.sqrt(len(pnls))
+                    else:
+                        yearly_stats[year]['sortino'] = 0.0
+                else:
+                    yearly_stats[year]['sortino'] = float('inf') if mean_pnl > 0 else 0.0
+            else:
+                yearly_stats[year]['sharpe'] = 0.0
+                yearly_stats[year]['sortino'] = 0.0
         
         # =================================================================
         # PRINT SUMMARY
         # =================================================================
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 70)
         print("=== ERIS STRATEGY SUMMARY ===")
-        print("=" * 60)
+        print("=" * 70)
+        
+        # Commission info
+        if USE_FIXED_COMMISSION:
+            real_calls = ForexCommission.commission_calls
+            real_total = ForexCommission.total_commission
+            total_lots = ForexCommission.total_lots
+            avg_lots_per_order = total_lots / real_calls if real_calls > 0 else 0
+            avg_commission_per_trade = real_total / self.trades if self.trades > 0 else 0
+            print(f"Commission: ${COMMISSION_PER_LOT_PER_ORDER:.2f}/lot/order (Darwinex Zero)")
+            print(f"Total commission: ${real_total:,.2f} | Avg per trade: ${avg_commission_per_trade:.2f}")
+        else:
+            print("Commission: DISABLED")
         
         print(f"Total Trades: {self.trades}")
         print(f"Wins: {self.wins} | Losses: {self.losses}")
         print(f"Win Rate: {win_rate:.1f}%")
         print(f"Profit Factor: {profit_factor:.2f}")
-        print(f"Gross Profit: {self.gross_profit:.2f}")
-        print(f"Gross Loss: {self.gross_loss:.2f}")
-        print(f"Net P&L: {total_pnl:.2f}")
+        print(f"Gross Profit: {self.gross_profit:,.2f}")
+        print(f"Gross Loss: {self.gross_loss:,.2f}")
+        print(f"Net P&L: {total_pnl:,.2f}")
         print(f"Final Value: {final_value:,.2f}")
-        print("=" * 60)
         
-        # Advanced Metrics
-        print(f"\n{'='*60}")
-        print("RISK METRICS")
-        print(f"{'='*60}")
-        print(f"Max Drawdown: {max_drawdown_pct:.2f}%")
-        print(f"Sharpe Ratio: {sharpe_ratio:.3f}")
-        print(f"{'='*60}")
+        # Advanced Metrics with quality indicators
+        print(f"\n{'='*70}")
+        print("ADVANCED RISK METRICS")
+        print(f"{'='*70}")
+        
+        sharpe_status = "Poor" if sharpe_ratio < 0.5 else "Marginal" if sharpe_ratio < 1.0 else "Good" if sharpe_ratio < 2.0 else "Excellent"
+        print(f"Sharpe Ratio:    {sharpe_ratio:>8.2f}  [{sharpe_status}]")
+        
+        sortino_status = "Poor" if sortino_ratio < 0.5 else "Marginal" if sortino_ratio < 1.0 else "Good" if sortino_ratio < 2.0 else "Excellent"
+        print(f"Sortino Ratio:   {sortino_ratio:>8.2f}  [{sortino_status}]")
+        
+        cagr_status = "Below Market" if cagr < 8 else "Market-level" if cagr < 12 else "Good" if cagr < 20 else "Exceptional"
+        print(f"CAGR:            {cagr:>7.2f}%  [{cagr_status}]")
+        
+        dd_status = "Excellent" if max_drawdown_pct < 10 else "Acceptable" if max_drawdown_pct < 20 else "High" if max_drawdown_pct < 30 else "Dangerous"
+        print(f"Max Drawdown:    {max_drawdown_pct:>7.2f}%  [{dd_status}]")
+        
+        calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
+        print(f"Calmar Ratio:    {calmar_ratio:>8.2f}  [{calmar_status}]")
+        
+        if monte_carlo_dd_95 > 0:
+            mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
+            mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"
+            print(f"\nMonte Carlo Analysis (10,000 simulations):")
+            print(f"  95th Percentile DD: {monte_carlo_dd_95:>6.2f}%  [{mc_status}]")
+            print(f"  99th Percentile DD: {monte_carlo_dd_99:>6.2f}%")
+            print(f"  Historical vs MC95: {mc_ratio:.2f}x")
+        
+        print(f"{'='*70}")
         
         # Yearly Statistics
         if yearly_stats:
-            print(f"\n{'='*60}")
+            print(f"\n{'='*70}")
             print("YEARLY STATISTICS")
-            print(f"{'='*60}")
-            print(f"{'Year':<6} {'Trades':>8} {'Wins':>6} {'Losses':>8} {'WR%':>8} {'PnL':>12} {'PF':>8}")
-            print(f"{'-'*60}")
+            print(f"{'='*70}")
+            print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12} {'Sharpe':>8} {'Sortino':>8}")
+            print(f"{'-'*70}")
             
             for year in sorted(yearly_stats.keys()):
                 stats = yearly_stats[year]
                 wr = (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
-                # Calculate yearly PF
-                year_gross_profit = sum(t['pnl'] for t in self._trade_pnls if t['year'] == year and t['pnl'] > 0)
-                year_gross_loss = abs(sum(t['pnl'] for t in self._trade_pnls if t['year'] == year and t['pnl'] < 0))
-                year_pf = (year_gross_profit / year_gross_loss) if year_gross_loss > 0 else float('inf')
+                year_pf = (stats['gross_profit'] / stats['gross_loss']) if stats['gross_loss'] > 0 else float('inf')
+                year_sharpe = stats.get('sharpe', 0.0)
+                year_sortino = stats.get('sortino', 0.0)
                 
-                print(f"{year:<6} {stats['trades']:>8} {stats['wins']:>6} {stats['losses']:>8} "
-                      f"{wr:>7.1f}% ${stats['pnl']:>10,.2f} {year_pf:>7.2f}")
+                sortino_str = f"{year_sortino:>7.2f}" if year_sortino != float('inf') else "    inf"
+                
+                print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {year_pf:>7.2f} ${stats['pnl']:>10,.0f} {year_sharpe:>8.2f} {sortino_str}")
             
-            print(f"{'='*60}")
+            print(f"{'='*70}")
         
         # Close trade report
         if self.trade_report_file:
             try:
-                self.trade_report_file.write("\n" + "=" * 60 + "\n")
+                self.trade_report_file.write("\n" + "=" * 70 + "\n")
                 self.trade_report_file.write("SUMMARY\n")
-                self.trade_report_file.write("=" * 60 + "\n")
+                self.trade_report_file.write("=" * 70 + "\n")
                 self.trade_report_file.write(f"Total Trades: {self.trades}\n")
                 self.trade_report_file.write(f"Wins: {self.wins} | Losses: {self.losses}\n")
                 self.trade_report_file.write(f"Win Rate: {win_rate:.1f}%\n")
                 self.trade_report_file.write(f"Profit Factor: {profit_factor:.2f}\n")
                 self.trade_report_file.write(f"Max Drawdown: {max_drawdown_pct:.2f}%\n")
-                self.trade_report_file.write(f"Sharpe Ratio: {sharpe_ratio:.3f}\n")
-                self.trade_report_file.write(f"Net P&L: {total_pnl:.2f}\n")
+                self.trade_report_file.write(f"Sharpe Ratio: {sharpe_ratio:.2f}\n")
+                self.trade_report_file.write(f"Sortino Ratio: {sortino_ratio:.2f}\n")
+                self.trade_report_file.write(f"CAGR: {cagr:.2f}%\n")
+                self.trade_report_file.write(f"Calmar Ratio: {calmar_ratio:.2f}\n")
+                if monte_carlo_dd_95 > 0:
+                    self.trade_report_file.write(f"Monte Carlo DD 95%: {monte_carlo_dd_95:.2f}%\n")
+                    self.trade_report_file.write(f"Monte Carlo DD 99%: {monte_carlo_dd_99:.2f}%\n")
+                self.trade_report_file.write(f"Net P&L: {total_pnl:,.2f}\n")
                 self.trade_report_file.write(f"Final Value: {final_value:,.2f}\n")
                 self.trade_report_file.close()
             except Exception as e:
@@ -1216,46 +1558,6 @@ class SLTPObserver(bt.Observer):
         else:
             self.lines.sl[0] = float('nan')
             self.lines.tp[0] = float('nan')
-
-
-# =============================================================================
-# CUSTOM COMMISSION FOR USDJPY (converts PnL from JPY to USD)
-# =============================================================================
-
-class USDJPYCommission(bt.CommInfoBase):
-    """
-    Custom Commission Scheme for USDJPY when Account Currency is USD.
-    
-    Logic:
-    - PnL in JPY = (Price_Exit - Price_Entry) * Size
-    - PnL in USD = PnL in JPY / Price_Exit (approximate)
-    """
-    params = (
-        ('stocklike', False),
-        ('commtype', bt.CommInfoBase.COMM_PERC),
-        ('percabs', True),
-        ('leverage', 30.0),
-    )
-
-    def profitandloss(self, size, price, newprice):
-        # Standard PnL calculation (in Quote Currency JPY)
-        pnl_jpy = size * (newprice - price)
-        
-        # Convert JPY to USD using the closing price
-        if newprice > 0:
-            pnl_usd = pnl_jpy / newprice
-            return pnl_usd
-        else:
-            return pnl_jpy
-
-    def cashadjust(self, size, price, newprice):
-        '''Calculates cash adjustment for a given price difference'''
-        if not self._stocklike:
-            pnl_jpy = size * (newprice - price)
-            if newprice > 0:
-                pnl_usd = pnl_jpy / newprice
-                return pnl_usd
-        return 0.0
 
 
 # =============================================================================
@@ -1305,22 +1607,30 @@ if __name__ == '__main__':
     
     # Create cerebro
     cerebro = bt.Cerebro(stdstats=False)
-    cerebro.adddata(data, name=FOREX_INSTRUMENT)
+    
+    # =========================================================================
+    # TIMEFRAME RESAMPLING - Convert 5M to higher timeframes if configured
+    # =========================================================================
+    if RESAMPLE_MINUTES > 5:
+        cerebro.adddata(data, name=f"{FOREX_INSTRUMENT}_5M")
+        cerebro.resampledata(
+            data,
+            name=FOREX_INSTRUMENT,
+            timeframe=bt.TimeFrame.Minutes,
+            compression=RESAMPLE_MINUTES
+        )
+        print(f"Resampling: 5M -> {RESAMPLE_MINUTES}M")
+    else:
+        cerebro.adddata(data, name=FOREX_INSTRUMENT)
     cerebro.broker.setcash(STARTING_CASH)
     
-    # Forex broker configuration - use custom commission for JPY pairs
-    if 'JPY' in FOREX_INSTRUMENT:
-        # Add custom commission for USDJPY (converts PnL from JPY to USD)
-        cerebro.broker.addcommissioninfo(USDJPYCommission(), name=FOREX_INSTRUMENT)
-    else:
-        # Standard forex configuration
-        cerebro.broker.setcommission(
-            commission=0.0,       # No commission (spread included in price)
-            leverage=100.0,       # 100:1 leverage for Forex
-            mult=1.0,             # Multiplier (1 for Forex)
-            margin=None,          # Auto-calculate margin from leverage
-            automargin=True       # Enable auto margin calculation
-        )
+    # Forex broker configuration - use ForexCommission for all pairs
+    is_jpy = _CURRENT_CONFIG.get('is_jpy', 'JPY' in FOREX_INSTRUMENT)
+    commission_info = ForexCommission(
+        is_jpy_pair=is_jpy,
+        jpy_rate=150.0  # Approximate rate for JPY P&L conversion
+    )
+    cerebro.broker.addcommissioninfo(commission_info, name=FOREX_INSTRUMENT)
     
     cerebro.addstrategy(Eris)
     
@@ -1341,12 +1651,15 @@ if __name__ == '__main__':
     
     print(f"=== ERIS STRATEGY === ({FROMDATE} to {TODATE})")
     print(f"Data: {DATA_FILENAME}")
+    print(f"Timeframe: {RESAMPLE_MINUTES}M")
     print(f"Instrument: {FOREX_INSTRUMENT} (Pip Value: {_CURRENT_CONFIG['pip_value']})")
     print(f"Pullback Candles: {LONG_PULLBACK_NUM_CANDLES}")
     print(f"Breakout Delay: {LONG_BREAKOUT_DELAY} ({LONG_BREAKOUT_DELAY_CANDLES} candles)")
     print(f"Max Entry Candles: {LONG_ENTRY_MAX_CANDLES}")
     print(f"Before Candles: {LONG_BEFORE_CANDLES} ({LONG_BEFORE_NUM_CANDLES})")
-    print(f"SL/TP Lines: {PLOT_SLTP_LINES}")
+    print(f"MR Filter: {USE_MEAN_REVERSION_ENTRY_FILTER} (Z: [{MR_ENTRY_ZSCORE_MIN}, {MR_ENTRY_ZSCORE_MAX}])")
+    print(f"Oversold Duration: {USE_OVERSOLD_DURATION_FILTER} ({OVERSOLD_MIN_CANDLES}-{OVERSOLD_MAX_CANDLES} candles)")
+    print(f"R:R = 1:{LONG_ATR_TP_MULTIPLIER/LONG_ATR_SL_MULTIPLIER:.0f}")
     print()
     
     # Run backtest
