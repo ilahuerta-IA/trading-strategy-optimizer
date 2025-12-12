@@ -50,8 +50,8 @@ import numpy as np
 DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-01-01'
-TODATE = '2025-12-01'
+FROMDATE = '2020-07-01'
+TODATE = '2025-07-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True
 
@@ -59,7 +59,7 @@ ENABLE_PLOT = True
 # Resample 5M data to higher timeframes for testing
 # Options: 5 (original), 15, 30, 60 (1H), 240 (4H)
 # Higher TF = larger ATR = larger SL = less trades
-RESAMPLE_MINUTES = 5  # Change this to test different timeframes
+RESAMPLE_MINUTES = 5  # Change this to test different timeframes (5, 15, 30, 60)
 
 # === FOREX CONFIGURATION ===
 FOREX_INSTRUMENT = 'USDCHF'
@@ -71,7 +71,7 @@ PIP_VALUE = 0.0001  # Standard for CHF pairs (0.01 for JPY pairs)
 # - Margin: 3.33% (30:1 leverage)
 # - Commission: $2.50 per lot per order (entry + exit)
 # Note: Backtrader calls _getcommission on EACH order (entry + exit)
-USE_FIXED_COMMISSION = False      # Disable commission for testing
+USE_FIXED_COMMISSION = True      # Disable commission for testing
 COMMISSION_PER_LOT_PER_ORDER = 2.50  # USD per lot per order
 SPREAD_PIPS = 0.7                 # Broker spread for cost calculation
 MARGIN_PERCENT = 3.33             # 3.33% margin = 30:1 leverage
@@ -152,8 +152,8 @@ LONG_ATR_TP_MULTIPLIER = 5.0  # TP = ATR x 5.0 -> R:R = 1:5
 # Too tight = high spread cost relative to risk
 # Too wide = lower quality setups, may indicate high volatility
 USE_MIN_SL_FILTER = False           # Enable SL range filter
-MIN_SL_PIPS = 10.0                  # Minimum SL distance in pips
-MAX_SL_PIPS = 25.0                  # Maximum SL distance in pips
+MIN_SL_PIPS = 3.0                   # Minimum SL distance in pips (spread 0.7 = 14% cost)
+MAX_SL_PIPS = 250.0                  # Maximum SL distance in pips
 
 # Position sizing
 RISK_PERCENT = 0.005  # 0.5% risk per trade
@@ -1612,12 +1612,12 @@ if __name__ == '__main__':
     # TIMEFRAME RESAMPLING - Convert 5M to higher timeframes if configured
     # =========================================================================
     if RESAMPLE_MINUTES > 5:
-        cerebro.adddata(data, name=f"{FOREX_INSTRUMENT}_5M")
+        # Use resampledata ONLY (not adddata) - it handles everything
         cerebro.resampledata(
             data,
-            name=FOREX_INSTRUMENT,
             timeframe=bt.TimeFrame.Minutes,
-            compression=RESAMPLE_MINUTES
+            compression=RESAMPLE_MINUTES,
+            name=FOREX_INSTRUMENT
         )
         print(f"Resampling: 5M -> {RESAMPLE_MINUTES}M")
     else:
