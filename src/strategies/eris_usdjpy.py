@@ -54,6 +54,12 @@ TODATE = '2025-12-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True
 
+# === TIMEFRAME RESAMPLING ===
+# Resample 5M data to higher timeframes for testing
+# Options: 5 (original), 15, 30, 60 (1H), 240 (4H)
+# Higher TF = larger ATR = larger SL = less margin issues = less trades
+RESAMPLE_MINUTES = 5  # Change this to test different timeframes
+
 # === FOREX CONFIGURATION ===
 FOREX_INSTRUMENT = 'USDJPY'
 PIP_VALUE = 0.01  # JPY pairs use 0.01 vs 0.0001 for standard pairs
@@ -78,14 +84,16 @@ class USDJPYCommission(bt.CommInfoBase):
     Key insight: When trading USDJPY, PnL is in JPY and needs to be converted
     to USD by dividing by the current USD/JPY rate.
     
-    Also supports fixed commission per trade (spread + swap + fees).
+    For margin: We use high leverage (500:1) in backtest to avoid rejections.
+    Real broker margin (3.33%) is enforced via position sizing limits.
     """
     params = (
         ('stocklike', False),
         ('commtype', bt.CommInfoBase.COMM_FIXED),  # Fixed commission
         ('percabs', True),
-        ('leverage', 30.0),
-        ('commission', 0.0),  # Fixed commission amount per trade
+        ('leverage', 500.0),  # High leverage for backtest (margin enforced in sizing)
+        ('automargin', True),  # Auto-calculate margin from leverage
+        ('commission', 2.50),  # $2.50 per order (from broker specs)
     )
     
     # Debug counters
@@ -116,8 +124,14 @@ class USDJPYCommission(bt.CommInfoBase):
         return 0.0
 
     def profitandloss(self, size, price, newprice):
-        """Calculate P&L in USD from JPY-denominated gains/losses."""
-        pnl_jpy = size * (newprice - price)
+        """Calculate P&L in USD from JPY-denominated gains/losses.
+        
+        Since bt_size is divided by ~150 for margin management,
+        we multiply P&L by 150 to compensate and get correct USD P&L.
+        """
+        # Size was divided by forex_jpy_rate (~150), so we multiply back
+        JPY_RATE_COMPENSATION = 150.0
+        pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
         if newprice > 0:
             pnl_usd = pnl_jpy / newprice
             return pnl_usd
@@ -126,7 +140,9 @@ class USDJPYCommission(bt.CommInfoBase):
     def cashadjust(self, size, price, newprice):
         """Adjust cash for non-stocklike instruments (forex)."""
         if not self._stocklike:
-            pnl_jpy = size * (newprice - price)
+            # Same compensation for cash adjustment
+            JPY_RATE_COMPENSATION = 150.0
+            pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
             if newprice > 0:
                 return pnl_jpy / newprice
         return 0.0
@@ -197,6 +213,15 @@ HOURS_TO_AVOID = [1, 9, 17, 19, 20, 21, 23]  # Worst performing hours for USDJPY
 ATR_LENGTH = 10  # OPTIMIZED: Increased from 10 to 14
 LONG_ATR_SL_MULTIPLIER = 1.0  # Restored to 1.0 for proper risk management
 LONG_ATR_TP_MULTIPLIER = 2.0  # Restored to 2.0 for 1:2 R:R
+
+# =============================================================================
+# MINIMUM SL FILTER - For realistic trading with spread costs
+# =============================================================================
+# With 0.7 pips spread, SL should be at least 7 pips for spread to be max 10% of risk
+# Rule of thumb: min_sl_pips >= spread * 10 (keeps spread cost under 10%)
+USE_MIN_SL_FILTER = False          # Disabled for higher TF (15M+)
+MIN_SL_PIPS = 7.0                   # Minimum SL distance in pips
+SPREAD_PIPS = 0.7                   # Broker spread for cost calculation
 
 # Position sizing
 RISK_PERCENT = 0.005  # 0.5% risk per trade (system NOT robust enough for 0.1%)
@@ -372,6 +397,11 @@ class Eris(bt.Strategy):
         # ATR settings
         atr_length=ATR_LENGTH,
         long_atr_sl_multiplier=LONG_ATR_SL_MULTIPLIER,
+        
+        # Minimum SL filter (realistic trading)
+        use_min_sl_filter=USE_MIN_SL_FILTER,
+        min_sl_pips=MIN_SL_PIPS,
+        spread_pips=SPREAD_PIPS,
         long_atr_tp_multiplier=LONG_ATR_TP_MULTIPLIER,
         
         # Position sizing
@@ -383,7 +413,9 @@ class Eris(bt.Strategy):
         forex_pip_value=PIP_VALUE,          # 0.01 for JPY pairs
         forex_pip_decimal_places=3,          # JPY uses 3 decimal places
         forex_lot_size=100000,
+        forex_jpy_rate=150.0,                # USDJPY rate for normalization
         forex_atr_scale=100.0,               # ATR es ~100x mayor que CHF
+        forex_margin_pct=3.33,               # 3.33% margin = 30:1 leverage (real broker)
         
         # Display settings
         print_signals=True,
@@ -442,6 +474,7 @@ class Eris(bt.Strategy):
         self.order = None
         self.stop_order = None
         self.limit_order = None
+        self.exit_this_bar = False  # Flag to prevent entry on same bar as exit
         
         # Price levels
         self.stop_level = None
@@ -578,27 +611,39 @@ class Eris(bt.Strategy):
         # Track portfolio value for Sharpe/Drawdown calculation
         self._portfolio_values.append(self.broker.get_value())
         
+        # RESET exit flag at start of each new bar (Pine Script pattern)
+        self.exit_this_bar = False
+        
         current_bar = len(self)
         dt = self.data.datetime.datetime(0)
         
-        # Cancel phantom orders when no position
+        # Check if we have pending ENTRY orders - wait for execution
+        if self.order:
+            return  # Wait for entry order to complete before doing anything else
+        
+        # Cancel orphaned PROTECTIVE orders when no position (cleanup SL/TP)
+        # But do NOT cancel entry orders here - they are handled by self.order check above
         if not self.position:
-            if self.order:
-                self.cancel(self.order)
-                self.order = None
             if self.stop_order:
-                self.cancel(self.stop_order)
+                try:
+                    self.cancel(self.stop_order)
+                except:
+                    pass
                 self.stop_order = None
+                    
             if self.limit_order:
-                self.cancel(self.limit_order)
+                try:
+                    self.cancel(self.limit_order)
+                except:
+                    pass
                 self.limit_order = None
         
-        # Skip if waiting for order execution
-        if self.order:
+        # POSITION MANAGEMENT - if in position, just return (no new entries)
+        if self.position:
             return
         
-        # Skip entry logic if in position OR if we have pending SL/TP orders
-        if self.position or self.stop_order or self.limit_order:
+        # No entry if exit was taken on same bar (Pine Script pattern)
+        if self.exit_this_bar:
             return
         
         # =================================================================
@@ -852,6 +897,16 @@ class Eris(bt.Strategy):
         pip_risk = risk_distance / self.p.forex_pip_value  # Convert to pips
         
         # =================================================================
+        # MINIMUM SL FILTER - Skip entries with SL too tight for spread costs
+        # =================================================================
+        if self.p.use_min_sl_filter and pip_risk < self.p.min_sl_pips:
+            spread_ratio = (self.p.spread_pips / pip_risk) * 100 if pip_risk > 0 else 100
+            if self.p.print_signals:
+                print(f"   SKIPPED: SL too tight ({pip_risk:.1f} pips < {self.p.min_sl_pips:.1f} min) | Spread would be {spread_ratio:.0f}% of risk")
+            self._reset_state()
+            return
+        
+        # =================================================================
         # PIP VALUE CALCULATION (CORRECTED - matches MT5 bot)
         # =================================================================
         # For 1 standard lot (100,000 units):
@@ -881,19 +936,41 @@ class Eris(bt.Strategy):
             self._reset_state()
             return
         
-        # Round to standard lot sizes (min 0.01, max 10.0)
-        # Note: Max increased to 10.0 for realistic position sizing
-        optimal_lots = max(0.01, min(10.0, round(optimal_lots, 2)))
+        # =====================================================================
+        # MARGIN CHECK - Limit lots based on available margin (real broker: 3.33%)
+        # =====================================================================
+        # For USDJPY: 1 lot = $100,000 notional value
+        # Margin required per lot = $100,000 * 3.33% = $3,330
+        margin_per_lot = self.p.forex_lot_size * (self.p.forex_margin_pct / 100.0)
+        available_margin = equity * 0.80  # Use max 80% of equity for margin
+        max_lots_by_margin = available_margin / margin_per_lot
+        
+        if optimal_lots > max_lots_by_margin:
+            if self.p.print_signals:
+                print(f"   MARGIN LIMIT: Reduced from {optimal_lots:.2f} to {max_lots_by_margin:.2f} lots (margin constraint)")
+            optimal_lots = max_lots_by_margin
+        
+        # Round to standard lot sizes (min 0.01)
+        optimal_lots = max(0.01, round(optimal_lots, 2))
         
         # Convert to Backtrader size
-        bt_size = int(optimal_lots * self.p.forex_lot_size)
+        # For JPY pairs: normalize size for Backtrader to work correctly
+        # P&L will be scaled down by forex_jpy_rate - we compensate in profitandloss()
+        real_contracts = int(optimal_lots * self.p.forex_lot_size)
+        if 'JPY' in self.p.forex_instrument:
+            bt_size = int(real_contracts / self.p.forex_jpy_rate)
+        else:
+            bt_size = real_contracts
         
         # Minimum size check
-        if bt_size < 1000:
-            bt_size = 1000  # Minimum micro lot
+        if bt_size < 100:
+            bt_size = 100
+        
+        # Calculate ACTUAL risk (after lot size limits applied)
+        actual_risk = optimal_lots * pip_risk * value_per_pip_per_lot
         
         if self.p.print_signals:
-            print(f"   Position: {optimal_lots:.2f} lots ({bt_size:,} units) | Risk: ${risk_amount:.0f} | Pip Risk: {pip_risk:.1f}")
+            print(f"   Position: {optimal_lots:.2f} lots ({bt_size:,} units) | Target Risk: ${risk_amount:.0f} | Actual Risk: ${actual_risk:.0f} | Pips to SL: {pip_risk:.1f}")
         
         # Place buy order
         self.order = self.buy(size=bt_size)
@@ -1154,6 +1231,9 @@ class Eris(bt.Strategy):
         
         # Record exit
         self._record_exit(dt, exit_price, pnl, exit_reason)
+        
+        # Mark that exit occurred this bar (prevents re-entry same bar)
+        self.exit_this_bar = True
         
         # Reset levels after trade close
         self.stop_level = None
@@ -1555,7 +1635,19 @@ if __name__ == '__main__':
     
     # Create cerebro
     cerebro = bt.Cerebro(stdstats=False)
-    cerebro.adddata(data, name=FOREX_INSTRUMENT)
+    
+    # Resample to higher timeframe if configured
+    if RESAMPLE_MINUTES > 5:
+        cerebro.resampledata(
+            data,
+            timeframe=bt.TimeFrame.Minutes,
+            compression=RESAMPLE_MINUTES,
+            name=FOREX_INSTRUMENT
+        )
+        print(f"Resampling 5M data to {RESAMPLE_MINUTES}M timeframe")
+    else:
+        cerebro.adddata(data, name=FOREX_INSTRUMENT)
+    
     cerebro.broker.setcash(STARTING_CASH)
     
     # Forex broker configuration - use custom commission for JPY pairs
