@@ -140,7 +140,7 @@ _CURRENT_CONFIG = INSTRUMENT_CONFIGS.get(FOREX_INSTRUMENT, {
 # === LONG ATR VOLATILITY FILTER (USDCHF OPTIMIZED) ===
 LONG_USE_ATR_FILTER = True                   # Enable ATR-based volatility filtering
 LONG_ATR_MIN_THRESHOLD = 0.000300            # Minimum ATR for entry
-LONG_ATR_MAX_THRESHOLD = 0.000700            # Maximum ATR for entry
+LONG_ATR_MAX_THRESHOLD = 0.000900            # Maximum ATR for entry (optimized Phase 4)
 
 # ATR INCREMENT FILTER (DISABLED for USDCHF)
 LONG_USE_ATR_INCREMENT_FILTER = False        # Disabled - inferior performance
@@ -251,12 +251,12 @@ class ForexCommission(bt.CommInfoBase):
 
 class SunriseOgle(bt.Strategy):
     params = dict(
-        # === TECHNICAL INDICATORS (USDCHF OPTIMIZED) ===
-        ema_fast_length=18,              # Fast EMA period for trend detection
-        ema_medium_length=18,            # Medium EMA period for trend confirmation
-        ema_slow_length=24,              # Slow EMA period for trend strength
+        # === TECHNICAL INDICATORS (USDCHF OPTIMIZED - Phase 3) ===
+        ema_fast_length=24,              # Fast EMA period (optimized from 18)
+        ema_medium_length=30,            # Medium EMA period (optimized from 18)
+        ema_slow_length=36,              # Slow EMA period (optimized from 24)
         ema_confirm_length=1,            # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=50,      # Price filter EMA to avoid counter-trend trades
+        ema_filter_price_length=40,      # Price filter EMA (optimized from 50)
         ema_exit_length=25,              # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
