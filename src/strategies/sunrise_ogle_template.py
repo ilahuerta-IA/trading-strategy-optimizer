@@ -8,79 +8,49 @@ SUPPORTED INSTRUMENTS:
 - USDJPY - 0.01 pip value, 3 decimals, JPY P&L conversion
 - EURUSD, GBPUSD, NZDUSD, AUDUSD - 0.0001 pip value, 5 decimals
 
-ENTRY MODES
------------
-> TRADING DIRECTION:
-  - LONG ONLY: Buy entries when uptrend conditions met
-  
-> VOLATILITY EXPANSION CHANNEL ENTRY SYSTEM (use_pullback_entry=True) - RECOMMENDED:
-  ADVANCED 4-PHASE STATE MACHINE for superior entry timing:
-  
-  PHASE 1 - SIGNAL SCANNING:
+ENTRY SYSTEM: VOLATILITY EXPANSION CHANNEL (4-PHASE STATE MACHINE)
+------------------------------------------------------------------
+PHASE 1 - SIGNAL SCANNING:
   - Monitor for EMA crossovers + directional candle confirmation
   - State: SCANNING -> ARMED_LONG
-  
-  PHASE 2 - PULLBACK CONFIRMATION:
+
+PHASE 2 - PULLBACK CONFIRMATION:
   - Wait for specified pullback candles (long_pullback_max_candles)
   - LONG: Wait 1-3 red candles after bullish signal
   - Global Invalidation Rule: Reset if opposing signal appears
-  
-  PHASE 3 - BREAKOUT WINDOW OPENING:
+
+PHASE 3 - BREAKOUT WINDOW OPENING:
   - Calculate breakout window with configurable offset
   - Set precise price levels for breakout detection
-  - Window duration: long_entry_window_periods
-  - Window offset: pullback_count x window_offset_multiplier
-  
-  PHASE 4 - BREAKOUT MONITORING:
-  - Monitor for actual price breakout above window levels
+
+PHASE 4 - BREAKOUT MONITORING:
   - LONG: Enter when high breaks above stored breakout level
   - Window expiry: Auto-reset if no breakout within window
 
-ENTRY CONDITIONS
-----------------
-LONG CONDITIONS:
-1. ✅ Confirmation EMA crosses ABOVE any of fast/medium/slow EMAs
-2. ⚙️ Optional: Previous candle bullish (close[1] > open[1])
-3. ⚙️ Optional: EMA ordering filter (confirm > fast & medium & slow)
-4. ⚙️ Optional: Price filter (close > filter EMA)
-5. ⚙️ Optional: Angle filter (EMA slope > minimum degrees)
-6. ⚙️ Optional: ATR volatility filter (minimum ATR + volatility change)
+ENTRY CONDITIONS (LONG):
+1. Confirmation EMA crosses ABOVE any of fast/medium/slow EMAs
+2. Optional: Previous candle bullish (close[1] > open[1])
+3. Optional: EMA ordering filter (confirm > fast & medium & slow)
+4. Optional: Price filter (close > filter EMA)
+5. Optional: Angle filter (EMA slope within range)
+6. Optional: ATR volatility filter (ATR within range)
 
-ATR VOLATILITY FILTER
-----------------------
-🌊 PURPOSE: Ensures trades occur during sufficient market volatility
-   - LONG: ATR range check
-   - ATR change requirement measures market momentum direction
-   - Pullback mode: Compares ATR from signal detection to breakout phase
+EXIT SYSTEM:
+- ATR-based Stop Loss & Take Profit (OCA orders)
+- SL = entry_bar_low - (ATR x SL_Mult)
+- TP = entry_bar_high + (ATR x TP_Mult)
 
-EXIT SYSTEM
------------
-🎯 PRIMARY: ATR-based Stop Loss & Take Profit (OCA orders)
-   - LONG: Stop Loss = entry_bar_low - (ATR × SL_Mult), Take Profit = entry_bar_high + (ATR × TP_Mult)
-   
-RISK MANAGEMENT
----------------
-💰 POSITION SIZING: Risk-based calculation
-   - Fixed risk percentage per trade (default 0.5%)
-   - Automatic lot size calculation based on stop loss distance
-   - Forex-specific pip value calculations with quote currency conversion
+RISK MANAGEMENT:
+- Fixed risk percentage per trade (default 0.5%)
+- Automatic lot size calculation based on stop loss distance
+- OCA protective orders (auto-cancel when one executes)
 
-🛡️ PROTECTIVE ORDERS: One-Cancels-All (OCA) system
-   - Simultaneous stop loss and take profit orders
-   - Automatic order cancellation when one executes
+COMMISSION MODEL (Darwinex Zero):
+- Commission: $2.50 per lot per order
+- Margin: 3.33% (30:1 leverage)
 
-COMMISSION MODEL (Darwinex Zero)
---------------------------------
-   - Commission: $2.50 per lot per order (entry + exit = $5/lot round trip)
-   - Spread: Variable per instrument (0.7 pips USDCHF, 1.0 pips USDJPY, etc.)
-   - Margin: 3.33% (30:1 leverage)
-
-DISCLAIMER
-----------
-Educational and research purposes ONLY. Not investment advice. 
-Trading involves substantial risk of loss. Past performance does not 
-guarantee future results. Validate all logic and data quality before 
-using in any live or simulated trading environment.
+DISCLAIMER:
+Educational and research purposes ONLY. Not investment advice.
 """
 from __future__ import annotations
 import math
@@ -94,13 +64,13 @@ import numpy as np
 # CONFIGURATION PARAMETERS - EASILY EDITABLE AT TOP OF FILE
 # =============================================================
 
-# ⚡⚡⚡ VOLATILITY EXPANSION CHANNEL - QUICK ACCESS ⚡⚡⚡
-# 🔧 USE_WINDOW_TIME_OFFSET = False        ← Enable/disable time delay (True/False)
-# 🔧 WINDOW_OFFSET_MULTIPLIER = 1.0        ← Time delay multiplier (0.5-2.0)
-# 🔧 WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01 ← Channel expansion (0.3-1.0)
-# 🔧 LONG_PULLBACK_MAX_CANDLES = 2         ← LONG pullback depth (1-3)
-# 🔧 LONG_ENTRY_WINDOW_PERIODS = 2         ← LONG window duration (3-10)
-# ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡
+# --- VOLATILITY EXPANSION CHANNEL - QUICK ACCESS ---
+# USE_WINDOW_TIME_OFFSET = False        <- Enable/disable time delay (True/False)
+# WINDOW_OFFSET_MULTIPLIER = 1.0        <- Time delay multiplier (0.5-2.0)
+# WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01 <- Channel expansion (0.3-1.0)
+# LONG_PULLBACK_MAX_CANDLES = 2         <- LONG pullback depth (1-3)
+# LONG_ENTRY_WINDOW_PERIODS = 2         <- LONG window duration (3-10)
+# -------------------------------------------------------
 
 # === INSTRUMENT SELECTION ===
 # Default: USDCHF - change DATA_FILENAME and FOREX_INSTRUMENT together
@@ -132,7 +102,7 @@ MARGIN_PERCENT = 3.33                 # 3.33% margin = 30:1 leverage
 
 # === TRADING DIRECTION ===
 ENABLE_LONG_TRADES = True             # Enable long (buy) entries
-ENABLE_SHORT_TRADES = False           # FORCED FALSE (Long-Only Template)
+# Note: This is a Long-Only template. SHORT trades are not supported.
 
 # === DEBUG SETTINGS ===
 VERBOSE_DEBUG = False                 # Print detailed debug info to console (set True only for troubleshooting)
@@ -199,13 +169,10 @@ LONG_USE_PULLBACK_ENTRY = True               # Enable pullback entry system
 LONG_PULLBACK_MAX_CANDLES = 2                # Max red candles in pullback
 LONG_ENTRY_WINDOW_PERIODS = 2                # Bars to wait for breakout
 
-# ===============================================================
-# ⚡ VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS ⚡
-# ===============================================================
+# --- VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS ---
 USE_WINDOW_TIME_OFFSET = False               # DISABLED for USDCHF
 WINDOW_OFFSET_MULTIPLIER = 1.0               # Window delay multiplier
 WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01        # Price expansion multiplier
-# ===============================================================
 
 # === TIME RANGE FILTER (USDCHF OPTIMIZED: 07:00-13:00 UTC) ===
 USE_TIME_RANGE_FILTER = True                 # Enable time filter
@@ -450,14 +417,14 @@ class SunriseOgle(bt.Strategy):
                     else:
                         self.trade_report_file.write(f"ATR Change: {stored_increment:+.6f} (Decrement Filter OFF)\n")
             else:
-                print(f"🚨 DEBUG: ATR Change = N/A because entry_atr_increment is None")  # DEBUG
+                print(f"DEBUG: ATR Change = N/A because entry_atr_increment is None")  # DEBUG
                 self.trade_report_file.write(f"ATR Change: N/A\n")
-            self.trade_report_file.write(f"Angle Current: {current_angle:.2f}°\n")
+            self.trade_report_file.write(f"Angle Current: {current_angle:.2f} deg\n")
             
             # Debug angle validation status
             if self.p.long_use_angle_filter:
                 angle_ok = self.p.long_min_angle <= current_angle <= self.p.long_max_angle
-                self.trade_report_file.write(f"Angle Filter: ENABLED | Range: {self.p.long_min_angle:.1f}°-{self.p.long_max_angle:.1f}° | Valid: {angle_ok}\n")
+                self.trade_report_file.write(f"Angle Filter: ENABLED | Range: {self.p.long_min_angle:.1f}-{self.p.long_max_angle:.1f} deg | Valid: {angle_ok}\n")
             else:
                 self.trade_report_file.write(f"Angle Filter: DISABLED\n")
 
@@ -786,7 +753,7 @@ class SunriseOgle(bt.Strategy):
             self.window_expiry_bar = None
             self.window_breakout_level = None  # Price level that must be broken for entry
             
-            # 🔧 CRITICAL FIX: Store original signal trigger candle for validation
+            # CRITICAL FIX: Store original signal trigger candle for validation
             self.signal_trigger_candle = None
 
             # Basic stats
@@ -872,7 +839,7 @@ class SunriseOgle(bt.Strategy):
                         self.trade_report_file.write(f"  ATR Increment Range: {self.p.long_atr_increment_min_threshold:.6f} to {self.p.long_atr_increment_max_threshold:.6f}\n")
                     if self.p.long_use_atr_decrement_filter:
                         self.trade_report_file.write(f"  ATR Decrement Range: {self.p.long_atr_decrement_min_threshold:.6f} to {self.p.long_atr_decrement_max_threshold:.6f}\n")
-                    self.trade_report_file.write(f"  Angle Range: {self.p.long_min_angle:.2f}° to {self.p.long_max_angle:.2f}°\n")
+                    self.trade_report_file.write(f"  Angle Range: {self.p.long_min_angle:.2f} to {self.p.long_max_angle:.2f} deg\n")
                     self.trade_report_file.write(f"  Candle Direction Filter: {'ENABLED (Require bullish candle)' if self.p.long_use_candle_direction_filter else 'DISABLED'}\n")
                     self.trade_report_file.write(f"  Pullback Mode: {self.p.long_use_pullback_entry}\n\n")
                     
@@ -916,7 +883,7 @@ class SunriseOgle(bt.Strategy):
         self.window_bottom_limit = None
         self.window_expiry_bar = None
         self.window_breakout_level = None
-        # 🔧 CRITICAL FIX: Reset stored trigger candle
+        # CRITICAL FIX: Reset stored trigger candle
         self.signal_trigger_candle = None
 
     def _phase1_scan_for_signal(self):
@@ -984,7 +951,7 @@ class SunriseOgle(bt.Strategy):
                         signal_valid = False
 
                 if signal_valid:
-                    # ✅ CRITICAL FIX: Store ATR when LONG signal is detected 
+                    # CRITICAL FIX: Store ATR when LONG signal is detected 
                     current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                     self.signal_detection_atr = current_atr
                     return 'LONG'
@@ -1179,8 +1146,8 @@ class SunriseOgle(bt.Strategy):
             # Check exit conditions
             bars_since_entry = len(self) - self.last_entry_bar if self.last_entry_bar is not None else 0
             
-            # Determine position direction (LONG = positive size, SHORT = negative size)
-            position_direction = 'LONG' if self.position.size > 0 else 'SHORT'
+            # Track position (Long-Only strategy)
+            position_direction = 'LONG'
             
             # Continue holding - no new entry logic when in position
             return
@@ -1229,7 +1196,7 @@ class SunriseOgle(bt.Strategy):
                 self.armed_direction = signal_direction
                 self.pullback_candle_count = 0
                 
-                # 🔧 CRITICAL FIX: Store the original signal candle for validation
+                # CRITICAL FIX: Store the original signal candle for validation
                 self.signal_trigger_candle = {
                     'open': float(self.data.open[-1]),
                     'close': float(self.data.close[-1]),
@@ -1253,9 +1220,7 @@ class SunriseOgle(bt.Strategy):
                 self.entry_state = "WINDOW_OPEN"
                 self._phase3_open_breakout_window(self.armed_direction)
                 if self.p.print_signals:
-                    print(f"STATE TRANSITION: ARMED_{self.armed_direction} -> WINDOW_OPEN at {dt:%Y-%m-%d %H:%M}")
-                    print(f"   Previous candle at window open: close[-1]={self.data.close[-1]:.5f} open[-1]={self.data.open[-1]:.5f}")
-                    print(f"   Bearish previous candle: {self.data.close[-1] < self.data.open[-1]} (required for SHORT)")
+                    print(f"STATE TRANSITION: ARMED_LONG -> WINDOW_OPEN at {dt:%Y-%m-%d %H:%M}")
                     print(f"   Pullback complete, window monitoring begins...")
                 
         elif self.entry_state == "WINDOW_OPEN":
@@ -1274,7 +1239,7 @@ class SunriseOgle(bt.Strategy):
                 # EXECUTE ENTRY
                 signal_direction = self.armed_direction
                 
-                # ✅ CRITICAL: Validate against ORIGINAL signal trigger candle, not current previous candle
+                # CRITICAL: Validate against ORIGINAL signal trigger candle, not current previous candle
                 if hasattr(self, 'signal_trigger_candle') and self.signal_trigger_candle:
                     trigger_candle = self.signal_trigger_candle
                     candle_body = abs(trigger_candle['close'] - trigger_candle['open'])
@@ -1308,7 +1273,7 @@ class SunriseOgle(bt.Strategy):
                         self._reset_entry_state()
                         return
                 
-                # ✅ CRITICAL FIX: Calculate ATR change BEFORE validation so it can be used in filters
+                # CRITICAL FIX: Calculate ATR change BEFORE validation so it can be used in filters
                 # Get current ATR and compare with signal detection ATR if available
                 current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
                 
@@ -1319,7 +1284,7 @@ class SunriseOgle(bt.Strategy):
                     self.entry_atr_increment = None
                     self.entry_signal_detection_atr = None
 
-                # 🔧 CRITICAL FIX: Validate ALL entry filters BEFORE any entry execution
+                # CRITICAL FIX: Validate ALL entry filters BEFORE any entry execution
                 if signal_direction == 'LONG':
                     if not self._validate_all_entry_filters():
                         if self.p.print_signals:
@@ -1330,7 +1295,7 @@ class SunriseOgle(bt.Strategy):
                 if self.p.print_signals:
                     print(f"[OK] PULLBACK ENTRY VALIDATION PASSED: {signal_direction} with prev candle bullish={current_prev_candle_bullish} body={candle_body:.5f}")
                 
-                # 🔧 FINAL TIME FILTER CHECK: Ensure no entries outside trading hours
+                # FINAL TIME FILTER CHECK: Ensure no entries outside trading hours
                 dt = bt.num2date(self.data.datetime[0])
                 if not self._is_in_trading_time_range(dt):
                     if self.p.print_signals:
@@ -1437,8 +1402,8 @@ class SunriseOgle(bt.Strategy):
             angle_ok = self.p.long_min_angle <= current_angle <= self.p.long_max_angle
             if self.p.verbose_debug:
                 print(f"[DEBUG] ANGLE VALIDATION DEBUG - LONG Pullback Entry:")
-                print(f"   📐 Current Angle: {current_angle:.2f}°")
-                print(f"   📏 Required Range: {self.p.long_min_angle:.1f}° to {self.p.long_max_angle:.1f}°")
+                print(f"   Current Angle: {current_angle:.2f} deg")
+                print(f"   Required Range: {self.p.long_min_angle:.1f} to {self.p.long_max_angle:.1f} deg")
                 print(f"   [OK] Angle OK: {angle_ok}")
             if not angle_ok:
                 if self.p.verbose_debug:
@@ -1504,7 +1469,7 @@ class SunriseOgle(bt.Strategy):
                     if self.p.print_signals:
                         print(f"[OK] {entry_type} EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
 
-                    # Place SHORT protective orders (SELL SL/TP for LONG position)
+                    # Place protective orders (SELL SL/TP for LONG position)
                     if self.stop_level and self.take_level:
                         self.stop_order = self.sell(
                             size=order.executed.size,
@@ -1539,7 +1504,7 @@ class SunriseOgle(bt.Strategy):
                 self.last_exit_reason = exit_reason
                 
                 # Determine position direction that was closed
-                position_type = " LONG" if order.issell() else " SHORT"
+                position_type = "LONG"
                 
                 if self.p.print_signals:
                     print(f"[EXIT] {position_type} EXIT EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
@@ -1578,7 +1543,7 @@ class SunriseOgle(bt.Strategy):
         
         # Calculate entry and exit prices from PnL and trade data
         entry_price = self.last_entry_price if self.last_entry_price else 0
-        position_direction = 'LONG' if trade.size > 0 else 'SHORT'
+        position_direction = 'LONG'  # Long-Only strategy
         
         if entry_price > 0 and trade.size != 0:
             # Calculate exit price from PnL
@@ -1586,8 +1551,8 @@ class SunriseOgle(bt.Strategy):
                 # LONG: exit = entry + (pnl / size)
                 exit_price = entry_price + (pnl / trade.size)
             else:
-                # SHORT: exit = entry - (pnl / size) [size is negative for SHORT]
-                exit_price = entry_price + (pnl / trade.size)  # This works for both since size is negative for SHORT
+                # LONG: exit = entry + (pnl / size)
+                exit_price = entry_price + (pnl / trade.size)
         else:
             # Fallback to trade.price (might be average or exit price)
             exit_price = trade.price
@@ -1640,13 +1605,10 @@ class SunriseOgle(bt.Strategy):
         self.last_exit_bar = current_bar
 
         if self.p.print_signals:
-            # Calculate pips based on position direction
-            if position_direction == 'LONG':
-                pips = (exit_price - entry_price) / self.p.forex_pip_value if self.p.forex_pip_value and entry_price > 0 else 0
-            else:  # SHORT
-                pips = (entry_price - exit_price) / self.p.forex_pip_value if self.p.forex_pip_value and entry_price > 0 else 0
+            # Calculate pips (Long-Only)
+            pips = (exit_price - entry_price) / self.p.forex_pip_value if self.p.forex_pip_value and entry_price > 0 else 0
             
-            print(f"{position_direction} TRADE CLOSED {dt:%Y-%m-%d %H:%M} reason={exit_reason} PnL={pnl:.2f} Pips={pips:.1f}")
+            print(f"LONG TRADE CLOSED {dt:%Y-%m-%d %H:%M} reason={exit_reason} PnL={pnl:.2f} Pips={pips:.1f}")
             print(f"  Entry: {entry_price:.5f} -> Exit: {exit_price:.5f} | Size: {trade.size}")
 
         # Record trade exit for reporting
@@ -1657,7 +1619,7 @@ class SunriseOgle(bt.Strategy):
         self.take_level = None
         self.initial_stop_level = None
         
-        # Reset pullback state after trade completion (both LONG and SHORT)
+        # Reset pullback state after trade completion
         if self.p.long_use_pullback_entry:
             self._reset_pullback_state()
 
