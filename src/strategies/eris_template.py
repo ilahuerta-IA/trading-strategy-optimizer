@@ -3,6 +3,35 @@
 ERIS (Expert Robotic Investment System) - A lean, simplified strategy
 based on lessons learned from Sunrise Ogle, following SOLID principles.
 
+ASSET: USDCHF 5M
+STATUS: ⚠️ NO APTO PARA TRADING REAL (Dic 2024)
+PRÓXIMO PASO: Considerar fusión con OGLE → "OGLERIS"
+
+ROBUSTNESS ANALYSIS (2020-07-01 to 2025-07-01, $100k)
+=====================================================
+⚠️ AMBAS CONFIGURACIONES FALLAN CRITERIOS DE ROBUSTEZ:
+
+CONFIGURACIÓN ORIGINAL (Current) - Z-Score [-3.0, -1.0]:
+- Trades: 263 | PF: 1.11 | Sharpe: 0.23 | Sortino: 0.04
+- CAGR: 2.62% | Max DD: 13.75% | MC95% DD: 23.55%
+- Años: 2020(-), 2021(+), 2022(-), 2023(+), 2024(+), 2025(+)
+- Net P&L: $13,741 | ❌ 2 años negativos, Sharpe muy bajo
+
+CONFIGURACIÓN CONSERVADORA (Alternativa) - Z-Score [-2.5, -1.5]:
+- Trades: 138 | PF: 1.46 | Sharpe: 0.43 | Sortino: 0.05
+- CAGR: 5.07% | Max DD: 12.08% | MC95% DD: 12.46%
+- Años: 2020(-), 2021(+), 2022(-), 2023(+), 2024(+), 2025(+)
+- Net P&L: $27,923 | ❌ 2 años negativos, Sharpe < 1.0
+
+CRITERIOS REQUERIDOS PARA TRADING REAL (Portfolio Dalio 10%):
+- Sharpe > 1.0 ❌
+- PF > 1.5 ❌  
+- 5+/6 años positivos ❌
+- MC95% DD < 15% ✅ (solo conservadora)
+
+CONCLUSIÓN: Estrategia NO ROBUSTA para cuenta real.
+Mantener para estudio académico y posible fusión con OGLE.
+
 PATTERN DESCRIPTION
 -------------------
 1. Bullish candle (close > open) - marked as candle "1"
@@ -167,7 +196,7 @@ MARGIN_PERCENT = 3.33  # 3.33% margin = 30:1 leverage (Darwinex Zero)
 USE_MEAN_REVERSION_INDICATOR = True
 
 # EMA period for the mean (center line)
-MEAN_REVERSION_EMA_PERIOD = 70
+MEAN_REVERSION_EMA_PERIOD = 90
 
 # ATR period for deviation calculation
 MEAN_REVERSION_ATR_PERIOD = 10
@@ -189,6 +218,11 @@ USE_MEAN_REVERSION_ENTRY_FILTER = True  # ENABLED for USDCHF
 
 # Z-Score range for valid entries (only enter when Z-Score is within this range)
 # Analysis: Z-Score -3.0 to -1.0 captures oversold bounce opportunities
+# 
+# ALTERNATIVA CONSERVADORA: MR_ENTRY_ZSCORE_MIN = -2.5, MR_ENTRY_ZSCORE_MAX = -1.5
+# (138 trades, PF 1.46, Sharpe 0.43, MC95% DD 12.46%)
+# Ver docstring superior para análisis completo de robustez
+#
 MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (deep oversold limit)
 MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (must be in oversold zone)
 
