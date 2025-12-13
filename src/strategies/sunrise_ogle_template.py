@@ -1,8 +1,12 @@
-"""Advanced Sunrise Strategy - Template (Long-Only)
-==================================================
-Based on NZDUSD Version - Optimized for Long-Only Trading.
-ATR Increment/Decrement Filters Fixed/Disabled.
-Short Logic Removed.
+"""Advanced Sunrise OGLE Strategy - Template (Long-Only)
+========================================================
+MULTI-ASSET TEMPLATE - Copy and modify for different forex pairs.
+Default configuration: USDCHF (values from sunrise_ogle_usdchf.py)
+
+SUPPORTED INSTRUMENTS:
+- USDCHF (default) - 0.0001 pip value, 5 decimals
+- USDJPY - 0.01 pip value, 3 decimals, JPY P&L conversion
+- EURUSD, GBPUSD, NZDUSD, AUDUSD - 0.0001 pip value, 5 decimals
 
 ENTRY MODES
 -----------
@@ -57,13 +61,19 @@ EXIT SYSTEM
 RISK MANAGEMENT
 ---------------
 💰 POSITION SIZING: Risk-based calculation
-   - Fixed risk percentage per trade (default 1%)
+   - Fixed risk percentage per trade (default 0.5%)
    - Automatic lot size calculation based on stop loss distance
-   - Forex-specific pip value calculations
+   - Forex-specific pip value calculations with quote currency conversion
 
 🛡️ PROTECTIVE ORDERS: One-Cancels-All (OCA) system
    - Simultaneous stop loss and take profit orders
    - Automatic order cancellation when one executes
+
+COMMISSION MODEL (Darwinex Zero)
+--------------------------------
+   - Commission: $2.50 per lot per order (entry + exit = $5/lot round trip)
+   - Spread: Variable per instrument (0.7 pips USDCHF, 1.0 pips USDJPY, etc.)
+   - Margin: 3.33% (30:1 leverage)
 
 DISCLAIMER
 ----------
@@ -75,14 +85,17 @@ using in any live or simulated trading environment.
 from __future__ import annotations
 import math
 from pathlib import Path
+from datetime import datetime, timedelta
+from collections import defaultdict
 import backtrader as bt
+import numpy as np
 
 # =============================================================
 # CONFIGURATION PARAMETERS - EASILY EDITABLE AT TOP OF FILE
 # =============================================================
 
 # ⚡⚡⚡ VOLATILITY EXPANSION CHANNEL - QUICK ACCESS ⚡⚡⚡
-# 🔧 USE_WINDOW_TIME_OFFSET = True         ← Enable/disable time delay (True/False)
+# 🔧 USE_WINDOW_TIME_OFFSET = False        ← Enable/disable time delay (True/False)
 # 🔧 WINDOW_OFFSET_MULTIPLIER = 1.0        ← Time delay multiplier (0.5-2.0)
 # 🔧 WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01 ← Channel expansion (0.3-1.0)
 # 🔧 LONG_PULLBACK_MAX_CANDLES = 2         ← LONG pullback depth (1-3)
@@ -90,11 +103,12 @@ import backtrader as bt
 # ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡
 
 # === INSTRUMENT SELECTION ===
-DATA_FILENAME = 'NZDUSD_5m_5Yea.csv'     # Default Data File
+# Default: USDCHF - change DATA_FILENAME and FOREX_INSTRUMENT together
+DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-01-01'               # Start date for backtesting (YYYY-MM-DD)
-TODATE = '2025-11-01'                 # End date for backtesting (YYYY-MM-DD)
+FROMDATE = '2020-07-01'               # Start date for backtesting (YYYY-MM-DD)
+TODATE = '2025-07-01'                 # End date for backtesting (YYYY-MM-DD)
 STARTING_CASH = 100000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
 LIMIT_BARS = 0                        # >0: Stop after N bars processed (0 = no limit)
@@ -102,155 +116,254 @@ ENABLE_PLOT = True                    # Show final chart with trades (requires m
 
 # === FOREX CONFIGURATION ===
 ENABLE_FOREX_CALC = True              # Enable advanced forex position calculations
-FOREX_INSTRUMENT = 'NZDUSD'           # Fixed to NZDUSD (New Zealand Dollar vs USD)
+FOREX_INSTRUMENT = 'USDCHF'           # Current instrument (USDCHF, USDJPY, EURUSD, etc.)
+PIP_VALUE = 0.0001                    # Standard for CHF pairs (0.01 for JPY pairs)
 TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calculations
 
+# === COMMISSION SETTINGS (Darwinex Zero) ===
+# From broker specs:
+# - Spread: Variable per pair (already in price, not simulated separately)
+# - Margin: 3.33% (30:1 leverage)
+# - Commission: $2.50 per lot per order (entry + exit)
+USE_FIXED_COMMISSION = True           # Enable commission simulation
+COMMISSION_PER_LOT_PER_ORDER = 2.50   # USD per lot per order
+SPREAD_PIPS = 0.7                     # USDCHF spread for cost calculation
+MARGIN_PERCENT = 3.33                 # 3.33% margin = 30:1 leverage
+
 # === TRADING DIRECTION ===
-ENABLE_LONG_TRADES = True            # Enable long (buy) entries
-ENABLE_SHORT_TRADES = False          # FORCED FALSE (Long-Only Template)
+ENABLE_LONG_TRADES = True             # Enable long (buy) entries
+ENABLE_SHORT_TRADES = False           # FORCED FALSE (Long-Only Template)
 
 # === DEBUG SETTINGS ===
 VERBOSE_DEBUG = False                 # Print detailed debug info to console (set True only for troubleshooting)
 
 # === TRADE REPORTING ===
-EXPORT_TRADE_REPORTS = True          # Export detailed trade reports to temp_reports directory
-TRADE_REPORT_ENABLED = True          # Enable trade report generation (simple text format)
+EXPORT_TRADE_REPORTS = True           # Export detailed trade reports to temp_reports directory
 
-# === LONG ATR VOLATILITY FILTER ===
-LONG_USE_ATR_FILTER = True                 # Enable ATR-based volatility filtering for long entries
-LONG_ATR_MIN_THRESHOLD = 0.000280          
-LONG_ATR_MAX_THRESHOLD = 0.000600        
+# === VISUAL SETTINGS ===
+PLOT_SLTP_LINES = True                # Show SL/TP lines on chart (red/green dashed)
 
-# ATR INCREMENT FILTER (FIXED: Disabled/Widened)
-LONG_USE_ATR_INCREMENT_FILTER = True       
-LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000000 
-LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000010 
+# =============================================================================
+# INSTRUMENT CONFIGURATION - Auto-detect JPY pairs vs Standard pairs
+# =============================================================================
+INSTRUMENT_CONFIGS = {
+    'USDJPY': {'pip_value': 0.01, 'pip_decimal_places': 3, 'lot_size': 100000, 'atr_scale': 100.0, 'is_jpy': True, 'spread': 1.0},
+    'EURJPY': {'pip_value': 0.01, 'pip_decimal_places': 3, 'lot_size': 100000, 'atr_scale': 100.0, 'is_jpy': True, 'spread': 1.2},
+    'GBPJPY': {'pip_value': 0.01, 'pip_decimal_places': 3, 'lot_size': 100000, 'atr_scale': 100.0, 'is_jpy': True, 'spread': 1.5},
+    'USDCHF': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False, 'spread': 0.7},
+    'EURUSD': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False, 'spread': 0.6},
+    'GBPUSD': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False, 'spread': 0.9},
+    'NZDUSD': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False, 'spread': 1.2},
+    'AUDUSD': {'pip_value': 0.0001, 'pip_decimal_places': 5, 'lot_size': 100000, 'atr_scale': 1.0, 'is_jpy': False, 'spread': 0.8},
+}
 
-# ATR DECREMENT FILTER (FIXED: Disabled/Widened)
-LONG_USE_ATR_DECREMENT_FILTER = True        
-LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000200 
-LONG_ATR_DECREMENT_MAX_THRESHOLD =-0.000015 #-0.000010 
+# Get config for current instrument (default to USDCHF-like if not found)
+_CURRENT_CONFIG = INSTRUMENT_CONFIGS.get(FOREX_INSTRUMENT, {
+    'pip_value': PIP_VALUE,
+    'pip_decimal_places': 5,
+    'lot_size': 100000,
+    'atr_scale': 1.0,
+    'is_jpy': 'JPY' in FOREX_INSTRUMENT,
+    'spread': 1.0
+})
 
-# === LONG ENTRY FILTERS ===
-LONG_USE_EMA_ORDER_CONDITION = False        # Require confirm_EMA > all other EMAs for long entries
-LONG_USE_PRICE_FILTER_EMA = True            # Require close > filter_EMA (trend alignment) for long entries
-LONG_USE_CANDLE_DIRECTION_FILTER = False     # Require previous candle bullish (close[1] > open[1]) for long entries
-LONG_USE_ANGLE_FILTER = False                # Require minimum EMA slope angle for long entries
-LONG_MIN_ANGLE = 20.0                       # EXPANDED: Much wider angle range for more entries
-LONG_MAX_ANGLE = 85.0                       # EXPANDED: Much wider angle range for more entries
-LONG_ANGLE_SCALE_FACTOR = 10000.0           # 🌏 NZDUSD: Standard scale factor for forex price range (4 decimal places)
+# === LONG ATR VOLATILITY FILTER (USDCHF OPTIMIZED) ===
+LONG_USE_ATR_FILTER = True                   # Enable ATR-based volatility filtering
+LONG_ATR_MIN_THRESHOLD = 0.000300            # Minimum ATR for entry
+LONG_ATR_MAX_THRESHOLD = 0.000700            # Maximum ATR for entry
+
+# ATR INCREMENT FILTER (DISABLED for USDCHF)
+LONG_USE_ATR_INCREMENT_FILTER = False        # Disabled - inferior performance
+LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000011
+LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000080
+
+# ATR DECREMENT FILTER (DISABLED for USDCHF)
+LONG_USE_ATR_DECREMENT_FILTER = False        # Disabled - inferior performance
+LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000030
+LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001
+
+# === LONG ENTRY FILTERS (USDCHF OPTIMIZED) ===
+LONG_USE_EMA_ORDER_CONDITION = False         # Require confirm_EMA > all other EMAs
+LONG_USE_PRICE_FILTER_EMA = True             # Require close > filter_EMA (trend alignment)
+LONG_USE_CANDLE_DIRECTION_FILTER = False     # Require previous candle bullish
+LONG_USE_ANGLE_FILTER = False                # Require minimum EMA slope angle
+LONG_MIN_ANGLE = 40.0                        # Minimum angle in degrees
+LONG_MAX_ANGLE = 80.0                        # Maximum angle in degrees
+LONG_ANGLE_SCALE_FACTOR = 10000.0            # Scale factor for angle calculation
 
 # === LONG EMA POSITION FILTER ===
-LONG_USE_EMA_BELOW_PRICE_FILTER = False     # NEW: Require fast, medium & slow EMAs below price for long entries
+LONG_USE_EMA_BELOW_PRICE_FILTER = False      # Require EMAs below price
 
-# === LONG PULLBACK ENTRY SYSTEM ===
-LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
-LONG_PULLBACK_MAX_CANDLES = 2              # Max red candles in pullback for long entries (1-3 recommended)
-LONG_ENTRY_WINDOW_PERIODS = 2              # Bars to wait for breakout after pullback (long entries)
+# === LONG PULLBACK ENTRY SYSTEM (USDCHF OPTIMIZED) ===
+LONG_USE_PULLBACK_ENTRY = True               # Enable pullback entry system
+LONG_PULLBACK_MAX_CANDLES = 2                # Max red candles in pullback
+LONG_ENTRY_WINDOW_PERIODS = 2                # Bars to wait for breakout
 
 # ===============================================================
 # ⚡ VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS ⚡
 # ===============================================================
-# 🔧 USE_WINDOW_TIME_OFFSET: Enable/disable time delay for window opening
-USE_WINDOW_TIME_OFFSET = True              # NEW: Enable/disable the time delay for window opening
-# 🔧 WINDOW_OFFSET_MULTIPLIER: Controls delay between pullback and window opening (only if USE_WINDOW_TIME_OFFSET=True)
-WINDOW_OFFSET_MULTIPLIER = 1.0             # Window delay multiplier (0.5=fast, 1.0=standard, 2.0=conservative)
-# 🔧 WINDOW_PRICE_OFFSET_MULTIPLIER: Controls the price expansion of the two-sided channel
-WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01      # NEW: Price expansion multiplier (0.5 = 50% of candle range)
+USE_WINDOW_TIME_OFFSET = False               # DISABLED for USDCHF
+WINDOW_OFFSET_MULTIPLIER = 1.0               # Window delay multiplier
+WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01        # Price expansion multiplier
 # ===============================================================
 
-# === TIME RANGE FILTER ===
-USE_TIME_RANGE_FILTER = True              # ENABLED: Time filter for complete analysis
-ENTRY_START_HOUR = 19                     # Start hour for entry window (UTC)
-ENTRY_START_MINUTE = 0                    # Start minute for entry window (UTC)
-ENTRY_END_HOUR = 12                       # End hour for entry window (UTC)
-ENTRY_END_MINUTE = 0                      # End minute for entry window (UTC)
+# === TIME RANGE FILTER (USDCHF OPTIMIZED: 07:00-13:00 UTC) ===
+USE_TIME_RANGE_FILTER = True                 # Enable time filter
+ENTRY_START_HOUR = 7                         # Start hour (UTC)
+ENTRY_START_MINUTE = 0                       # Start minute
+ENTRY_END_HOUR = 13                          # End hour (UTC)
+ENTRY_END_MINUTE = 0                         # End minute
+
+# === RISK MANAGEMENT (USDCHF OPTIMIZED) ===
+ATR_LENGTH = 10                              # ATR calculation period
+LONG_ATR_SL_MULTIPLIER = 2.5                 # SL = ATR x 2.5
+LONG_ATR_TP_MULTIPLIER = 10.0                # TP = ATR x 10.0 (R:R = 1:4)
+RISK_PERCENT = 0.005                         # 0.5% risk per trade
+
+
+# =============================================================================
+# COMMISSION CLASS - Supports both JPY and Standard pairs
+# =============================================================================
+class ForexCommission(bt.CommInfoBase):
+    """
+    Commission scheme for Forex pairs with fixed commission per lot.
+    Supports both JPY pairs (P&L conversion) and standard pairs.
+    
+    Darwinex Zero specs:
+    - Commission: $2.50 per lot per order
+    - Spread: Variable per instrument (in price)
+    - Margin: 3.33% (30:1 leverage)
+    """
+    params = (
+        ('stocklike', False),
+        ('commtype', bt.CommInfoBase.COMM_FIXED),
+        ('percabs', True),
+        ('leverage', 500.0),
+        ('automargin', True),
+        ('commission', 2.50),
+        ('is_jpy_pair', False),
+        ('jpy_rate', 150.0),
+    )
+    
+    # Debug counters (class-level)
+    commission_calls = 0
+    total_commission = 0.0
+    total_lots = 0.0
+
+    def _getcommission(self, size, price, pseudoexec):
+        """Return commission based on lot size."""
+        if USE_FIXED_COMMISSION:
+            lots = abs(size) / 100000.0
+            comm = lots * COMMISSION_PER_LOT_PER_ORDER
+            
+            if not pseudoexec:
+                ForexCommission.commission_calls += 1
+                ForexCommission.total_commission += comm
+                ForexCommission.total_lots += lots
+            
+            return comm
+        return 0.0
+
+    def profitandloss(self, size, price, newprice):
+        """Calculate P&L with quote currency conversion."""
+        pnl_quote = size * (newprice - price)
+        
+        if self.p.is_jpy_pair:
+            pnl_quote = pnl_quote * self.p.jpy_rate
+        
+        if newprice > 0:
+            return pnl_quote / newprice
+        return pnl_quote
+
+    def cashadjust(self, size, price, newprice):
+        """Adjust cash for non-stocklike instruments."""
+        if not self._stocklike:
+            return self.profitandloss(size, price, newprice)
+        return 0.0
 
 
 class SunriseOgle(bt.Strategy):
     params = dict(
-        # === TECHNICAL INDICATORS ===
-        ema_fast_length=14,              # Fast EMA period for trend detection
+        # === TECHNICAL INDICATORS (USDCHF OPTIMIZED) ===
+        ema_fast_length=18,              # Fast EMA period for trend detection
         ema_medium_length=18,            # Medium EMA period for trend confirmation
         ema_slow_length=24,              # Slow EMA period for trend strength
         ema_confirm_length=1,            # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=70,      # Price filter EMA to avoid counter-trend trades
+        ema_filter_price_length=50,      # Price filter EMA to avoid counter-trend trades
         ema_exit_length=25,              # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
-        atr_length=10,                   # ATR calculation period
+        atr_length=ATR_LENGTH,           # ATR calculation period
         
         # === TRADING DIRECTION ===
         enable_long_trades=ENABLE_LONG_TRADES,  # Enable long (buy) entries
         enable_short_trades=False,              # Forced False
         
         # === LONG ATR VOLATILITY FILTER ===
-        long_use_atr_filter=LONG_USE_ATR_FILTER,    # Enable ATR-based volatility filtering for long entries
-        long_atr_min_threshold=LONG_ATR_MIN_THRESHOLD,  # Minimum ATR for long entry
-        long_atr_max_threshold=LONG_ATR_MAX_THRESHOLD,  # Maximum ATR for long entry
+        long_use_atr_filter=LONG_USE_ATR_FILTER,
+        long_atr_min_threshold=LONG_ATR_MIN_THRESHOLD,
+        long_atr_max_threshold=LONG_ATR_MAX_THRESHOLD,
         # ATR INCREMENT/DECREMENT FILTERS
-        long_use_atr_increment_filter=LONG_USE_ATR_INCREMENT_FILTER,  # Enable ATR increment filtering
-        long_atr_increment_min_threshold=LONG_ATR_INCREMENT_MIN_THRESHOLD,  # Minimum ATR increment
-        long_atr_increment_max_threshold=LONG_ATR_INCREMENT_MAX_THRESHOLD,  # Maximum ATR increment
-        long_use_atr_decrement_filter=LONG_USE_ATR_DECREMENT_FILTER,  # Enable ATR decrement filtering
-        long_atr_decrement_min_threshold=LONG_ATR_DECREMENT_MIN_THRESHOLD,  # Minimum ATR decrement
-        long_atr_decrement_max_threshold=LONG_ATR_DECREMENT_MAX_THRESHOLD,  # Maximum ATR decrement
+        long_use_atr_increment_filter=LONG_USE_ATR_INCREMENT_FILTER,
+        long_atr_increment_min_threshold=LONG_ATR_INCREMENT_MIN_THRESHOLD,
+        long_atr_increment_max_threshold=LONG_ATR_INCREMENT_MAX_THRESHOLD,
+        long_use_atr_decrement_filter=LONG_USE_ATR_DECREMENT_FILTER,
+        long_atr_decrement_min_threshold=LONG_ATR_DECREMENT_MIN_THRESHOLD,
+        long_atr_decrement_max_threshold=LONG_ATR_DECREMENT_MAX_THRESHOLD,
         
         # === LONG ENTRY FILTERS ===
-        long_use_ema_order_condition=LONG_USE_EMA_ORDER_CONDITION,    # Require confirm_EMA > all other EMAs for long entries
-        long_use_price_filter_ema=LONG_USE_PRICE_FILTER_EMA,        # Require close > filter_EMA (trend alignment) for long entries
-        long_use_candle_direction_filter=LONG_USE_CANDLE_DIRECTION_FILTER, # Require previous candle bullish for long entries
-        long_use_angle_filter=LONG_USE_ANGLE_FILTER,            # Require minimum EMA slope angle for long entries
-        long_min_angle=LONG_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (long entries)
-        long_max_angle=LONG_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (long entries)
-        long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (long entries - 10000.0 for NZDUSD)
-        long_use_ema_below_price_filter=LONG_USE_EMA_BELOW_PRICE_FILTER,  # NEW: Require fast, medium & slow EMAs below price for long entries
-        long_atr_sl_multiplier=4.5,                          # Stop Loss multiplier for LONG trades
-        long_atr_tp_multiplier=7.0,                          # Take Profit multiplier for LONG trades
+        long_use_ema_order_condition=LONG_USE_EMA_ORDER_CONDITION,
+        long_use_price_filter_ema=LONG_USE_PRICE_FILTER_EMA,
+        long_use_candle_direction_filter=LONG_USE_CANDLE_DIRECTION_FILTER,
+        long_use_angle_filter=LONG_USE_ANGLE_FILTER,
+        long_min_angle=LONG_MIN_ANGLE,
+        long_max_angle=LONG_MAX_ANGLE,
+        long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,
+        long_use_ema_below_price_filter=LONG_USE_EMA_BELOW_PRICE_FILTER,
+        long_atr_sl_multiplier=LONG_ATR_SL_MULTIPLIER,    # SL multiplier (USDCHF: 2.5)
+        long_atr_tp_multiplier=LONG_ATR_TP_MULTIPLIER,    # TP multiplier (USDCHF: 10.0)
         
         # === LONG PULLBACK ENTRY SYSTEM ===
-        long_use_pullback_entry=LONG_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for long entries
-        long_pullback_max_candles=LONG_PULLBACK_MAX_CANDLES,           # Max red candles in pullback for long entries (1-3 recommended)
-        long_entry_window_periods=LONG_ENTRY_WINDOW_PERIODS,          # Bars to wait for breakout after pullback (long entries)
-        window_offset_multiplier=WINDOW_OFFSET_MULTIPLIER,        # ⚡ CRITICAL: Volatility expansion window timing control
-        use_window_time_offset=USE_WINDOW_TIME_OFFSET,            # ⚡ NEW: Enable/disable time delay for window opening
-        window_price_offset_multiplier=WINDOW_PRICE_OFFSET_MULTIPLIER,  # ⚡ NEW: Controls two-sided channel expansion
+        long_use_pullback_entry=LONG_USE_PULLBACK_ENTRY,
+        long_pullback_max_candles=LONG_PULLBACK_MAX_CANDLES,
+        long_entry_window_periods=LONG_ENTRY_WINDOW_PERIODS,
+        window_offset_multiplier=WINDOW_OFFSET_MULTIPLIER,
+        use_window_time_offset=USE_WINDOW_TIME_OFFSET,
+        window_price_offset_multiplier=WINDOW_PRICE_OFFSET_MULTIPLIER,
         
         # === TIME RANGE FILTER ===
-        use_time_range_filter=USE_TIME_RANGE_FILTER,         # Enable time-based entry filtering
-        entry_start_hour=ENTRY_START_HOUR,                   # Start hour for entry window (UTC)
-        entry_start_minute=ENTRY_START_MINUTE,               # Start minute for entry window (UTC)
-        entry_end_hour=ENTRY_END_HOUR,                       # End hour for entry window (UTC)
-        entry_end_minute=ENTRY_END_MINUTE,                   # End minute for entry window (UTC)
+        use_time_range_filter=USE_TIME_RANGE_FILTER,
+        entry_start_hour=ENTRY_START_HOUR,
+        entry_start_minute=ENTRY_START_MINUTE,
+        entry_end_hour=ENTRY_END_HOUR,
+        entry_end_minute=ENTRY_END_MINUTE,
         
         # === POSITION SIZING ===
-        size=1,                           # Default position size (used if risk sizing disabled)
-        enable_risk_sizing=True,          # Enable percentage-based risk sizing
-        risk_percent=0.01,                # Risk 1% of account per trade
-        contract_size=100000,             # Base contract size (auto-adjusted per instrument)
-        print_signals=True,               # Print trade signals and debug info to console
-        verbose_debug=VERBOSE_DEBUG,      # Print detailed debug info to console (for troubleshooting only)
+        size=1,
+        enable_risk_sizing=True,
+        risk_percent=RISK_PERCENT,        # Risk per trade (0.5%)
+        margin_pct=MARGIN_PERCENT,        # Margin for position limit
+        contract_size=100000,
+        print_signals=True,
+        verbose_debug=VERBOSE_DEBUG,
         
-        # === FOREX SETTINGS ===
-        use_forex_position_calc=True,     # Enable advanced forex position calculations
-        forex_instrument='NZDUSD',        # Fixed to NZDUSD
-        forex_base_currency='NZD',        # Base currency: NZD
-        forex_quote_currency='USD',       # Quote currency: USD
-        forex_pip_value=0.0001,           # Pip value for NZDUSD (4 decimal places)
-        forex_pip_decimal_places=4,       # Price decimal places for NZDUSD
-        forex_lot_size=100000,            # Lot size for NZDUSD (100K NZD)
-        forex_micro_lot_size=0.01,        # Minimum lot increment (0.01 standard lots)
-        forex_spread_pips=2.0,            # Typical spread in pips for NZDUSD
-        forex_margin_required=3.33,       # Margin requirement % for NZDUSD (30:1 leverage)
+        # === FOREX SETTINGS (auto-configured from INSTRUMENT_CONFIGS) ===
+        forex_instrument=FOREX_INSTRUMENT,
+        forex_pip_value=_CURRENT_CONFIG['pip_value'],
+        forex_pip_decimal_places=_CURRENT_CONFIG['pip_decimal_places'],
+        forex_lot_size=_CURRENT_CONFIG['lot_size'],
+        forex_atr_scale=_CURRENT_CONFIG['atr_scale'],
+        spread_pips=SPREAD_PIPS,
+        use_forex_position_calc=True,
 
         # === ACCOUNT SETTINGS ===
-        account_currency='USD',           # Account denomination currency
-        account_leverage=30.0,            # Account leverage (matches broker setting)
+        account_currency='USD',
+        account_leverage=30.0,
         
         # === PLOTTING & VISUALIZATION ===
-        plot_result=True,                 # Enable strategy plotting
-        buy_sell_plotdist=0.0005,         # Distance for buy/sell markers on chart
-        plot_sltp_lines=True,             # Show stop loss and take profit lines
+        plot_result=True,
+        buy_sell_plotdist=0.0005,
+        plot_sltp_lines=PLOT_SLTP_LINES,
     )
 
     def _record_trade_entry(self, signal_direction, dt, entry_price, position_size, current_atr):
@@ -267,20 +380,20 @@ class SunriseOgle(bt.Strategy):
             if hasattr(self, 'entry_window_start') and self.entry_window_start is not None:
                 # Primary: Use window start (most accurate)
                 periods_before_entry = current_bar - self.entry_window_start
-                print(f"🎯 DEBUG: Used entry_window_start: {self.entry_window_start}, bars = {periods_before_entry}")
+                print(f"[DEBUG] Used entry_window_start: {self.entry_window_start}, bars = {periods_before_entry}")
             elif hasattr(self, 'signal_detection_bar') and self.signal_detection_bar is not None:
                 # Secondary: Use signal detection bar
                 periods_before_entry = current_bar - self.signal_detection_bar
-                print(f"🎯 DEBUG: Used signal_detection_bar: {self.signal_detection_bar}, bars = {periods_before_entry}")
+                print(f"[DEBUG] Used signal_detection_bar: {self.signal_detection_bar}, bars = {periods_before_entry}")
             elif hasattr(self, 'window_bar_start') and self.window_bar_start is not None:
                 # Tertiary: Use window_bar_start if available
                 periods_before_entry = current_bar - self.window_bar_start
-                print(f"🎯 DEBUG: Used window_bar_start: {self.window_bar_start}, bars = {periods_before_entry}")
+                print(f"[DEBUG] Used window_bar_start: {self.window_bar_start}, bars = {periods_before_entry}")
             else:
                 # Quaternary: Estimate based on pullback count + 1
                 fallback_bars_to_entry = getattr(self, 'pullback_candle_count', 0) + 1
                 periods_before_entry = fallback_bars_to_entry
-                print(f"🎯 DEBUG: Used fallback calculation: pullback_count={getattr(self, 'pullback_candle_count', 0)} + 1 = {periods_before_entry}")
+                print(f"[DEBUG] Used fallback calculation: pullback_count={getattr(self, 'pullback_candle_count', 0)} + 1 = {periods_before_entry}")
             
             # Ensure reasonable bounds
             if periods_before_entry < 0:
@@ -320,7 +433,7 @@ class SunriseOgle(bt.Strategy):
             self.trade_report_file.write(f"ATR Current: {current_atr:.6f}\n")  # Keep this - very important!
             # Always show ATR increment - USER REQUESTED: Add ATR increment in each entry
             stored_increment = getattr(self, 'entry_atr_increment', None)
-            print(f"🔍 DEBUG: entry_atr_increment = {stored_increment}")  # DEBUG
+            print(f"[DEBUG] entry_atr_increment = {stored_increment}")  # DEBUG
             if stored_increment is not None:
                 # Determine if it's increment or decrement based on sign and filter status
                 if stored_increment >= 0:
@@ -449,7 +562,7 @@ class SunriseOgle(bt.Strategy):
                 
                 self.trade_report_file.write("="*80 + "\n")
                 self.trade_report_file.close()
-                print(f"📊 Trade report completed: {total_trades} trades recorded")
+                print(f"Trade report completed: {total_trades} trades recorded")
                 
             except Exception as e:
                 print(f"Trade reporting close error: {e}")
@@ -572,75 +685,43 @@ class SunriseOgle(bt.Strategy):
         if not self.p.use_forex_position_calc:
             return True
             
-        # Check if data filename matches NZDUSD
         data_filename = getattr(self, '_data_filename', '')
-        if 'NZDUSD' not in data_filename.upper():
-            print(f"WARNING: Data file '{data_filename}' may not be NZDUSD data")
-            
-        # Validate price ranges for NZDUSD (typical range 0.55-0.75)
-        if hasattr(self.data, 'close') and len(self.data.close) > 0:
-            current_price = float(self.data.close[0])
-            if not (0.50 < current_price < 0.80):
-                print(f"WARNING: NZDUSD price {current_price:.5f} outside typical range (0.50-0.80)")
-                
-        # Check tick value consistency for NZDUSD
-        if self.p.forex_pip_value != 0.0001:
-            print(f"WARNING: NZDUSD pip value should be 0.0001, currently {self.p.forex_pip_value}")
+        instrument = self.p.forex_instrument
+        
+        # Check if data filename matches configured instrument
+        if instrument.upper() not in data_filename.upper():
+            print(f"WARNING: Data file '{data_filename}' may not match configured instrument {instrument}")
             
         return True
     
     def _get_forex_instrument_config(self, instrument_name=None):
-        # Auto-detect instrument from data filename if not specified
-        if instrument_name is None or instrument_name == 'AUTO':
-            data_filename = getattr(self, '_data_filename', '').upper()
-            if 'NZDUSD' in data_filename:
-                instrument_name = 'NZDUSD'
-            else:
-                instrument_name = 'NZDUSD'  # Default to NZDUSD
+        """Get forex configuration for the specified instrument from INSTRUMENT_CONFIGS."""
+        if instrument_name is None:
+            instrument_name = self.p.forex_instrument
         
-        # NZDUSD configuration only
-        config = {
-            'NZDUSD': {
-                'base_currency': 'NZD',
-                'quote_currency': 'USD',
-                'pip_value': 0.0001,         # Standard 4-decimal pip
-                'pip_decimal_places': 4,
-                'lot_size': 100000,          # 100K NZD standard lot
-                'margin_required': 3.33,     # 30:1 leverage
-                'typical_spread': 2.0        # ~2 pips typical spread
-            }
-        }
-        
-        return config.get(instrument_name, config['NZDUSD'])
+        # Use global INSTRUMENT_CONFIGS
+        return INSTRUMENT_CONFIGS.get(instrument_name, INSTRUMENT_CONFIGS.get('USDCHF'))
     
     def _apply_forex_config(self):
         if not self.p.use_forex_position_calc:
             return
             
-        # Get configuration for NZDUSD
-        config = self._get_forex_instrument_config('NZDUSD')
+        # Get configuration for configured instrument
+        instrument = self.p.forex_instrument
+        config = self._get_forex_instrument_config(instrument)
         
-        # Update parameters with NZDUSD configuration
-        self.p.forex_base_currency = config['base_currency']
-        self.p.forex_quote_currency = config['quote_currency']
-        
-        # Store detected instrument for logging
-        self._detected_instrument = 'NZDUSD'
         data_filename = getattr(self, '_data_filename', '').upper()
+        self._detected_instrument = instrument
                 
-        # Apply NZDUSD configuration
+        # Apply instrument configuration
         self.p.forex_pip_value = config['pip_value']
         self.p.forex_pip_decimal_places = config['pip_decimal_places']
         self.p.forex_lot_size = config['lot_size']
-        self.p.forex_margin_required = config['margin_required']
-        self.p.forex_spread_pips = config['typical_spread']
-        # Update the instrument parameter with NZDUSD
-        self.p.forex_instrument = 'NZDUSD'
+        self.p.spread_pips = config.get('spread', 1.0)
                 
         # Log forex configuration
-        print(f"CONFIGURED: NZDUSD from filename: {data_filename}")
-        print(f"Forex Config: {self.p.forex_base_currency}/{self.p.forex_quote_currency}")
-        print(f"Pip Value: {self.p.forex_pip_value} | Lot Size: {self.p.forex_lot_size:,} | Margin: {self.p.forex_margin_required}%")
+        print(f"CONFIGURED: {instrument} from filename: {data_filename}")
+        print(f"Pip Value: {self.p.forex_pip_value} | Lot Size: {self.p.forex_lot_size:,}")
 
     def __init__(self):
             d = self.data
@@ -666,6 +747,7 @@ class SunriseOgle(bt.Strategy):
             # Portfolio tracking for combined plotting
             self._portfolio_values = []
             self._timestamps = []
+            self._trade_pnls = []  # Store PnL and dates for yearly stats
             
             # Book-keeping for filters
             self.last_entry_bar = None
@@ -817,10 +899,10 @@ class SunriseOgle(bt.Strategy):
                 self.trade_report_file.write("="*80 + "\n\n")
                 self.trade_report_file.flush()
                 
-                print(f"📊 TRADE REPORT: {report_path}")
+                print(f"Trade report: {report_path}")
                 
             except Exception as e:
-                print(f"⚠️  Trade reporting initialization failed: {e}")
+                print(f"Trade reporting initialization failed: {e}")
                 self.trade_report_file = None
 
     def _reset_entry_state(self):
@@ -1159,7 +1241,7 @@ class SunriseOgle(bt.Strategy):
                 }
                 
                 if self.p.print_signals:
-                    print(f"STATE TRANSITION: SCANNING → ARMED_{signal_direction} at {dt:%Y-%m-%d %H:%M}")
+                    print(f"STATE TRANSITION: SCANNING -> ARMED_{signal_direction} at {dt:%Y-%m-%d %H:%M}")
                     print(f"   Signal detection candle: close[-1]={self.data.close[-1]:.5f} open[-1]={self.data.open[-1]:.5f}")
                     print(f"   Bearish previous candle: {self.data.close[-1] < self.data.open[-1]}")
                     print(f"   Starting pullback confirmation phase...")
@@ -1171,7 +1253,7 @@ class SunriseOgle(bt.Strategy):
                 self.entry_state = "WINDOW_OPEN"
                 self._phase3_open_breakout_window(self.armed_direction)
                 if self.p.print_signals:
-                    print(f"STATE TRANSITION: ARMED_{self.armed_direction} → WINDOW_OPEN at {dt:%Y-%m-%d %H:%M}")
+                    print(f"STATE TRANSITION: ARMED_{self.armed_direction} -> WINDOW_OPEN at {dt:%Y-%m-%d %H:%M}")
                     print(f"   Previous candle at window open: close[-1]={self.data.close[-1]:.5f} open[-1]={self.data.open[-1]:.5f}")
                     print(f"   Bearish previous candle: {self.data.close[-1] < self.data.open[-1]} (required for SHORT)")
                     print(f"   Pullback complete, window monitoring begins...")
@@ -1185,7 +1267,7 @@ class SunriseOgle(bt.Strategy):
                 # Check time range filter for final entry execution
                 if not self._is_in_trading_time_range(dt):
                     if self.p.print_signals:
-                        print(f"❌ ENTRY BLOCKED: Breakout detected but outside trading hours - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
+                        print(f"[X] ENTRY BLOCKED: Breakout detected but outside trading hours - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
                     self._reset_entry_state()
                     return
                 
@@ -1211,7 +1293,7 @@ class SunriseOgle(bt.Strategy):
                     current_prev_candle_bullish = (prev_close > prev_open) and (candle_body >= min_body_size)
                     
                     if self.p.print_signals:
-                        print(f"⚠️ FALLBACK: Using current previous candle for validation")
+                        print(f"[!] FALLBACK: Using current previous candle for validation")
                 
                 # Validate previous candle color matches signal direction (optional)
                 candle_direction_valid = True
@@ -1222,7 +1304,7 @@ class SunriseOgle(bt.Strategy):
                         if self.p.print_signals:
                             trigger_close = trigger_candle['close']
                             trigger_open = trigger_candle['open']
-                            print(f"❌ LONG ENTRY BLOCKED: Previous candle is not bullish (close[-1]={trigger_close:.5f} open[-1]={trigger_open:.5f} body={candle_body:.5f})")
+                            print(f"[X] LONG ENTRY BLOCKED: Previous candle is not bullish (close[-1]={trigger_close:.5f} open[-1]={trigger_open:.5f} body={candle_body:.5f})")
                         self._reset_entry_state()
                         return
                 
@@ -1241,18 +1323,18 @@ class SunriseOgle(bt.Strategy):
                 if signal_direction == 'LONG':
                     if not self._validate_all_entry_filters():
                         if self.p.print_signals:
-                            print(f"❌ ENTRY BLOCKED: LONG entry validation failed (angle/ATR filters)")
+                            print(f"[X] ENTRY BLOCKED: LONG entry validation failed (angle/ATR filters)")
                         self._reset_entry_state()
                         return
                 
                 if self.p.print_signals:
-                    print(f"✅ PULLBACK ENTRY VALIDATION PASSED: {signal_direction} with prev candle bullish={current_prev_candle_bullish} body={candle_body:.5f}")
+                    print(f"[OK] PULLBACK ENTRY VALIDATION PASSED: {signal_direction} with prev candle bullish={current_prev_candle_bullish} body={candle_body:.5f}")
                 
                 # 🔧 FINAL TIME FILTER CHECK: Ensure no entries outside trading hours
                 dt = bt.num2date(self.data.datetime[0])
                 if not self._is_in_trading_time_range(dt):
                     if self.p.print_signals:
-                        print(f"❌ ENTRY BLOCKED: {signal_direction} entry rejected - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
+                        print(f"[X] ENTRY BLOCKED: {signal_direction} entry rejected - {dt.hour:02d}:{dt.minute:02d} outside {self.p.entry_start_hour:02d}:{self.p.entry_start_minute:02d}-{self.p.entry_end_hour:02d}:{self.p.entry_end_minute:02d} UTC")
                     self._reset_entry_state()
                     return
                 
@@ -1307,7 +1389,7 @@ class SunriseOgle(bt.Strategy):
                     if signal_direction == 'LONG':
                         rr = (self.take_level - entry_price) / (entry_price - self.stop_level) if (entry_price - self.stop_level) > 0 else float('nan')
                     
-                    print(f"🎯 VOLATILITY EXPANSION ENTRY{signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
+                    print(f">>> VOLATILITY EXPANSION ENTRY{signal_type_display} {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} size={bt_size} SL={self.stop_level:.5f} TP={self.take_level:.5f} RR={rr:.2f}")
 
                 # Record trade entry for reporting
                 self._record_trade_entry(signal_direction, dt, entry_price, bt_size, atr_now)
@@ -1354,13 +1436,13 @@ class SunriseOgle(bt.Strategy):
             current_angle = self._angle()
             angle_ok = self.p.long_min_angle <= current_angle <= self.p.long_max_angle
             if self.p.verbose_debug:
-                print(f"🔍 ANGLE VALIDATION DEBUG - LONG Pullback Entry:")
+                print(f"[DEBUG] ANGLE VALIDATION DEBUG - LONG Pullback Entry:")
                 print(f"   📐 Current Angle: {current_angle:.2f}°")
                 print(f"   📏 Required Range: {self.p.long_min_angle:.1f}° to {self.p.long_max_angle:.1f}°")
-                print(f"   ✅ Angle OK: {angle_ok}")
+                print(f"   [OK] Angle OK: {angle_ok}")
             if not angle_ok:
                 if self.p.verbose_debug:
-                    print(f"❌ ANGLE FILTER REJECTED: LONG entry blocked - angle {current_angle:.2f}° outside range [{self.p.long_min_angle:.1f}°, {self.p.long_max_angle:.1f}°]")
+                    print(f"[X] ANGLE FILTER REJECTED: LONG entry blocked - angle {current_angle:.2f} degrees outside range [{self.p.long_min_angle:.1f}, {self.p.long_max_angle:.1f}]")
                 return False
 
         # 6. ATR Increment/Decrement Filter
@@ -1371,14 +1453,14 @@ class SunriseOgle(bt.Strategy):
             if increment > 0 and self.p.long_use_atr_increment_filter:
                 if not (self.p.long_atr_increment_min_threshold <= increment <= self.p.long_atr_increment_max_threshold):
                     if self.p.print_signals:
-                        print(f"❌ ATR INCREMENT FILTER: Blocked {increment:.6f} (Range: {self.p.long_atr_increment_min_threshold:.6f}-{self.p.long_atr_increment_max_threshold:.6f})")
+                        print(f"[X] ATR INCREMENT FILTER: Blocked {increment:.6f} (Range: {self.p.long_atr_increment_min_threshold:.6f}-{self.p.long_atr_increment_max_threshold:.6f})")
                     return False
             
             # Decrement Filter (Negative change)
             if increment < 0 and self.p.long_use_atr_decrement_filter:
                 if not (self.p.long_atr_decrement_min_threshold <= increment <= self.p.long_atr_decrement_max_threshold):
                     if self.p.print_signals:
-                        print(f"❌ ATR DECREMENT FILTER: Blocked {increment:.6f} (Range: {self.p.long_atr_decrement_min_threshold:.6f}-{self.p.long_atr_decrement_max_threshold:.6f})")
+                        print(f"[X] ATR DECREMENT FILTER: Blocked {increment:.6f} (Range: {self.p.long_atr_decrement_min_threshold:.6f}-{self.p.long_atr_decrement_max_threshold:.6f})")
                     return False
 
         return True
@@ -1420,7 +1502,7 @@ class SunriseOgle(bt.Strategy):
                     # LONG position entry (BUY order)
                     entry_type = " LONG BUY"
                     if self.p.print_signals:
-                        print(f"✅ {entry_type} EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
+                        print(f"[OK] {entry_type} EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
 
                     # Place SHORT protective orders (SELL SL/TP for LONG position)
                     if self.stop_level and self.take_level:
@@ -1437,7 +1519,7 @@ class SunriseOgle(bt.Strategy):
                             oco=self.stop_order  # Link to SL order
                         )
                         if self.p.print_signals:
-                            print(f"🛡️  LONG PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
+                            print(f"[SHIELD] LONG PROTECTIVE OCA ORDERS: SL={self.stop_level:.5f} TP={self.take_level:.5f}")
                 
                 self.order = None
 
@@ -1460,7 +1542,7 @@ class SunriseOgle(bt.Strategy):
                 position_type = " LONG" if order.issell() else " SHORT"
                 
                 if self.p.print_signals:
-                    print(f"🔚 {position_type} EXIT EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
+                    print(f"[EXIT] {position_type} EXIT EXECUTED at {exit_price:.5f} size={order.executed.size} reason={exit_reason}")
 
                 # Reset all state variables to ensure a clean slate for the next trade
                 self.stop_order = None
@@ -1533,6 +1615,15 @@ class SunriseOgle(bt.Strategy):
         else:
             self.losses += 1
             self.gross_loss += abs(pnl)
+        
+        # Store trade for yearly stats (advanced metrics)
+        self._trade_pnls.append({
+            'date': dt,
+            'year': dt.year,
+            'month': dt.month,
+            'pnl': pnl,
+            'is_winner': pnl > 0
+        })
 
         # PINE SCRIPT EQUIVALENT: Record exit bar for ta.barssince() logic
         current_bar = len(self)
@@ -1571,13 +1662,13 @@ class SunriseOgle(bt.Strategy):
             self._reset_pullback_state()
 
     def stop(self):
-        # Close any open positions at strategy end and manually process the trade
+        """Strategy end - print summary with advanced metrics."""
+        # Close any open positions at strategy end
         if self.position:
             current_price = self.data.close[0]
             entry_price = self.position.price
             position_size = self.position.size
             
-            # Calculate unrealized PnL correctly (position.size is already in currency units)
             price_diff = current_price - entry_price
             unrealized_pnl = position_size * price_diff
             
@@ -1586,7 +1677,6 @@ class SunriseOgle(bt.Strategy):
                 print(f"  Size: {position_size}, Entry: {entry_price:.5f}, Current: {current_price:.5f}")
                 print(f"  Unrealized PnL: {unrealized_pnl:+.2f}")
             
-            # Manually update statistics for the open trade before closing
             self.trades += 1
             if unrealized_pnl > 0:
                 self.wins += 1
@@ -1595,10 +1685,8 @@ class SunriseOgle(bt.Strategy):
                 self.losses += 1
                 self.gross_loss += abs(unrealized_pnl)
             
-            # Close the position
             self.order = self.close()
             
-            # Cancel any remaining protective orders
             if self.stop_order:
                 self.cancel(self.stop_order)
                 self.stop_order = None
@@ -1606,40 +1694,238 @@ class SunriseOgle(bt.Strategy):
                 self.cancel(self.limit_order)
                 self.limit_order = None
         
-        # Enhanced summary calculation with debug stats
-        print("=== SUNRISE OGLE SUMMARY ===")
+        # Calculate basic metrics
+        win_rate = (self.wins / self.trades * 100) if self.trades > 0 else 0
+        profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
         
-        # Calculate metrics
-        wr = (self.wins / self.trades * 100.0) if self.trades else 0.0
-        pf = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
-        
-        # Backtrader portfolio value
         final_value = self.broker.get_value()
-        starting_cash = 100000.0  # Known starting value
-        total_pnl = final_value - starting_cash
+        total_pnl = final_value - STARTING_CASH
         
-        print(f"Trades: {self.trades} Wins: {self.wins} Losses: {self.losses} WinRate: {wr:.2f}% PF: {pf:.2f}")
-        print(f"Final Value: {final_value:,.2f} | Total PnL: {total_pnl:+,.2f}")
+        # =================================================================
+        # ADVANCED METRICS: Drawdown, Sharpe Ratio
+        # =================================================================
+        max_drawdown_pct = 0.0
+        sharpe_ratio = 0.0
         
-        # DEBUG STATISTICS
-        print(f"\n=== ENTRY SIGNAL DEBUG STATS ===")
-        print(f"Total Entry Signals Evaluated: {self.entry_signal_count}")
-        print(f"Blocked Entries: {self.blocked_entry_count}")
-        print(f"Successful Entries: {self.successful_entry_count}")
-        if self.entry_signal_count > 0:
-            block_rate = (self.blocked_entry_count / self.entry_signal_count) * 100
-            success_rate = (self.successful_entry_count / self.entry_signal_count) * 100
-            print(f"Block Rate: {block_rate:.1f}% | Success Rate: {success_rate:.1f}%")
+        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 1:
+            peak = self._portfolio_values[0]
+            for value in self._portfolio_values:
+                if value > peak:
+                    peak = value
+                drawdown = (peak - value) / peak * 100.0
+                if drawdown > max_drawdown_pct:
+                    max_drawdown_pct = drawdown
         
-        # Validation
-        calculated_pnl = self.gross_profit - self.gross_loss
-        pnl_diff = abs(calculated_pnl - total_pnl)
-        if pnl_diff > 10.0:  # Allow for small rounding/fee differences
-            print(f"INFO: PnL difference: {pnl_diff:.2f} (calculated: {calculated_pnl:+.2f})")
+        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                std_return = np.std(returns_array)
+                periods_per_year = 252 * 24 * 12  # 5-minute periods per year
+                if std_return > 0:
+                    sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
+        
+        # =================================================================
+        # ADVANCED METRICS: CAGR, Sortino, Calmar, Monte Carlo
+        # =================================================================
+        cagr = 0.0
+        sortino_ratio = 0.0
+        calmar_ratio = 0.0
+        monte_carlo_dd_95 = 0.0
+        monte_carlo_dd_99 = 0.0
+        
+        # Calculate CAGR
+        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 1 and STARTING_CASH > 0:
+            total_return = final_value / STARTING_CASH
+            if hasattr(self, '_trade_pnls') and self._trade_pnls:
+                first_date = self._trade_pnls[0]['date']
+                last_date = self._trade_pnls[-1]['date']
+                days = (last_date - first_date).days
+                years = max(days / 365.25, 0.1)
+            else:
+                years = len(self._portfolio_values) / (252 * 24 * 12)
+                years = max(years, 0.1)
+            
+            if total_return > 0:
+                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
+        
+        # Calculate Sortino Ratio
+        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                negative_returns = returns_array[returns_array < 0]
+                if len(negative_returns) > 0:
+                    downside_dev = np.std(negative_returns)
+                    periods_per_year = 252 * 24 * 12
+                    if downside_dev > 0:
+                        sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
+        
+        # Calculate Calmar Ratio
+        if max_drawdown_pct > 0:
+            calmar_ratio = cagr / max_drawdown_pct
+        
+        # Monte Carlo Simulation
+        if hasattr(self, '_trade_pnls') and len(self._trade_pnls) >= 20:
+            n_simulations = 10000
+            pnl_list = [t['pnl'] for t in self._trade_pnls]
+            mc_max_drawdowns = []
+            
+            for _ in range(n_simulations):
+                shuffled_pnl = np.random.permutation(pnl_list)
+                equity = STARTING_CASH
+                peak = equity
+                max_dd = 0.0
+                
+                for pnl in shuffled_pnl:
+                    equity += pnl
+                    if equity > peak:
+                        peak = equity
+                    dd = (peak - equity) / peak * 100.0 if peak > 0 else 0.0
+                    if dd > max_dd:
+                        max_dd = dd
+                
+                mc_max_drawdowns.append(max_dd)
+            
+            mc_max_drawdowns = np.array(mc_max_drawdowns)
+            monte_carlo_dd_95 = np.percentile(mc_max_drawdowns, 95)
+            monte_carlo_dd_99 = np.percentile(mc_max_drawdowns, 99)
+        
+        # =================================================================
+        # YEARLY STATISTICS WITH SHARPE/SORTINO
+        # =================================================================
+        yearly_stats = defaultdict(lambda: {
+            'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0,
+            'gross_profit': 0.0, 'gross_loss': 0.0, 'pnls': []
+        })
+        
+        if hasattr(self, '_trade_pnls'):
+            for trade in self._trade_pnls:
+                year = trade['year']
+                yearly_stats[year]['trades'] += 1
+                yearly_stats[year]['pnl'] += trade['pnl']
+                yearly_stats[year]['pnls'].append(trade['pnl'])
+                if trade['is_winner']:
+                    yearly_stats[year]['wins'] += 1
+                    yearly_stats[year]['gross_profit'] += trade['pnl']
+                else:
+                    yearly_stats[year]['losses'] += 1
+                    yearly_stats[year]['gross_loss'] += abs(trade['pnl'])
+        
+        # Calculate yearly Sharpe and Sortino
+        for year in yearly_stats:
+            pnls = yearly_stats[year]['pnls']
+            if len(pnls) > 1:
+                pnl_array = np.array(pnls)
+                mean_pnl = np.mean(pnl_array)
+                std_pnl = np.std(pnl_array)
+                
+                if std_pnl > 0:
+                    yearly_stats[year]['sharpe'] = (mean_pnl / std_pnl) * np.sqrt(len(pnls))
+                else:
+                    yearly_stats[year]['sharpe'] = 0.0
+                
+                neg_pnls = pnl_array[pnl_array < 0]
+                if len(neg_pnls) > 0:
+                    downside_std = np.std(neg_pnls)
+                    if downside_std > 0:
+                        yearly_stats[year]['sortino'] = (mean_pnl / downside_std) * np.sqrt(len(pnls))
+                    else:
+                        yearly_stats[year]['sortino'] = 0.0
+                else:
+                    yearly_stats[year]['sortino'] = float('inf') if mean_pnl > 0 else 0.0
+            else:
+                yearly_stats[year]['sharpe'] = 0.0
+                yearly_stats[year]['sortino'] = 0.0
+        
+        # =================================================================
+        # PRINT SUMMARY
+        # =================================================================
+        print("\n" + "=" * 70)
+        print("=== SUNRISE OGLE STRATEGY SUMMARY ===")
+        print("=" * 70)
+        
+        # Commission info
+        if USE_FIXED_COMMISSION:
+            real_calls = ForexCommission.commission_calls
+            real_total = ForexCommission.total_commission
+            total_lots = ForexCommission.total_lots
+            avg_commission_per_trade = real_total / self.trades if self.trades > 0 else 0
+            print(f"Commission: ${COMMISSION_PER_LOT_PER_ORDER:.2f}/lot/order (Darwinex Zero)")
+            print(f"Total commission: ${real_total:,.2f} | Avg per trade: ${avg_commission_per_trade:.2f}")
+        else:
+            print("Commission: DISABLED")
+        
+        print(f"Total Trades: {self.trades}")
+        print(f"Wins: {self.wins} | Losses: {self.losses}")
+        print(f"Win Rate: {win_rate:.1f}%")
+        print(f"Profit Factor: {profit_factor:.2f}")
+        print(f"Gross Profit: {self.gross_profit:,.2f}")
+        print(f"Gross Loss: {self.gross_loss:,.2f}")
+        print(f"Net P&L: {total_pnl:,.2f}")
+        print(f"Final Value: {final_value:,.2f}")
+        
+        # Advanced Metrics with quality indicators
+        print(f"\n{'='*70}")
+        print("ADVANCED RISK METRICS")
+        print(f"{'='*70}")
+        
+        sharpe_status = "Poor" if sharpe_ratio < 0.5 else "Marginal" if sharpe_ratio < 1.0 else "Good" if sharpe_ratio < 2.0 else "Excellent"
+        print(f"Sharpe Ratio:    {sharpe_ratio:>8.2f}  [{sharpe_status}]")
+        
+        sortino_status = "Poor" if sortino_ratio < 0.5 else "Marginal" if sortino_ratio < 1.0 else "Good" if sortino_ratio < 2.0 else "Excellent"
+        print(f"Sortino Ratio:   {sortino_ratio:>8.2f}  [{sortino_status}]")
+        
+        cagr_status = "Below Market" if cagr < 8 else "Market-level" if cagr < 12 else "Good" if cagr < 20 else "Exceptional"
+        print(f"CAGR:            {cagr:>7.2f}%  [{cagr_status}]")
+        
+        dd_status = "Excellent" if max_drawdown_pct < 10 else "Acceptable" if max_drawdown_pct < 20 else "High" if max_drawdown_pct < 30 else "Dangerous"
+        print(f"Max Drawdown:    {max_drawdown_pct:>7.2f}%  [{dd_status}]")
+        
+        calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
+        print(f"Calmar Ratio:    {calmar_ratio:>8.2f}  [{calmar_status}]")
+        
+        if monte_carlo_dd_95 > 0:
+            mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
+            mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"
+            print(f"\nMonte Carlo Analysis (10,000 simulations):")
+            print(f"  95th Percentile DD: {monte_carlo_dd_95:>6.2f}%  [{mc_status}]")
+            print(f"  99th Percentile DD: {monte_carlo_dd_99:>6.2f}%")
+            print(f"  Historical vs MC95: {mc_ratio:.2f}x")
+        
+        print(f"{'='*70}")
+        
+        # Yearly Statistics
+        if yearly_stats:
+            print(f"\n{'='*70}")
+            print("YEARLY STATISTICS")
+            print(f"{'='*70}")
+            print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12} {'Sharpe':>8} {'Sortino':>8}")
+            print(f"{'-'*70}")
+            
+            for year in sorted(yearly_stats.keys()):
+                stats = yearly_stats[year]
+                wr = (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
+                year_pf = (stats['gross_profit'] / stats['gross_loss']) if stats['gross_loss'] > 0 else float('inf')
+                year_sharpe = stats.get('sharpe', 0.0)
+                year_sortino = stats.get('sortino', 0.0)
+                
+                sortino_str = f"{year_sortino:>7.2f}" if year_sortino != float('inf') else "    inf"
+                
+                print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {year_pf:>7.2f} ${stats['pnl']:>10,.0f} {year_sharpe:>8.2f} {sortino_str}")
+            
+            print(f"{'='*70}")
 
-        if self.p.long_use_pullback_entry:
-            self._reset_pullback_state()
-        
         # Close trade reporting
         self._close_trade_reporting()
     
@@ -1691,15 +1977,22 @@ if __name__ == '__main__':
             pass
 
     class SLTPObserver(bt.Observer):
-        lines = ('sl','tp',); plotinfo = dict(plot=True, subplot=False)
-        plotlines = dict(sl=dict(color='red', ls='--'), tp=dict(color='green', ls='--'))
+        """Stop Loss and Take Profit Observer for plotting SL/TP levels on chart."""
+        lines = ('sl','tp',)
+        plotinfo = dict(plot=True, subplot=False)
+        plotlines = dict(
+            sl=dict(color='red', ls='--', linewidth=1.0),
+            tp=dict(color='green', ls='--', linewidth=1.0)
+        )
         def next(self):
             strat = self._owner
             if strat.position:
                 self.lines.sl[0] = strat.stop_level if strat.stop_level else float('nan')
                 self.lines.tp[0] = strat.take_level if strat.take_level else float('nan')
             else:
-                self.lines.sl[0] = float('nan'); self.lines.tp[0] = float('nan')
+                self.lines.sl[0] = float('nan')
+                self.lines.tp[0] = float('nan')
+    
     BASE = Path(__file__).resolve().parent.parent.parent
     DATA_FILE = BASE / 'data' / DATA_FILENAME
     STRAT_KWARGS = dict(
@@ -1709,7 +2002,6 @@ if __name__ == '__main__':
     )
     
     if TEST_FOREX_MODE:
-        # Quick test with forex calculations - reduce time period
         try:
             td_obj = datetime.strptime(TODATE, '%Y-%m-%d')
             FROMDATE = (td_obj - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -1723,12 +2015,26 @@ if __name__ == '__main__':
         except Exception: return None
 
     if not DATA_FILE.exists():
-        print(f"Data file not found: {DATA_FILE}"); raise SystemExit(1)
+        print(f"Data file not found: {DATA_FILE}")
+        raise SystemExit(1)
 
-    feed_kwargs = dict(dataname=str(DATA_FILE), dtformat='%Y%m%d', tmformat='%H:%M:%S',
-                       datetime=0, time=1, open=2, high=3, low=4, close=5, volume=6,
-                       timeframe=bt.TimeFrame.Minutes, compression=5)
-    fd = parse_date(FROMDATE); td = parse_date(TODATE)
+    # CSV format: Date,Time,Open,High,Low,Close,Volume (Darwinex format)
+    feed_kwargs = dict(
+        dataname=str(DATA_FILE),
+        dtformat='%Y%m%d',
+        tmformat='%H:%M:%S',
+        datetime=0,
+        time=1,
+        open=2,
+        high=3,
+        low=4,
+        close=5,
+        volume=6,
+        timeframe=bt.TimeFrame.Minutes,
+        compression=5
+    )
+    fd = parse_date(FROMDATE)
+    td = parse_date(TODATE)
     if fd: feed_kwargs['fromdate'] = fd
     if td: feed_kwargs['todate'] = td
     data = bt.feeds.GenericCSVData(**feed_kwargs)
@@ -1736,57 +2042,77 @@ if __name__ == '__main__':
     cerebro = bt.Cerebro(stdstats=False)
     cerebro.adddata(data)
     cerebro.broker.setcash(STARTING_CASH)
-    cerebro.broker.setcommission(leverage=30.0)
+    
+    # Apply Darwinex Zero commission structure
+    if USE_FIXED_COMMISSION:
+        is_jpy = 'JPY' in FOREX_INSTRUMENT
+        cerebro.broker.addcommissioninfo(
+            ForexCommission(
+                commission=COMMISSION_PER_LOT_PER_ORDER,
+                is_jpy_pair=is_jpy,
+                jpy_rate=150.0 if is_jpy else 1.0
+            )
+        )
+        print(f"Commission: ${COMMISSION_PER_LOT_PER_ORDER:.2f}/lot/order (Darwinex Zero)")
+    else:
+        cerebro.broker.setcommission(leverage=30.0)
+    
     cerebro.addstrategy(SunriseOgle, **STRAT_KWARGS)
-    try: cerebro.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgle.params.buy_sell_plotdist)
-    except Exception: pass
-    if SunriseOgle.params.plot_sltp_lines:
-        try: cerebro.addobserver(SLTPObserver)
-        except Exception: pass
-    try: cerebro.addobserver(bt.observers.Value)
-    except Exception: pass
+    
+    try:
+        cerebro.addobserver(bt.observers.BuySell, barplot=False, plotdist=SunriseOgle.params.buy_sell_plotdist)
+    except Exception:
+        pass
+    
+    if PLOT_SLTP_LINES:
+        try:
+            cerebro.addobserver(SLTPObserver)
+        except Exception:
+            pass
+    
+    try:
+        cerebro.addobserver(bt.observers.Value)
+    except Exception:
+        pass
 
     if LIMIT_BARS > 0:
-        # Monkey-patch next() to stop early after LIMIT_BARS bars for quick experimentation.
         orig_next = SunriseOgle.next
         def limited_next(self):
             if len(self.data) >= LIMIT_BARS:
-                self.env.runstop(); return
+                self.env.runstop()
+                return
             orig_next(self)
         SunriseOgle.next = limited_next
 
-    print(f"=== SUNRISE OGLE === (from {FROMDATE} to {TODATE})")
-    if ENABLE_FOREX_CALC:
-        print(f">> FOREX MODE ENABLED - Data: {DATA_FILENAME}")
-        print(f">> Instrument: NZDUSD (NZD/USD)")
-    else:
-        print(f" STANDARD MODE - Data: {DATA_FILENAME}")
+    print(f"\n{'='*70}")
+    print(f"=== SUNRISE OGLE TEMPLATE === ({FOREX_INSTRUMENT})")
+    print(f"{'='*70}")
+    print(f"Period: {FROMDATE} to {TODATE}")
+    print(f"Data: {DATA_FILENAME}")
+    print(f"Starting Cash: ${STARTING_CASH:,.0f}")
+    print(f"Risk per trade: {RISK_PERCENT*100:.2f}%")
+    print(f"SL: {LONG_ATR_SL_MULTIPLIER}x ATR | TP: {LONG_ATR_TP_MULTIPLIER}x ATR")
+    print(f"Time Filter: {ENTRY_START_HOUR:02d}:00-{ENTRY_END_HOUR:02d}:00 UTC" if USE_TIME_RANGE_FILTER else "Time Filter: DISABLED")
+    print(f"{'='*70}\n")
 
     results = cerebro.run()
     final_value = cerebro.broker.getvalue()
     
-    print(f"Final Value: {final_value:,.2f}")
-    
-    # Enhanced plotting logic for single mode
+    # Enhanced plotting
     if ENABLE_PLOT:
-        # Determine trading mode for plot title
-        trading_mode = []
-        if ENABLE_LONG_TRADES:
-            trading_mode.append("LONG")
-        
-        mode_description = " & ".join(trading_mode) if trading_mode else "NO TRADES"
+        trading_mode = "LONG-ONLY"
         
         if getattr(results[0].p, 'plot_result', False):
             try:
                 strategy_result = results[0]
                 final_pnl = final_value - STARTING_CASH
-                plot_title = f'SUNRISE STRATEGY ({mode_description} MODE)\n'
+                plot_title = f'SUNRISE OGLE ({FOREX_INSTRUMENT} - {trading_mode})\n'
                 plot_title += f'Final Value: ${final_value:,.0f} | P&L: {final_pnl:+,.0f} | '
                 plot_title += f'Trades: {strategy_result.trades} | Win Rate: {(strategy_result.wins/strategy_result.trades*100) if strategy_result.trades > 0 else 0:.1f}%'
                 
-                print(f"📊 Showing {mode_description} strategy chart...")
+                print(f"[CHART] Showing {FOREX_INSTRUMENT} strategy chart...")
                 cerebro.plot(style='candlestick', subtitle=plot_title)
             except Exception as e: 
                 print(f"Plot error: {e}")
         else:
-            print(f"📊 Plotting disabled. Set ENABLE_PLOT=True to show charts.")
+            print(f"[INFO] Plotting disabled. Set ENABLE_PLOT=True to show charts.")
