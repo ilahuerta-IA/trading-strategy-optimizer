@@ -223,8 +223,8 @@ USE_MEAN_REVERSION_ENTRY_FILTER = True  # ENABLED for USDCHF
 # (138 trades, PF 1.46, Sharpe 0.43, MC95% DD 12.46%)
 # See docstring above for full robustness analysis
 #
-MR_ENTRY_ZSCORE_MIN = -3.0   # Minimum Z-Score (deep oversold limit)
-MR_ENTRY_ZSCORE_MAX = -1.0   # Maximum Z-Score (must be in oversold zone)
+MR_ENTRY_ZSCORE_MIN = -2.5   # Minimum Z-Score (deep oversold limit)
+MR_ENTRY_ZSCORE_MAX = -1.5   # Maximum Z-Score (must be in oversold zone)
 
 # =============================================================================
 # OVERSOLD DURATION FILTER PARAMETERS
