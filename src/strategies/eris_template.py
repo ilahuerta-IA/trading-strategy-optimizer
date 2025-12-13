@@ -4,33 +4,67 @@ ERIS (Expert Robotic Investment System) - A lean, simplified strategy
 based on lessons learned from Sunrise Ogle, following SOLID principles.
 
 ASSET: USDCHF 5M
-STATUS: ⚠️ NOT SUITABLE FOR LIVE TRADING (Dec 2024)
-NEXT STEP: Consider merging with OGLE → "OGLERIS"
+STATUS: ❌ STRATEGY ABANDONED - NOT VIABLE FOR LIVE TRADING (Dec 2024)
 
-ROBUSTNESS ANALYSIS (2020-07-01 to 2025-07-01, $100k)
-=====================================================
-⚠️ BOTH CONFIGURATIONS FAIL ROBUSTNESS CRITERIA:
+================================================================================
+FINAL ANALYSIS - WHY THIS STRATEGY FAILS
+================================================================================
 
-ORIGINAL CONFIG (Current) - Z-Score [-3.0, -1.0]:
-- Trades: 263 | PF: 1.11 | Sharpe: 0.23 | Sortino: 0.04
-- CAGR: 2.62% | Max DD: 13.75% | MC95% DD: 23.55%
-- Years: 2020(-), 2021(+), 2022(-), 2023(+), 2024(+), 2025(+)
-- Net P&L: $13,741 | ❌ 2 negative years, very low Sharpe
+After extensive optimization and testing (Dec 2024), this strategy was found to
+be NON-VIABLE for live trading due to fundamental structural issues:
 
-CONSERVATIVE CONFIG (Alternative) - Z-Score [-2.5, -1.5]:
-- Trades: 138 | PF: 1.46 | Sharpe: 0.43 | Sortino: 0.05
-- CAGR: 5.07% | Max DD: 12.08% | MC95% DD: 12.46%
-- Years: 2020(-), 2021(+), 2022(-), 2023(+), 2024(+), 2025(+)
-- Net P&L: $27,923 | ❌ 2 negative years, Sharpe < 1.0
+PROBLEM 1: SPREAD vs STOP LOSS RATIO
+------------------------------------
+- Darwinex Zero spread: 0.7 pips
+- Strategy generates many signals with very short SL (1-3 pips)
+- With SL=1.5 pips: spread represents 47% of risk → SUICIDE
+- With SL=3.0 pips: spread represents 23% of risk → MARGINAL
+- With SL=5.0 pips: spread represents 14% of risk → ACCEPTABLE
+  BUT: Only 24 trades remain (85% of signals filtered out)
 
-REQUIRED CRITERIA FOR LIVE TRADING (Dalio Portfolio 10%):
-- Sharpe > 1.0 ❌
-- PF > 1.5 ❌  
-- 5+/6 positive years ❌
-- MC95% DD < 15% ✅ (conservative only)
+PROBLEM 2: LOW ATR ENVIRONMENT
+------------------------------
+- USDCHF has historically low volatility periods (2020, 2022)
+- Low ATR → Short SL distances → High spread impact
+- Pattern works in trending markets, fails in ranging markets
 
-CONCLUSION: Strategy NOT ROBUST for live account.
-Keep for academic study and potential OGLE merger.
+PROBLEM 3: INCONSISTENT YEARLY PERFORMANCE
+------------------------------------------
+Configuration with MIN_SL=4 pips (best compromise):
+  2020: +$2,493 ✅ (rescued by MIN_SL filter)
+  2021: -$1,680 ❌
+  2022: -$4,590 ❌ (low volatility year, devastating)
+  2023: +$4,464 ✅
+  2024: -$353  ❌
+  2025: +$3,309 ✅
+
+3 negative years out of 6 = UNACCEPTABLE for a systematic strategy.
+
+OPTIMIZATION ATTEMPTS THAT FAILED
+---------------------------------
+1. ATR Filter (max threshold): Reduces trades too much
+2. Oversold Candles Filter: Improves PF but still has negative years
+3. MIN_SL Filter: 
+   - 5 pips: Only 24 trades, still loses 2020 and 2022
+   - 4 pips: 58 trades, rescues 2020, but 2022 still -$4,590
+4. Combined filters: Always a trade-off between trades and quality
+
+KEY LEARNINGS (EDUCATIONAL VALUE)
+---------------------------------
+1. Mean reversion in low-vol pairs requires wider stops
+2. Spread cost is CRITICAL for short-term strategies
+3. A strategy that loses 2+ years is not robust
+4. ATR-based sizing amplifies losses in low-vol periods
+5. Pattern recognition alone is not enough - market regime matters
+
+RECOMMENDATION
+--------------
+- Do NOT use for live trading
+- Keep for educational reference
+- Consider OGLE strategy instead (validated robust)
+- If merging with OGLE, focus on OGLE's regime filters
+
+================================================================================
 
 PATTERN DESCRIPTION
 -------------------
@@ -79,8 +113,8 @@ import numpy as np
 DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-07-01'
-TODATE = '2025-07-01'
+FROMDATE = '2020-01-01'
+TODATE = '2025-12-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True
 
@@ -180,8 +214,8 @@ LONG_ATR_TP_MULTIPLIER = 5.0  # TP = ATR x 5.0 -> R:R = 1:5
 # Rule: Only take trades where SL is between MIN and MAX pips
 # Too tight = high spread cost relative to risk
 # Too wide = lower quality setups, may indicate high volatility
-USE_MIN_SL_FILTER = False           # Enable SL range filter
-MIN_SL_PIPS = 3.0                   # Minimum SL distance in pips (spread 0.7 = 14% cost)
+USE_MIN_SL_FILTER = False            # Enable SL range filter
+MIN_SL_PIPS = 4.0                   # Minimum SL distance in pips (spread 0.7 = 17.5% cost)
 MAX_SL_PIPS = 250.0                  # Maximum SL distance in pips
 
 # Position sizing
