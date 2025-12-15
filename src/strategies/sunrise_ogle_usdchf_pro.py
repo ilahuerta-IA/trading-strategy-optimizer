@@ -756,6 +756,9 @@ class SunriseOgle(bt.Strategy):
             # CRITICAL FIX: Store original signal trigger candle for validation
             self.signal_trigger_candle = None
 
+            # Track initial cash (will be set on first bar)
+            self._initial_cash = None
+            
             # Basic stats
             self.trades = 0
             self.wins = 0
@@ -1071,6 +1074,10 @@ class SunriseOgle(bt.Strategy):
 
     def next(self):
         """Main strategy logic using volatility expansion channel entry system with 4-phase state machine"""
+        # Capture initial cash on first bar (before any trades)
+        if self._initial_cash is None:
+            self._initial_cash = self.broker.get_value()
+        
         # Track portfolio value and timestamp for plotting
         if hasattr(self, '_portfolio_values'):
             self._portfolio_values.append(self.broker.get_value())
@@ -1661,7 +1668,9 @@ class SunriseOgle(bt.Strategy):
         profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
         
         final_value = self.broker.get_value()
-        total_pnl = final_value - STARTING_CASH
+        # Use actual initial cash (supports dual-strategy mode with split capital)
+        initial_cash = self._initial_cash if self._initial_cash else STARTING_CASH
+        total_pnl = final_value - initial_cash
         
         # =================================================================
         # ADVANCED METRICS: Drawdown, Sharpe Ratio
@@ -1702,8 +1711,8 @@ class SunriseOgle(bt.Strategy):
         monte_carlo_dd_99 = 0.0
         
         # Calculate CAGR
-        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 1 and STARTING_CASH > 0:
-            total_return = final_value / STARTING_CASH
+        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 1 and initial_cash > 0:
+            total_return = final_value / initial_cash
             if hasattr(self, '_trade_pnls') and self._trade_pnls:
                 first_date = self._trade_pnls[0]['date']
                 last_date = self._trade_pnls[-1]['date']
@@ -1745,7 +1754,7 @@ class SunriseOgle(bt.Strategy):
             
             for _ in range(n_simulations):
                 shuffled_pnl = np.random.permutation(pnl_list)
-                equity = STARTING_CASH
+                equity = initial_cash
                 peak = equity
                 max_dd = 0.0
                 
