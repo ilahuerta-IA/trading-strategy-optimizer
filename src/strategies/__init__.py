@@ -76,6 +76,7 @@ register_strategy('CorrelatedSMACross', 'strategies.correlated_sma_cross', 'Corr
 register_strategy('MACrossOver', 'strategies.ma_cci_crossover', 'MACrossOver')
 register_strategy('BBandPearsonDivergence', 'strategies.bband_pearson_divergence', 'BBandPearsonDivergence')
 register_strategy('SunriseSimple', 'strategies.sunrise_simple', 'SunriseSimple')
+register_strategy('sunrise_ogle_eurusd_pro', 'strategies.sunrise_ogle_eurusd_pro', 'SunriseOgle')
 
 # Import strategy classes for direct access
 try:
