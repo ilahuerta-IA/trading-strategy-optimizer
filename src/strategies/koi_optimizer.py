@@ -48,8 +48,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Import commission class from template
-from koi_template import ForexCommission
+# Import commission class and ForexCSVData from template
+from koi_template import ForexCommission, ForexCSVData
 
 
 # =============================================================================
@@ -464,20 +464,11 @@ def run_single_backtest(
     if not data_path.exists():
         raise FileNotFoundError(f"Data file not found: {data_path}")
     
-    data = bt.feeds.GenericCSVData(
+    # Use ForexCSVData to correctly handle Date/Time columns
+    data = ForexCSVData(
         dataname=str(data_path),
         fromdate=datetime.strptime(fromdate, '%Y-%m-%d'),
         todate=datetime.strptime(todate, '%Y-%m-%d'),
-        dtformat='%Y%m%d',
-        tmformat='%H:%M:%S',
-        datetime=0,
-        time=1,
-        open=2,
-        high=3,
-        low=4,
-        close=5,
-        volume=6,
-        openinterest=-1,
         timeframe=bt.TimeFrame.Minutes,
         compression=5,
     )

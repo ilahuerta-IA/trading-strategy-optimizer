@@ -7,19 +7,24 @@ DIRECTION: Long-only
 ENTRY SYSTEM (4 PHASES):
 1. PATTERN: Bullish engulfing candle detected
 2. TREND: All 5 EMAs ascending (EMA[0] > EMA[-1])
-3. MOMENTUM: CCI > threshold (100)
-4. BREAKOUT: Price breaks pattern HIGH + offset within N candles
+3. MOMENTUM: CCI > 100
+4. BREAKOUT: Price breaks pattern HIGH + 2 pips within 3 candles
 
 EXIT SYSTEM:
-- Stop Loss: Entry - (ATR x 3.0)
-- Take Profit: Entry + (ATR x 12.0)
-- Risk:Reward = 1:4
+- Stop Loss: Entry - (ATR x 2.0)
+- Take Profit: Entry + (ATR x 6.0)
+- Risk:Reward = 1:3
 
 FILTERS:
-- SL Range: TO BE OPTIMIZED FOR EURUSD
+- SL Range: 8-14 pips
+- ATR Filter: 50-100 pips (key filter)
 
-PERFORMANCE: PENDING OPTIMIZATION
-- Starting with USDCHF parameters as baseline
+PERFORMANCE (5 years, 2020-2025):
+- Profit Factor: 1.29
+- Trades: 259
+- Win Rate: 32.0%
+- Max Drawdown: 6.3%
+- Net PnL: +$28,032
 
 COMMISSION MODEL: Darwinex Zero ($2.50/lot/order) - ALWAYS ACTIVE
 """
@@ -53,7 +58,7 @@ MARGIN_PERCENT = 3.33
 EXPORT_TRADE_REPORTS = True
 
 # =============================================================================
-# KOI PARAMETERS - BASELINE (USDCHF OPTIMIZED) - TO BE OPTIMIZED
+# KOI PARAMETERS - OPTIMIZED FOR EURUSD (Phase 5 Dec 2025)
 # =============================================================================
 
 # EMAs
@@ -65,42 +70,42 @@ EMA_5_PERIOD = 120
 
 # CCI
 CCI_PERIOD = 20
-CCI_THRESHOLD = 100
+CCI_THRESHOLD = 100  # Optimizado
 
-# ATR SL/TP - OPTIMIZED FOR EURUSD
+# ATR SL/TP - OPTIMIZED Phase 5
 ATR_LENGTH = 10
-ATR_SL_MULTIPLIER = 3.0
-ATR_TP_MULTIPLIER = 6.0  # Ratio 1:2 (diferente a USDCHF 1:4)
+ATR_SL_MULTIPLIER = 2.0  # CHANGED from 3.0
+ATR_TP_MULTIPLIER = 6.0  # Ratio 1:3
 
-# Breakout Window - OPTIMIZED FOR EURUSD
+# Breakout Window - OPTIMIZED Phase 5
 USE_BREAKOUT_WINDOW = True
 BREAKOUT_WINDOW_CANDLES = 3
-BREAKOUT_LEVEL_OFFSET_PIPS = 3.0  # Reducido de 5.0 (USDCHF)
+BREAKOUT_LEVEL_OFFSET_PIPS = 2.0  # CHANGED from 3.0
 
 # Risk
 RISK_PERCENT = 0.005
 
 # =============================================================================
-# FILTERS - DISABLED FOR BASELINE TEST
+# FILTERS - OPTIMIZED PHASE 5 (Dec 19, 2025)
 # =============================================================================
 
-# Session Filter
+# Session Filter - DISABLED (ajuste fino pendiente)
 USE_SESSION_FILTER = False
 ENTRY_START_HOUR = 0
 ENTRY_END_HOUR = 23
 
-# Min SL Filter - OPTIMIZED FOR EURUSD
+# Min SL Filter - OPTIMIZED Phase 5
 USE_MIN_SL_FILTER = True
-MIN_SL_PIPS = 10.0
+MIN_SL_PIPS = 8.0  # CHANGED from 10.0
 
-# Max SL Filter - OPTIMIZED FOR EURUSD  
+# Max SL Filter - OPTIMIZED Phase 5
 USE_MAX_SL_FILTER = True
-MAX_SL_PIPS = 20.0  # Más amplio que USDCHF (14.5)
+MAX_SL_PIPS = 14.0  # CHANGED from 20.0
 
-# ATR Filter
-USE_ATR_FILTER = False
-ATR_MIN_THRESHOLD = 0.00030
-ATR_MAX_THRESHOLD = 0.00100
+# ATR Filter - ENABLED (key filter for EURUSD)
+USE_ATR_FILTER = True  # CHANGED from False
+ATR_MIN_THRESHOLD = 0.00050  # 50 pips (CHANGED from 0.00030)
+ATR_MAX_THRESHOLD = 0.00100  # 100 pips
 
 # =============================================================================
 # COMMISSION CLASS - Darwinex Zero ($2.50/lot/order)
