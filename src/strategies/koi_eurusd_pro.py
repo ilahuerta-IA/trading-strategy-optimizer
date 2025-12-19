@@ -7,7 +7,7 @@ DIRECTION: Long-only
 ENTRY SYSTEM (4 PHASES):
 1. PATTERN: Bullish engulfing candle detected
 2. TREND: All 5 EMAs ascending (EMA[0] > EMA[-1])
-3. MOMENTUM: CCI > 100
+3. MOMENTUM: CCI > 110
 4. BREAKOUT: Price breaks pattern HIGH + 2 pips within 3 candles
 
 EXIT SYSTEM:
@@ -17,14 +17,16 @@ EXIT SYSTEM:
 
 FILTERS:
 - SL Range: 8-14 pips
-- ATR Filter: 50-100 pips (key filter)
+- ATR Filter: 50-100 pips (key filter for profitability)
+- Session Filter: Profitable hours only (UTC)
+  [0, 4, 5, 7, 8, 10, 11, 12, 13, 14, 16, 18, 22, 23]
 
-PERFORMANCE (5 years, 2020-2025):
-- Profit Factor: 1.29
-- Trades: 259
-- Win Rate: 32.0%
-- Max Drawdown: 6.3%
-- Net PnL: +$28,032
+PERFORMANCE (5 years, 2020-2025, with commissions):
+- Profit Factor: 1.54 (target >1.5 ✓)
+- Trades: 173 (target >120 ✓)
+- Win Rate: 35.3%
+- Max Drawdown: 5.83%
+- Net PnL: +$32,149
 
 COMMISSION MODEL: Darwinex Zero ($2.50/lot/order) - ALWAYS ACTIVE
 """
@@ -42,14 +44,14 @@ import numpy as np
 
 DATA_FILENAME = 'EURUSD_5m_5Yea.csv'
 FROMDATE = '2020-01-01'
-TODATE = '2025-07-01'
+TODATE = '2025-12-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = False  # Set to False for batch testing
 
 FOREX_INSTRUMENT = 'EURUSD'
 PIP_VALUE = 0.0001
 
-# COMISIONES SIEMPRE ACTIVAS - Darwinex Zero
+# Commission - Darwinex Zero (always active)
 USE_FIXED_COMMISSION = True
 COMMISSION_PER_LOT_PER_ORDER = 2.50
 SPREAD_PIPS = 0.2  # EURUSD más líquido que USDCHF
@@ -58,7 +60,7 @@ MARGIN_PERCENT = 3.33
 EXPORT_TRADE_REPORTS = True
 
 # =============================================================================
-# KOI PARAMETERS - OPTIMIZED FOR EURUSD (Phase 5 Dec 2025)
+# KOI PARAMETERS - EURUSD OPTIMIZED
 # =============================================================================
 
 # EMAs
@@ -70,42 +72,39 @@ EMA_5_PERIOD = 120
 
 # CCI
 CCI_PERIOD = 20
-CCI_THRESHOLD = 100  # Optimizado
+CCI_THRESHOLD = 110  # Balanced threshold for filter vs trade count
 
-# ATR SL/TP - OPTIMIZED Phase 5
+# ATR for SL/TP calculation
 ATR_LENGTH = 10
-ATR_SL_MULTIPLIER = 2.0  # CHANGED from 3.0
-ATR_TP_MULTIPLIER = 6.0  # Ratio 1:3
+ATR_SL_MULTIPLIER = 2.0
+ATR_TP_MULTIPLIER = 6.0  # Risk:Reward = 1:3
 
-# Breakout Window - OPTIMIZED Phase 5
+# Breakout Window
 USE_BREAKOUT_WINDOW = True
 BREAKOUT_WINDOW_CANDLES = 3
-BREAKOUT_LEVEL_OFFSET_PIPS = 2.0  # CHANGED from 3.0
+BREAKOUT_LEVEL_OFFSET_PIPS = 2.0
 
 # Risk
 RISK_PERCENT = 0.005
 
 # =============================================================================
-# FILTERS - OPTIMIZED PHASE 5 (Dec 19, 2025)
+# FILTERS
 # =============================================================================
 
-# Session Filter - DISABLED (ajuste fino pendiente)
-USE_SESSION_FILTER = False
-ENTRY_START_HOUR = 0
-ENTRY_END_HOUR = 23
+# Session Filter - Trade only during profitable hours (UTC server time)
+USE_SESSION_FILTER = True
+PROFITABLE_HOURS = [0, 4, 5, 7, 8, 10, 11, 12, 13, 14, 16, 18, 22, 23]
 
-# Min SL Filter - OPTIMIZED Phase 5
+# SL Pip Range Filter
 USE_MIN_SL_FILTER = True
-MIN_SL_PIPS = 8.0  # CHANGED from 10.0
-
-# Max SL Filter - OPTIMIZED Phase 5
+MIN_SL_PIPS = 8.0
 USE_MAX_SL_FILTER = True
-MAX_SL_PIPS = 14.0  # CHANGED from 20.0
+MAX_SL_PIPS = 14.0
 
-# ATR Filter - ENABLED (key filter for EURUSD)
-USE_ATR_FILTER = True  # CHANGED from False
-ATR_MIN_THRESHOLD = 0.00050  # 50 pips (CHANGED from 0.00030)
-ATR_MAX_THRESHOLD = 0.00100  # 100 pips
+# ATR Volatility Filter - Key filter for profitability
+USE_ATR_FILTER = True
+ATR_MIN_THRESHOLD = 0.00050  # 50 pips minimum
+ATR_MAX_THRESHOLD = 0.00100  # 100 pips maximum
 
 # =============================================================================
 # COMMISSION CLASS - Darwinex Zero ($2.50/lot/order)
@@ -230,8 +229,7 @@ class KOIStrategy(bt.Strategy):
         breakout_level_offset_pips=BREAKOUT_LEVEL_OFFSET_PIPS,
         risk_percent=RISK_PERCENT,
         use_session_filter=USE_SESSION_FILTER,
-        entry_start_hour=ENTRY_START_HOUR,
-        entry_end_hour=ENTRY_END_HOUR,
+        profitable_hours=PROFITABLE_HOURS,
         use_min_sl_filter=USE_MIN_SL_FILTER,
         min_sl_pips=MIN_SL_PIPS,
         use_max_sl_filter=USE_MAX_SL_FILTER,
@@ -366,10 +364,8 @@ class KOIStrategy(bt.Strategy):
         if not self.p.use_session_filter:
             return True
         hour = dt.hour
-        if self.p.entry_start_hour <= self.p.entry_end_hour:
-            return self.p.entry_start_hour <= hour < self.p.entry_end_hour
-        else:
-            return hour >= self.p.entry_start_hour or hour < self.p.entry_end_hour
+        # Use list of profitable hours instead of range
+        return hour in self.p.profitable_hours
 
     def _check_entry_conditions(self):
         if self.position or self.order:

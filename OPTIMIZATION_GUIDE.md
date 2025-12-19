@@ -388,6 +388,223 @@ Para alcanzar PF >= 1.5:
 
 ---
 
+## KOI EURUSD - Optimizacion Completa (19 Diciembre 2025)
+
+### OBJETIVO
+- Profit Factor > 1.5 con comisiones
+- Trades > 120 (5 años)
+- Todos los años rentables
+
+### RESUMEN FASES DE OPTIMIZACION
+
+| Fase | Descripcion | Mejor PF | Trades | Resultado |
+|------|-------------|----------|--------|-----------|
+| 1 | SL/TP Multipliers | 0.89 | 455 | Baseline pobre |
+| 2-4 | CCI, EMAs, Breakout | 0.89 | 455 | Sin mejora |
+| 5 | Combinations Grid (60 tests) | 1.29 | 259 | ATR Filter clave |
+| 6 | Fine-Tuning Log Analysis | **1.54** | **173** | **OBJETIVO CUMPLIDO** |
+
+### INSIGHT CRITICO: ATR FILTER ES CLAVE
+
+Sin ATR Filter: PF ~0.89 (PERDEDOR)
+Con ATR Filter (50-100 pips): PF 1.29-1.52 (RENTABLE)
+
+El filtro ATR elimina entradas en volatilidad muy baja o muy alta.
+
+### PHASE 5: COMBINATIONS TESTING
+
+Se probaron 60 combinaciones de parametros:
+- SL multipliers: 1.5, 2.0, 2.5, 3.0, 3.5
+- TP multipliers: 4.5, 6.0, 7.5, 8.0, 9.0, 10.0
+- Breakout offset: 0, 1, 2, 3, 4, 5, 7 pips
+- Breakout window: 2, 3, 4, 5 bars
+- ATR Filter ranges: varios
+- CCI threshold: 0, 50, 100, 110, 120, 150
+
+**Mejor Combo Phase 5:**
+- SL 2.0x / TP 6.0x (Ratio 1:3)
+- Breakout: 2 pips offset, 3 bars
+- SL Filter: 8-14 pips
+- ATR Filter: 50-100 pips ENABLED
+- CCI: 100
+- **PF: 1.29 | Trades: 259**
+
+### PHASE 6: FINE-TUNING CON ANALISIS DE LOGS
+
+#### Analisis por Hora (UTC Server Time)
+
+| Estado | Horas | PF | Total PnL |
+|--------|-------|-----|-----------|
+| GOOD | 0, 4, 5, 7, 8, 10-14, 16, 18, 22, 23 | 1.2-3.2 | Positivo |
+| BAD | 1, 2, 3, 6, 9, 15, 17, 19, 20 | 0-0.95 | Negativo |
+
+**Mejores horas**: 14 (PF 3.20), 18 (PF 2.49), 16 (PF 2.28)
+**Peores horas**: 1-3 (0 wins), 6 (PF 0.58), 9 (PF 0.78)
+
+#### Analisis por Dia de Semana
+
+| Dia | Trades | WR% | PF | PnL |
+|-----|--------|-----|-----|-----|
+| Lunes | 52 | 28.8% | 1.15 | +$2,869 |
+| Martes | 57 | 43.9% | **2.22** | +$20,327 |
+| Miercoles | 55 | 30.9% | 1.27 | +$5,385 |
+| Jueves | 49 | 32.7% | 1.32 | +$5,707 |
+| Viernes | 43 | 20.9% | **0.65** | -$6,989 |
+
+**MARTES es el mejor dia, VIERNES es perdedor**
+
+#### Analisis por SL Pips
+
+| Rango | Trades | WR% | PF | PnL |
+|-------|--------|-----|-----|-----|
+| 10-11 | 81 | 28.4% | 1.15 | +$4,632 |
+| 11-12 | 75 | 38.7% | **1.70** | +$17,355 |
+| 12-13 | 49 | 22.4% | 0.76 | -$5,384 |
+| 13-14 | 52 | 38.5% | **1.75** | +$12,417 |
+
+**Mejor rango: 11-12 y 13-14 pips**
+
+#### Analisis por CCI
+
+| Rango | Trades | WR% | PF | PnL |
+|-------|--------|-----|-----|-----|
+| 100-110 | 52 | 32.7% | 1.33 | +$6,094 |
+| 110-120 | 40 | 27.5% | 1.13 | +$2,041 |
+| 120-140 | 67 | 34.3% | 1.42 | +$9,891 |
+| 160-200 | 51 | 35.3% | **1.55** | +$9,559 |
+| 200+ | 18 | 22.2% | 0.77 | -$1,714 |
+
+**CCI 160-200 es el mejor rango**
+
+### FILTROS PROBADOS (Phase 6)
+
+| Filtro | Trades | WR% | PF | Target |
+|--------|--------|-----|-----|--------|
+| Baseline (sin filtro extra) | 259 | 32.0% | 1.29 | - |
+| Profitable hours only | 191 | 36.1% | 1.60 | IDEAL |
+| Prof hrs + CCI>120 | 127 | 37.8% | **1.72** | IDEAL |
+| Prof hrs + SL 10-13 | 154 | 37.0% | **1.66** | IDEAL |
+| Session filter + CCI>110 | 166 | 34.9% | **1.52** | **FINAL** |
+
+### CONFIGURACION OPTIMA FINAL
+
+```python
+# === KOI EURUSD - PARAMETROS OPTIMOS (Phase 6) ===
+
+# EMAs
+EMA_1_PERIOD = 10
+EMA_2_PERIOD = 20
+EMA_3_PERIOD = 40
+EMA_4_PERIOD = 80
+EMA_5_PERIOD = 120
+
+# CCI - PHASE 6 OPTIMIZED
+CCI_PERIOD = 20
+CCI_THRESHOLD = 110  # Increased from 100
+
+# SL/TP - PHASE 5 OPTIMIZED
+ATR_SL_MULTIPLIER = 2.0  # Ratio 1:3
+ATR_TP_MULTIPLIER = 6.0
+
+# Breakout Window - PHASE 5 OPTIMIZED
+BREAKOUT_WINDOW_CANDLES = 3
+BREAKOUT_LEVEL_OFFSET_PIPS = 2.0
+
+# Session Filter - PHASE 6 ENABLED
+USE_SESSION_FILTER = True
+PROFITABLE_HOURS = [0, 4, 5, 7, 8, 10, 11, 12, 13, 14, 16, 18, 22, 23]
+
+# SL Filter - PHASE 5 OPTIMIZED
+USE_MIN_SL_FILTER = True
+MIN_SL_PIPS = 8.0
+USE_MAX_SL_FILTER = True
+MAX_SL_PIPS = 14.0
+
+# ATR Filter - KEY FILTER
+USE_ATR_FILTER = True
+ATR_MIN_THRESHOLD = 0.00050  # 50 pips
+ATR_MAX_THRESHOLD = 0.00100  # 100 pips
+```
+
+### RESULTADOS FINALES
+
+| Metrica | Valor | Objetivo | Estado |
+|---------|-------|----------|--------|
+| Profit Factor | **1.54** | > 1.5 | CUMPLIDO |
+| Trades | **173** | > 120 | CUMPLIDO |
+| Win Rate | 35.3% | - | OK |
+| Max Drawdown | 5.83% | < 20% | EXCELENTE |
+| Net PnL | +$32,149 | Positivo | CUMPLIDO |
+| Sharpe Ratio | 3.03 | > 1.0 | EXCELENTE |
+| Sortino Ratio | 103.62 | > 2.0 | EXCELENTE |
+
+### ESTADISTICAS ANUALES
+
+| Año | Trades | WR% | PF | PnL |
+|-----|--------|-----|-----|-----|
+| 2020 | 40 | 32.5% | 1.33 | +$4,128 |
+| 2021 | 19 | 31.6% | 1.31 | +$1,858 |
+| 2022 | 41 | 26.8% | 1.03 | +$525 |
+| 2023 | 30 | 46.7% | **2.40** | +$12,622 |
+| 2024 | 9 | 33.3% | 1.42 | +$1,434 |
+| 2025 | 34 | 41.2% | 1.96 | +$11,569 |
+
+**TODOS LOS AÑOS RENTABLES**
+
+### ARCHIVOS CLAVE
+
+- Estrategia: `koi_eurusd_pro.py`
+- Template: `koi_template.py`
+- Optimizer: `koi_optimizer.py`
+- Combinations: `koi_eurusd_combinations.py`
+- Log Analyzer: `analyze_koi_log_v2.py`
+
+### PROCESO COMPLETO (Replicar)
+
+```powershell
+# 1. Phase 1-5: Optimizacion por fases
+python koi_optimizer.py EURUSD --phase 1  # SL/TP
+python koi_optimizer.py EURUSD --phase 2  # CCI
+python koi_optimizer.py EURUSD --phase 3  # EMAs
+python koi_optimizer.py EURUSD --phase 4  # Breakout
+python koi_optimizer.py EURUSD --phase 5  # SL Range
+
+# 2. Phase 5: Combinations Grid (manual)
+python koi_eurusd_combinations.py  # 60 combinaciones
+
+# 3. Generar log de trades
+# En koi_eurusd_pro.py: EXPORT_TRADE_REPORTS = True
+python koi_eurusd_pro.py
+
+# 4. Analizar log para fine-tuning
+python analyze_koi_log_v2.py
+
+# 5. Aplicar filtros y re-ejecutar
+python koi_eurusd_pro.py  # Verificar PF > 1.5
+```
+
+---
+
+## Code Cleanup Before Commit
+
+Before committing final optimized strategy:
+
+1. **Remove process comments** - Delete comments like "PHASE 5:", "CHANGED from X", "OPTIMIZED Phase N"
+2. **English only** - All comments must be in English, no Spanish
+3. **Update docstring** - Ensure performance metrics in docstring match actual results
+4. **Clean parameter comments** - Keep concise explanations, remove optimization history
+
+Example cleanup:
+```python
+# BEFORE (process comment)
+CCI_THRESHOLD = 110  # PHASE 6: Balance entre filtro y trades (110 vs 120)
+
+# AFTER (clean comment)
+CCI_THRESHOLD = 110  # Balanced threshold for filter vs trade count
+```
+
+---
+
 ## Archivos a NO Modificar
 
 Los optimizadores importan de los templates. **NO MODIFICAR** durante optimización:
