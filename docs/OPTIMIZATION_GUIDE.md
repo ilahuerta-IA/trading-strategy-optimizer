@@ -291,7 +291,81 @@ Date,Time,Open,High,Low,Close,Volume
 20200101,22:00:00,1.12136,1.12139,1.12120,1.12125,47600000
 ```
 
-### Solution in load_data()
+### ⚠️ Problem with GenericCSVData (Dec 19, 2025)
+
+**Issue discovered**: When using `bt.feeds.GenericCSVData` with separate Date/Time columns (`datetime=0, time=1`), backtrader does NOT properly combine them. All times show `23:59:59` regardless of actual time.
+
+**Root cause**: GenericCSVData's internal parsing doesn't properly handle the time column when separate from date.
+
+**Evidence**:
+```python
+# This configuration does NOT work correctly:
+data = bt.feeds.GenericCSVData(
+    dataname=str(data_path),
+    dtformat='%Y%m%d',
+    tmformat='%H:%M:%S',
+    datetime=0,
+    time=1,  # This is IGNORED internally!
+    ...
+)
+# All bt.num2date() and self.data.datetime.datetime(0) return 23:59:59
+```
+
+### Solution: ForexCSVData Custom Feed
+
+Created `ForexCSVData` class that properly parses and combines Date/Time columns:
+
+```python
+class ForexCSVData(bt.feeds.GenericCSVData):
+    """
+    Custom CSV Data Feed that correctly handles separate Date and Time columns.
+    """
+    def _loadline(self, linetokens):
+        dt_str = linetokens[0]  # '20200101'
+        tm_str = linetokens[1]  # '22:00:00'
+        
+        try:
+            dt = datetime.strptime(f"{dt_str} {tm_str}", '%Y%m%d %H:%M:%S')
+        except ValueError:
+            return False
+        
+        if self.p.fromdate and dt < self.p.fromdate:
+            return False
+        if self.p.todate and dt > self.p.todate:
+            return False
+        
+        self.lines.datetime[0] = bt.date2num(dt)
+        self.lines.open[0] = float(linetokens[2])
+        self.lines.high[0] = float(linetokens[3])
+        self.lines.low[0] = float(linetokens[4])
+        self.lines.close[0] = float(linetokens[5])
+        self.lines.volume[0] = float(linetokens[6])
+        self.lines.openinterest[0] = 0.0
+        
+        return True
+```
+
+**Usage:**
+```python
+# CORRECT - Use ForexCSVData
+data = ForexCSVData(
+    dataname=str(data_path),
+    fromdate=datetime.strptime(FROMDATE, '%Y-%m-%d'),
+    todate=datetime.strptime(TODATE, '%Y-%m-%d'),
+)
+
+# Helper method in strategy for datetime access:
+def _get_datetime(self, offset=0):
+    dt_date = self.data.datetime.date(offset)
+    dt_time = self.data.datetime.time(offset)
+    return datetime.combine(dt_date, dt_time)
+```
+
+**Files updated (Dec 19, 2025)**:
+- `koi_eurusd_pro.py` - Added ForexCSVData class and _get_datetime() helper
+- `koi_template.py` - Added ForexCSVData class and _get_datetime() helper
+
+### Alternative: Preprocess CSV with Pandas
 ```python
 def load_data(csv_path):
     df = pd.read_csv(csv_path)

@@ -1,6 +1,6 @@
 """KOI Strategy - Bullish Engulfing + 5 EMA + CCI + Breakout Window
 ================================================================
-ASSET: USDCHF 5M
+ASSET: EURUSD 5M
 TIMEFRAME: 5 minutes
 DIRECTION: Long-only
 
@@ -16,36 +16,12 @@ EXIT SYSTEM:
 - Risk:Reward = 1:4
 
 FILTERS:
-- SL Range: 10.5-14.5 pips (balanced volatility filter)
+- SL Range: TO BE OPTIMIZED FOR EURUSD
 
-PERFORMANCE (2020-2025, 5 years):
-- Trades: 148
-- Win Rate: 43.2%
-- Profit Factor: 1.86
-- Max Drawdown: 7.0%
-- Net P&L: +$29,364 (+29.4%)
+PERFORMANCE: PENDING OPTIMIZATION
+- Starting with USDCHF parameters as baseline
 
-ADVANCED METRICS:
-- Sharpe Ratio (Daily): 3.12 [Excellent]
-- Sortino Ratio (Daily): 6.26 [Excellent]
-- Calmar Ratio: 0.64 [Acceptable]
-- Monte Carlo 95% DD: 7.82%
-
-YEARLY BREAKDOWN:
-- 2020: -$2,666 (27 trades, WR=25.9%)
-- 2021: +$2,262 (31 trades, WR=58.1%)
-- 2022: +$11,184 (31 trades, WR=41.9%)
-- 2023: +$4,378 (26 trades, WR=38.5%)
-- 2024: +$8,617 (16 trades, WR=50.0%)
-- 2025: +$5,599 (17 trades, WR=47.1%)
-
-ROBUSTNESS TEST (10 date ranges):
-- PF Range: 1.54 - 2.38 (Avg: 1.99)
-- Sharpe Range: 2.18 - 4.75 (Avg: 3.52)
-- MaxDD Range: 5.0% - 7.0% (Avg: 6.6%)
-- Tests passing (PF>=1.5): 10/10 (100%)
-
-COMMISSION MODEL: Darwinex Zero ($2.50/lot/order)
+COMMISSION MODEL: Darwinex Zero ($2.50/lot/order) - ALWAYS ACTIVE
 """
 from __future__ import annotations
 import math
@@ -56,27 +32,28 @@ import backtrader as bt
 import numpy as np
 
 # =============================================================================
-# CONFIGURATION
+# CONFIGURATION - EURUSD SPECIFIC
 # =============================================================================
 
-DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
+DATA_FILENAME = 'EURUSD_5m_5Yea.csv'
 FROMDATE = '2020-01-01'
-TODATE = '2025-12-01'
+TODATE = '2025-07-01'
 STARTING_CASH = 100000.0
-ENABLE_PLOT = True  # Set to False for batch testing
+ENABLE_PLOT = False  # Set to False for batch testing
 
-FOREX_INSTRUMENT = 'USDCHF'
+FOREX_INSTRUMENT = 'EURUSD'
 PIP_VALUE = 0.0001
 
+# COMISIONES SIEMPRE ACTIVAS - Darwinex Zero
 USE_FIXED_COMMISSION = True
 COMMISSION_PER_LOT_PER_ORDER = 2.50
-SPREAD_PIPS = 0.7
+SPREAD_PIPS = 0.2  # EURUSD más líquido que USDCHF
 MARGIN_PERCENT = 3.33
 
 EXPORT_TRADE_REPORTS = True
 
 # =============================================================================
-# KOI PARAMETERS - OPTIMIZED
+# KOI PARAMETERS - BASELINE (USDCHF OPTIMIZED) - TO BE OPTIMIZED
 # =============================================================================
 
 # EMAs
@@ -90,21 +67,21 @@ EMA_5_PERIOD = 120
 CCI_PERIOD = 20
 CCI_THRESHOLD = 100
 
-# ATR SL/TP
+# ATR SL/TP - OPTIMIZED FOR EURUSD
 ATR_LENGTH = 10
 ATR_SL_MULTIPLIER = 3.0
-ATR_TP_MULTIPLIER = 12.0
+ATR_TP_MULTIPLIER = 6.0  # Ratio 1:2 (diferente a USDCHF 1:4)
 
-# Breakout Window
+# Breakout Window - OPTIMIZED FOR EURUSD
 USE_BREAKOUT_WINDOW = True
 BREAKOUT_WINDOW_CANDLES = 3
-BREAKOUT_LEVEL_OFFSET_PIPS = 5.0
+BREAKOUT_LEVEL_OFFSET_PIPS = 3.0  # Reducido de 5.0 (USDCHF)
 
 # Risk
 RISK_PERCENT = 0.005
 
 # =============================================================================
-# FILTERS
+# FILTERS - DISABLED FOR BASELINE TEST
 # =============================================================================
 
 # Session Filter
@@ -112,13 +89,13 @@ USE_SESSION_FILTER = False
 ENTRY_START_HOUR = 0
 ENTRY_END_HOUR = 23
 
-# Min SL Filter
+# Min SL Filter - OPTIMIZED FOR EURUSD
 USE_MIN_SL_FILTER = True
-MIN_SL_PIPS = 10.5
+MIN_SL_PIPS = 10.0
 
-# Max SL Filter
+# Max SL Filter - OPTIMIZED FOR EURUSD  
 USE_MAX_SL_FILTER = True
-MAX_SL_PIPS = 14.5
+MAX_SL_PIPS = 20.0  # Más amplio que USDCHF (14.5)
 
 # ATR Filter
 USE_ATR_FILTER = False
@@ -126,7 +103,7 @@ ATR_MIN_THRESHOLD = 0.00030
 ATR_MAX_THRESHOLD = 0.00100
 
 # =============================================================================
-# COMMISSION CLASS - Copied from OGLE (works!)
+# COMMISSION CLASS - Darwinex Zero ($2.50/lot/order)
 # =============================================================================
 class ForexCommission(bt.CommInfoBase):
     """
@@ -313,9 +290,9 @@ class KOIStrategy(bt.Strategy):
                 report_dir = Path("temp_reports")
                 report_dir.mkdir(exist_ok=True)
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                report_path = report_dir / f"KOI_USDCHF_trades_{timestamp}.txt"
+                report_path = report_dir / f"KOI_EURUSD_trades_{timestamp}.txt"
                 self.trade_report_file = open(report_path, 'w', encoding='utf-8')
-                self.trade_report_file.write("=== KOI STRATEGY TRADE REPORT ===\n")
+                self.trade_report_file.write("=== KOI STRATEGY TRADE REPORT (EURUSD) ===\n")
                 self.trade_report_file.write(f"Generated: {datetime.now()}\n")
                 self.trade_report_file.write(f"EMAs: {self.p.ema_1_period}, {self.p.ema_2_period}, "
                                             f"{self.p.ema_3_period}, {self.p.ema_4_period}, {self.p.ema_5_period}\n")
@@ -328,17 +305,22 @@ class KOIStrategy(bt.Strategy):
     def _get_datetime(self, offset=0):
         """Get correct datetime combining date and time from CSV with separate columns.
         
-        When using ForexCSVData, this returns the correctly combined datetime.
-        Falls back to standard method if ForexCSVData not used.
+        GenericCSVData with separate Date/Time columns doesn't combine them properly
+        in bt.num2date() or self.data.datetime.datetime(). This helper fixes that.
         """
         try:
+            # Get date part
             dt_date = self.data.datetime.date(offset)
+            # Get time part  
             dt_time = self.data.datetime.time(offset)
+            # Combine into full datetime
             return datetime.combine(dt_date, dt_time)
         except Exception:
+            # Fallback to standard method
             return self.data.datetime.datetime(offset)
 
     def _check_bullish_engulfing(self):
+        """Check for bullish engulfing pattern."""
         try:
             prev_open = float(self.data.open[-1])
             prev_close = float(self.data.close[-1])
@@ -358,6 +340,7 @@ class KOIStrategy(bt.Strategy):
             return False
 
     def _check_emas_ascending(self):
+        """Check if ALL 5 EMAs are individually ascending (EMA[0] > EMA[-1])."""
         try:
             emas = [self.ema_1, self.ema_2, self.ema_3, self.ema_4, self.ema_5]
             for ema in emas:
@@ -368,6 +351,7 @@ class KOIStrategy(bt.Strategy):
             return False
 
     def _check_cci_condition(self):
+        """Check if CCI > threshold."""
         try:
             return float(self.cci[0]) > self.p.cci_threshold
         except:
@@ -386,7 +370,7 @@ class KOIStrategy(bt.Strategy):
         if self.position or self.order:
             return False
         
-        dt = self._get_datetime()  # Use helper for correct datetime
+        dt = self._get_datetime()  # Use helper for correct datetime with hour
         if not self._check_session(dt):
             return False
         
@@ -500,7 +484,7 @@ class KOIStrategy(bt.Strategy):
     def next(self):
         self._portfolio_values.append(self.broker.get_value())
         
-        dt = self._get_datetime()  # Use helper for correct datetime
+        dt = self._get_datetime()  # Use helper for correct datetime with hour
         current_bar = len(self)
         
         if self.order:
@@ -547,7 +531,7 @@ class KOIStrategy(bt.Strategy):
                     self._execute_entry(dt, atr_now, cci_now)
 
     def notify_order(self, order):
-        """Order notification with OCA for SL/TP - copied from OGLE."""
+        """Order notification with OCA for SL/TP."""
         if order.status in [order.Submitted, order.Accepted]:
             return
 
@@ -609,7 +593,7 @@ class KOIStrategy(bt.Strategy):
         if not trade.isclosed:
             return
         
-        dt = self._get_datetime()  # Use helper for correct datetime
+        dt = self._get_datetime()  # Use helper for correct datetime with hour
         pnl = trade.pnlcomm
         
         self.trades += 1
@@ -631,15 +615,13 @@ class KOIStrategy(bt.Strategy):
         self._record_trade_exit(dt, pnl, reason)
 
     def stop(self):
-        """Strategy end - print summary with advanced metrics (Sharpe, Sortino, Calmar, Monte Carlo)."""
+        """Strategy end - print summary with advanced metrics."""
         final_value = self.broker.get_value()
         total_pnl = final_value - STARTING_CASH
         win_rate = (self.wins / self.trades * 100) if self.trades > 0 else 0
         profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
         
-        # =================================================================
-        # MAX DRAWDOWN (from equity curve)
-        # =================================================================
+        # Max Drawdown
         max_drawdown_pct = 0.0
         if self._portfolio_values:
             values = np.array(self._portfolio_values)
@@ -647,18 +629,14 @@ class KOIStrategy(bt.Strategy):
             dd = (peak - values) / peak * 100
             max_drawdown_pct = np.max(dd)
         
-        # =================================================================
-        # CALCULATE DAILY RETURNS FOR RATIOS
-        # =================================================================
+        # Daily returns for ratios
         daily_returns = []
         if self._trade_pnls:
-            # Group trades by date and calculate daily P&L
             daily_pnl = defaultdict(float)
             for trade in self._trade_pnls:
                 date_key = trade['date'].date()
                 daily_pnl[date_key] += trade['pnl']
             
-            # Calculate returns based on cumulative equity
             equity = STARTING_CASH
             sorted_dates = sorted(daily_pnl.keys())
             for date in sorted_dates:
@@ -668,21 +646,16 @@ class KOIStrategy(bt.Strategy):
                     daily_returns.append(daily_ret)
                     equity += pnl
         
-        # =================================================================
-        # SHARPE RATIO (annualized from daily returns)
-        # =================================================================
+        # Sharpe Ratio
         sharpe_ratio = 0.0
         if len(daily_returns) > 10:
             returns_array = np.array(daily_returns)
             mean_return = np.mean(returns_array)
             std_return = np.std(returns_array)
             if std_return > 0:
-                # Annualize: multiply mean by 252, divide by sqrt(252) for std
                 sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
         
-        # =================================================================
-        # CAGR (Compound Annual Growth Rate)
-        # =================================================================
+        # CAGR
         cagr = 0.0
         if len(self._portfolio_values) > 1 and STARTING_CASH > 0:
             total_return = final_value / STARTING_CASH
@@ -692,14 +665,12 @@ class KOIStrategy(bt.Strategy):
                 days = (last_date - first_date).days
                 years = max(days / 365.25, 0.1)
             else:
-                years = 5.0  # Default assumption
+                years = 5.0
             
             if total_return > 0:
                 cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
         
-        # =================================================================
-        # SORTINO RATIO (downside deviation from daily returns)
-        # =================================================================
+        # Sortino Ratio
         sortino_ratio = 0.0
         if len(daily_returns) > 10:
             returns_array = np.array(daily_returns)
@@ -710,74 +681,18 @@ class KOIStrategy(bt.Strategy):
                 if downside_dev > 0:
                     sortino_ratio = (mean_return / downside_dev) * np.sqrt(252)
         
-        # =================================================================
-        # TRADE-BASED SHARPE (alternative metric)
-        # =================================================================
-        trade_sharpe = 0.0
-        if len(self._trade_pnls) > 10:
-            pnl_list = [t['pnl'] for t in self._trade_pnls]
-            pnl_array = np.array(pnl_list)
-            mean_pnl = np.mean(pnl_array)
-            std_pnl = np.std(pnl_array)
-            if std_pnl > 0:
-                # Trades per year estimate
-                if self._trade_pnls:
-                    first_date = self._trade_pnls[0]['date']
-                    last_date = self._trade_pnls[-1]['date']
-                    days = max((last_date - first_date).days, 1)
-                    trades_per_year = len(self._trade_pnls) * 365.25 / days
-                else:
-                    trades_per_year = 30  # Default
-                trade_sharpe = (mean_pnl / std_pnl) * np.sqrt(trades_per_year)
-        
-        # =================================================================
-        # CALMAR RATIO (CAGR / Max Drawdown)
-        # =================================================================
+        # Calmar Ratio
         calmar_ratio = 0.0
         if max_drawdown_pct > 0:
             calmar_ratio = cagr / max_drawdown_pct
         
-        # =================================================================
-        # MONTE CARLO SIMULATION (10,000 simulations)
-        # =================================================================
-        monte_carlo_dd_95 = 0.0
-        monte_carlo_dd_99 = 0.0
-        if len(self._trade_pnls) >= 20:
-            n_simulations = 10000
-            pnl_list = [t['pnl'] for t in self._trade_pnls]
-            mc_max_drawdowns = []
-            
-            for _ in range(n_simulations):
-                shuffled_pnl = np.random.permutation(pnl_list)
-                equity = STARTING_CASH
-                peak = equity
-                max_dd = 0.0
-                
-                for pnl in shuffled_pnl:
-                    equity += pnl
-                    if equity > peak:
-                        peak = equity
-                    dd = (peak - equity) / peak * 100.0 if peak > 0 else 0.0
-                    if dd > max_dd:
-                        max_dd = dd
-                
-                mc_max_drawdowns.append(max_dd)
-            
-            mc_max_drawdowns = np.array(mc_max_drawdowns)
-            monte_carlo_dd_95 = np.percentile(mc_max_drawdowns, 95)
-            monte_carlo_dd_99 = np.percentile(mc_max_drawdowns, 99)
-        
-        # =================================================================
-        # PRINT SUMMARY
-        # =================================================================
+        # Print Summary
         print("\n" + "=" * 70)
-        print("=== KOI STRATEGY SUMMARY ===")
+        print("=== KOI STRATEGY SUMMARY (EURUSD) ===")
         print("=" * 70)
         
-        # Commission info
         if USE_FIXED_COMMISSION:
             real_total = ForexCommission.total_commission
-            total_lots = ForexCommission.total_lots
             avg_commission_per_trade = real_total / self.trades if self.trades > 0 else 0
             print(f"Commission: ${COMMISSION_PER_LOT_PER_ORDER:.2f}/lot/order (Darwinex Zero)")
             print(f"Total commission: ${real_total:,.2f} | Avg per trade: ${avg_commission_per_trade:.2f}")
@@ -791,9 +706,6 @@ class KOIStrategy(bt.Strategy):
         print(f"Net P&L: ${total_pnl:,.0f}")
         print(f"Final Value: ${final_value:,.0f}")
         
-        # =================================================================
-        # ADVANCED RISK METRICS
-        # =================================================================
         print(f"\n{'='*70}")
         print("ADVANCED RISK METRICS")
         print(f"{'='*70}")
@@ -804,9 +716,6 @@ class KOIStrategy(bt.Strategy):
         sortino_status = "Poor" if sortino_ratio < 0.5 else "Marginal" if sortino_ratio < 1.0 else "Good" if sortino_ratio < 2.0 else "Excellent"
         print(f"Sortino Ratio (Daily): {sortino_ratio:>8.2f}  [{sortino_status}]")
         
-        trade_sharpe_status = "Poor" if trade_sharpe < 0.5 else "Marginal" if trade_sharpe < 1.0 else "Good" if trade_sharpe < 2.0 else "Excellent"
-        print(f"Sharpe Ratio (Trades): {trade_sharpe:>8.2f}  [{trade_sharpe_status}]")
-        
         cagr_status = "Below Market" if cagr < 8 else "Market-level" if cagr < 12 else "Good" if cagr < 20 else "Exceptional"
         print(f"CAGR:                  {cagr:>7.2f}%  [{cagr_status}]")
         
@@ -816,27 +725,16 @@ class KOIStrategy(bt.Strategy):
         calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
         print(f"Calmar Ratio:          {calmar_ratio:>8.2f}  [{calmar_status}]")
         
-        if monte_carlo_dd_95 > 0:
-            mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
-            mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"
-            print(f"\nMonte Carlo Analysis (10,000 simulations):")
-            print(f"  95th Percentile DD: {monte_carlo_dd_95:>6.2f}%  [{mc_status}]")
-            print(f"  99th Percentile DD: {monte_carlo_dd_99:>6.2f}%")
-            print(f"  Historical vs MC95: {mc_ratio:.2f}x")
-        
-        # =================================================================
-        # YEARLY STATISTICS WITH SHARPE/SORTINO
-        # =================================================================
+        # Yearly Statistics
         yearly_stats = defaultdict(lambda: {
             'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0,
-            'gross_profit': 0.0, 'gross_loss': 0.0, 'pnls': []
+            'gross_profit': 0.0, 'gross_loss': 0.0
         })
         
         for trade in self._trade_pnls:
             year = trade['year']
             yearly_stats[year]['trades'] += 1
             yearly_stats[year]['pnl'] += trade['pnl']
-            yearly_stats[year]['pnls'].append(trade['pnl'])
             if trade['is_winner']:
                 yearly_stats[year]['wins'] += 1
                 yearly_stats[year]['gross_profit'] += trade['pnl']
@@ -844,52 +742,20 @@ class KOIStrategy(bt.Strategy):
                 yearly_stats[year]['losses'] += 1
                 yearly_stats[year]['gross_loss'] += abs(trade['pnl'])
         
-        # Calculate yearly Sharpe and Sortino
-        for year in yearly_stats:
-            pnls = yearly_stats[year]['pnls']
-            if len(pnls) > 1:
-                pnl_array = np.array(pnls)
-                mean_pnl = np.mean(pnl_array)
-                std_pnl = np.std(pnl_array)
-                
-                if std_pnl > 0:
-                    yearly_stats[year]['sharpe'] = (mean_pnl / std_pnl) * np.sqrt(len(pnls))
-                else:
-                    yearly_stats[year]['sharpe'] = 0.0
-                
-                neg_pnls = pnl_array[pnl_array < 0]
-                if len(neg_pnls) > 0:
-                    downside_std = np.std(neg_pnls)
-                    if downside_std > 0:
-                        yearly_stats[year]['sortino'] = (mean_pnl / downside_std) * np.sqrt(len(pnls))
-                    else:
-                        yearly_stats[year]['sortino'] = 0.0
-                else:
-                    yearly_stats[year]['sortino'] = float('inf') if mean_pnl > 0 else 0.0
-            else:
-                yearly_stats[year]['sharpe'] = 0.0
-                yearly_stats[year]['sortino'] = 0.0
-        
         print(f"\n{'='*70}")
         print("YEARLY STATISTICS")
         print(f"{'='*70}")
-        print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12} {'Sharpe':>8} {'Sortino':>8}")
-        print(f"{'-'*70}")
+        print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12}")
+        print(f"{'-'*45}")
         
         for year in sorted(yearly_stats.keys()):
             stats = yearly_stats[year]
             wr = (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
             year_pf = (stats['gross_profit'] / stats['gross_loss']) if stats['gross_loss'] > 0 else float('inf')
-            year_sharpe = stats.get('sharpe', 0.0)
-            year_sortino = stats.get('sortino', 0.0)
-            
-            sortino_str = f"{year_sortino:>7.2f}" if year_sortino != float('inf') else "    inf"
-            
-            print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {year_pf:>7.2f} ${stats['pnl']:>10,.0f} {year_sharpe:>8.2f} {sortino_str}")
+            print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {year_pf:>7.2f} ${stats['pnl']:>10,.0f}")
         
         print(f"{'='*70}")
         
-        # Close trade reporting
         if self.trade_report_file:
             self.trade_report_file.close()
             print(f"\nTrade report saved.")
@@ -935,7 +801,7 @@ if __name__ == '__main__':
     )
     cerebro.adddata(data)
     
-    # Broker - SAME AS OGLE
+    # Broker - Darwinex Zero commissions ALWAYS ACTIVE
     cerebro.broker.setcash(STARTING_CASH)
     if USE_FIXED_COMMISSION:
         cerebro.broker.addcommissioninfo(
@@ -973,7 +839,8 @@ if __name__ == '__main__':
     print(f"Starting Cash: ${STARTING_CASH:,.0f}")
     print(f"Risk per trade: {RISK_PERCENT*100:.2f}%")
     print(f"SL: {ATR_SL_MULTIPLIER}x ATR | TP: {ATR_TP_MULTIPLIER}x ATR")
-    print(f"SL Filter: {MIN_SL_PIPS}-{MAX_SL_PIPS} pips")
+    print(f"SL Filter: {'OFF' if not USE_MIN_SL_FILTER else f'{MIN_SL_PIPS}-{MAX_SL_PIPS} pips'}")
+    print(f"Commission: ${COMMISSION_PER_LOT_PER_ORDER}/lot/order (Darwinex Zero)")
     print(f"{'='*70}\n")
     
     results = cerebro.run()
