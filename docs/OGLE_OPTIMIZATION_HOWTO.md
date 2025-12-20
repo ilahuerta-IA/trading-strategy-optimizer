@@ -730,22 +730,114 @@ RUN_SHORT_STRATEGY = False
 
 ---
 
-## 🔄 NEXT STEPS: KOI STRATEGY
+## 🔄 KOI STRATEGY - COMPLETED (Dec 2025)
 
-After completing OGLE optimization:
+KOI EURUSD optimization is complete with excellent results:
 
-1. **KOI Strategy Optimization** (Same process):
-   - Create `sunrise_koi_eurusd_pro.py`
-   - Run Phases 1-5 with KOI-specific parameters
-   - Log analysis and validation
-   - Robustness testing
+### Final Performance
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Profit Factor | **1.54** | > 1.5 | MET |
+| Trades | **173** | > 120 | MET |
+| Win Rate | 35.3% | > 30% | MET |
+| Max Drawdown | 5.83% | < 20% | EXCELLENT |
 
-2. **Strategy Fusion**:
-   - Combine OGLE + KOI signals
-   - Define correlation rules
-   - Backtest combined strategy
-   - Final robustness validation
+### Robustness Test Results
+- **9/10 periods** passed (PF > 1.2)
+- **100% positive PnL** across all periods
+- All 4 robustness criteria met
+- **Verdict: EXCELLENT ROBUSTNESS**
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `koi_eurusd_pro.py` | Production strategy |
+| `koi_template.py` | Base template |
+| `koi_optimizer.py` | Parameter optimizer |
+| `analyze_koi_log_v2.py` | Log analysis |
+| `koi_eurusd_robustness.py` | Robustness test |
+| `koi_eurusd_combinations.py` | Parameter grid search |
+
+### KOI Optimization Process (Replicable)
+```powershell
+# 1. Phase 1-5: Optimize by phases
+python koi_optimizer.py EURUSD --phase 1  # SL/TP
+python koi_optimizer.py EURUSD --phase 2  # CCI
+python koi_optimizer.py EURUSD --phase 3  # EMAs
+python koi_optimizer.py EURUSD --phase 4  # Breakout
+python koi_optimizer.py EURUSD --phase 5  # SL Range
+
+# 2. Combinations grid (optional)
+python koi_eurusd_combinations.py
+
+# 3. Generate trade logs
+# Edit koi_eurusd_pro.py: EXPORT_TRADE_REPORTS = True
+python koi_eurusd_pro.py
+
+# 4. Analyze logs for fine-tuning
+python analyze_koi_log_v2.py
+
+# 5. Apply filters and verify
+python koi_eurusd_pro.py  # Verify PF > 1.5
+
+# 6. Robustness test (10 periods)
+python koi_eurusd_robustness.py  # Verify 70%+ pass
+```
 
 ---
 
-*Last updated: December 19, 2025*
+## 📁 COMPLETE FILE REFERENCE
+
+### Production Files (DO NOT DELETE)
+```
+src/strategies/
+├── Templates
+│   ├── sunrise_ogle_template.py    # OGLE base
+│   └── koi_template.py             # KOI base
+│
+├── Production Strategies
+│   ├── sunrise_ogle_eurusd_pro.py  # OGLE EURUSD
+│   ├── sunrise_ogle_usdchf_pro.py  # OGLE USDCHF
+│   ├── koi_eurusd_pro.py           # KOI EURUSD ⭐
+│   └── koi_usdchf_pro.py           # KOI USDCHF
+│
+├── Optimizers
+│   ├── ogle_optimizer_universal.py # OGLE all assets
+│   └── koi_optimizer.py            # KOI all assets
+│
+├── Analysis Tools
+│   ├── analyze_koi_log_v2.py       # Log analysis
+│   ├── koi_eurusd_robustness.py    # Robustness test
+│   └── koi_eurusd_combinations.py  # Grid search
+│
+└── temp_reports/                   # Trade logs output
+```
+
+### Files to DELETE (Obsolete)
+```
+# Old optimizers
+eris_optimizer.py
+eris_optimizer_v2.py
+ogle_optimizer_v2.py
+koi_full_optimizer.py
+koi_balanced_search.py
+ogle_robustness_tests.py
+koi_robustness_test.py
+
+# One-time analysis scripts
+koi_2020_analysis.py
+koi_filter_analysis.py
+koi_quick_analysis.py
+analyze_deep.py
+analyze_patterns.py
+analyze_usdcad_report.py
+analyze_usdjpy.py
+analyze_usdjpy_deep.py
+analyze_zscore.py
+analyze_combinations.py
+analyze_koi_log.py (replaced by v2)
+```
+
+---
+
+*Last updated: December 20, 2025*

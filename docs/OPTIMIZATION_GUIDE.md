@@ -398,6 +398,53 @@ def load_data(csv_path):
 
 ---
 
+## PHASE 4: Robustness Testing
+
+### Purpose
+After optimization, validate strategy across multiple time periods to ensure:
+- Results aren't period-specific (overfitting)
+- Strategy performs consistently across different market conditions
+- Parameters are robust, not optimized for one specific window
+
+### Test Matrix (10 periods)
+| Test # | Period | Duration | Purpose |
+|--------|--------|----------|---------|
+| BASELINE | Full dataset | ~5 years | Reference |
+| 1-5 | Individual years | 1 year each | Year stability |
+| 6-7 | 2-year periods | 2 years | Medium term |
+| 8 | Recent 1.5Y | 1.5 years | Recent performance |
+| 9 | Alternative 3Y | 3 years | Different window |
+| 10 | Latest 6 months | 6 months | Most recent |
+
+### Robustness Criteria
+| Metric | Pass Criteria |
+|--------|---------------|
+| Profit Factor | > 1.2 in 70%+ of tests |
+| Win Rate | > 25% in all tests |
+| No Catastrophic Loss | Max DD < 25% in all tests |
+| Positive PnL | Positive in 60%+ of tests |
+
+### Robustness Script Usage
+```powershell
+# KOI EURUSD
+python koi_eurusd_robustness.py
+
+# Output shows all 10 tests + summary
+# PASS if 70%+ tests have PF > 1.2
+```
+
+### Example Results (KOI EURUSD Dec 2025)
+```
+Valid tests: 10/10
+  PASSED (PF >= 1.2): 9 (90%)
+  MARGINAL (PF 1.0-1.2): 1 (10%)
+  FAILED (PF < 1.0): 0 (0%)
+
+VERDICT: EXCELLENT ROBUSTNESS (4/4 criteria)
+```
+
+---
+
 ## Quick Commands
 
 ```powershell
@@ -413,6 +460,9 @@ Get-Content temp_reports/ASSET_trades*.txt -Head 50
 
 # Validate with commission
 python validate_eurusd.py
+
+# Robustness test
+python koi_eurusd_robustness.py
 ```
 
 ---
@@ -425,6 +475,7 @@ python validate_eurusd.py
 4. **Consistency > Maximum return** - Prefer stable configurations between periods
 5. **2 EMAs is usually enough** - fast + filter/slow, avoid unnecessary complexity
 6. **Commission matters** - $2.50/lot/order significantly impacts PF, especially with many trades
+7. **Robustness testing is mandatory** - Never deploy without passing 70%+ period tests
 
 ---
 
@@ -453,4 +504,4 @@ class ForexCommission(bt.CommInfoBase):
 
 ---
 
-*Last updated: December 18, 2025*
+*Last updated: December 20, 2025*

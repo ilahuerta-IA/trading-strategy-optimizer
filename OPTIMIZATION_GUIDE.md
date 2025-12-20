@@ -581,7 +581,36 @@ python analyze_koi_log_v2.py
 
 # 5. Aplicar filtros y re-ejecutar
 python koi_eurusd_pro.py  # Verificar PF > 1.5
+
+# 6. Robustness test (10 periodos)
+python koi_eurusd_robustness.py  # Verificar 70%+ tests con PF > 1.2
 ```
+
+---
+
+## KOI EURUSD Robustness Test Results (Dec 2025)
+
+### Test Matrix (10 periods)
+| # | Period | Trades | WR% | PF | PnL | Status |
+|---|--------|--------|-----|-----|-----|--------|
+| 1 | 2020 | 40 | 32.5% | 1.33 | +$4,131 | PASS |
+| 2 | 2021 | 19 | 31.6% | 1.31 | +$1,858 | PASS |
+| 3 | 2022 | 41 | 26.8% | 1.03 | +$525 | MARG |
+| 4 | 2023 | 30 | 46.7% | **2.40** | +$12,622 | PASS |
+| 5 | 2024 | 9 | 33.3% | 1.42 | +$1,434 | PASS |
+| 6 | 2020-2021 | 59 | 32.2% | 1.32 | +$5,991 | PASS |
+| 7 | 2022-2023 | 71 | 35.2% | 1.44 | +$13,147 | PASS |
+| 8 | 2024-2025.07 | 36 | 38.9% | 1.52 | +$10,432 | PASS |
+| 9 | 2020.07-2023.06 | 98 | 33.9% | 1.45 | +$17,381 | PASS |
+| 10 | 2025 H1 | 27 | 40.7% | 1.93 | +$8,998 | PASS |
+
+### Robustness Criteria Check
+- PF > 1.2 in 70%+ tests: **90%** (9/10)
+- WR > 25% in all tests: **YES**
+- Max DD < 25% in all tests: **YES**
+- Positive PnL in 60%+ tests: **100%**
+
+### Verdict: EXCELLENT ROBUSTNESS (4/4 criteria)
 
 ---
 
@@ -614,14 +643,58 @@ Los optimizadores importan de los templates. **NO MODIFICAR** durante optimizaci
 ## Archivos Deprecados (Borrar)
 
 Los siguientes archivos son versiones antiguas y deben borrarse:
-- `eris_optimizer.py`
-- `eris_optimizer_v2.py`
-- `ogle_optimizer_v2.py`
-- `koi_full_optimizer.py`
-- `koi_balanced_search.py`
-- `koi_robustness_test.py`
-- `ogle_robustness_tests.py`
-- `optimize_ogle_eurusd.py`
+
+### Optimizadores Obsoletos
+- `eris_optimizer.py` - Replaced by asset-specific files
+- `eris_optimizer_v2.py` - Old version
+- `ogle_optimizer_v2.py` - Replaced by `ogle_optimizer_universal.py`
+- `koi_full_optimizer.py` - Old version
+- `koi_balanced_search.py` - Old search method
+- `ogle_robustness_tests.py` - Replaced by asset-specific robustness
+
+### Analysis Scripts Obsoletos
+- `koi_robustness_test.py` - Replaced by `koi_eurusd_robustness.py`
+- `koi_2020_analysis.py` - One-time analysis
+- `koi_filter_analysis.py` - Integrated into log analyzer
+- `koi_quick_analysis.py` - One-time script
+- `analyze_deep.py` - One-time analysis
+- `analyze_patterns.py` - One-time analysis
+- `analyze_usdcad_report.py` - One-time report
+- `analyze_usdjpy.py` - One-time analysis
+- `analyze_usdjpy_deep.py` - One-time analysis
+- `analyze_zscore.py` - Experimental
+- `analyze_combinations.py` - One-time analysis
+- `analyze_koi_log.py` - Replaced by `analyze_koi_log_v2.py`
+
+### Strategy Files Obsoletos (not production)
+- `sunrise_ogle_eurusd.py` - Replaced by `sunrise_ogle_eurusd_pro.py`
+- `sunrise_ogle_usdchf.py` - Replaced by `sunrise_ogle_usdchf_pro.py`
+- Various asset files without `_pro` suffix if `_pro` version exists
+
+---
+
+## Archivos de Produccion (NO BORRAR)
+
+### Templates (base strategies)
+- `sunrise_ogle_template.py` - OGLE base strategy
+- `koi_template.py` - KOI base strategy
+
+### Production Strategies
+- `sunrise_ogle_eurusd_pro.py` - OGLE EURUSD optimized
+- `sunrise_ogle_usdchf_pro.py` - OGLE USDCHF optimized  
+- `koi_eurusd_pro.py` - KOI EURUSD optimized
+- `koi_usdchf_pro.py` - KOI USDCHF optimized
+
+### Optimizers (universal)
+- `ogle_optimizer_universal.py` - OGLE optimizer for all assets
+- `koi_optimizer.py` - KOI optimizer for all assets
+
+### Analysis Tools
+- `analyze_koi_log_v2.py` - KOI log analyzer (latest)
+- `koi_eurusd_robustness.py` - KOI robustness test
+- `koi_eurusd_combinations.py` - KOI parameter combinations
+
+---
 
 ## Contacto
 
