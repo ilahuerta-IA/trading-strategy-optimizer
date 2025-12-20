@@ -694,6 +694,77 @@ Los siguientes archivos son versiones antiguas y deben borrarse:
 - `koi_eurusd_robustness.py` - KOI robustness test
 - `koi_eurusd_combinations.py` - KOI parameter combinations
 
+### Multi-Strategy Portfolios
+- `oglekoi_template.py` - Template for OGLE+KOI dual strategy (NEW)
+- `oglekoi_eurusd.py` - OGLE+KOI dual strategy EURUSD
+- `oglekoi_usdchf.py` - OGLE+KOI dual strategy USDCHF
+
+---
+
+## OGLE-KOI Dual Strategy (Multi-Asset Portfolio)
+
+### Objetivo
+Combinar KOI y OGLE en un mismo activo para:
+- Diversificar señales de entrada
+- Reducir drawdown combinado
+- Mejorar curva de equity
+
+### Uso del Template
+
+```powershell
+# 1. Copiar template para nuevo activo
+cp oglekoi_template.py oglekoi_gbpusd.py
+
+# 2. Modificar configuración en el archivo
+# - DATA_FILENAME = 'GBPUSD_5m_5Yea.csv'
+# - FOREX_INSTRUMENT = 'GBPUSD'
+# - OGLE_STRATEGY_MODULE = 'sunrise_ogle_gbpusd_pro'
+# - Ajustar KOI_* parameters
+
+# 3. Ejecutar
+python oglekoi_gbpusd.py
+```
+
+### Resultados EURUSD (20 Dic 2025)
+
+| Estrategia | Trades | WR% | PF | P&L | Allocation |
+|------------|--------|-----|-----|-----|------------|
+| KOI | 173 | 35.3% | 1.54 | +$16,088 | 50% |
+| OGLE | 132 | 25.5% | 1.55 | +$31,314 | 50% |
+| **COMBINED** | **305** | **33.8%** | **1.54** | **+$47,402** | 100% |
+
+### Métricas de Riesgo Corregidas
+
+**IMPORTANTE**: Los ratios Sharpe/Sortino ahora se calculan correctamente:
+
+```python
+# ANTES (incorrecto - inflaba ratios):
+# - Calculaba sobre días con trades únicamente
+# - √252 asumía trading diario
+
+# AHORA (correcto):
+# - Calcula sobre retornos por trade
+# - Anualiza por √(trades_per_year) real
+# - Etiqueta "(Trade)" en vez de "(Daily)"
+```
+
+Resultados EURUSD con cálculo corregido:
+| Métrica | Valor | Status |
+|---------|-------|--------|
+| Trades/Year | ~61 | √61 ≈ 7.8 factor |
+| Sharpe (Trade) | 0.95 | [Marginal] |
+| Sortino (Trade) | 1.82 | [Good] |
+| CAGR | 6.96% | [Below Market] |
+| Max DD | 4.65% | [Excellent] |
+| Calmar | 1.50 | [Good] |
+
+### Monte Carlo Warning
+
+Si Historical vs MC95 > 2.0x = **WARNING**
+- Significa que el drawdown histórico fue "suertudo"
+- En simulaciones, el DD típico es 2x mayor
+- Considerar aumentar capital de reserva
+
 ---
 
 ## Contacto
