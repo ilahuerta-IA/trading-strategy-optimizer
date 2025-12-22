@@ -548,19 +548,19 @@ def run_optimization(
     min_trades: int = 50,
 ) -> list:
     """Run optimization over parameter grid."""
-    print(f"\n{'='*70}")
-    print(f"KOI OPTIMIZER - {instrument} - {phase_name}")
-    print(f"{'='*70}")
-    print(f"Data range: {fromdate} to {todate}")
+    print(f"\n{'='*70}", flush=True)
+    print(f"KOI OPTIMIZER - {instrument} - {phase_name}", flush=True)
+    print(f"{'='*70}", flush=True)
+    print(f"Data range: {fromdate} to {todate}", flush=True)
     
     # Generate combinations
     param_names = list(param_grid.keys())
     param_values = list(param_grid.values())
     combinations = list(product(*param_values))
     
-    print(f"Parameters: {param_names}")
-    print(f"Total combinations: {len(combinations)}")
-    print(f"{'='*70}\n")
+    print(f"Parameters: {param_names}", flush=True)
+    print(f"Total combinations: {len(combinations)}", flush=True)
+    print(f"{'='*70}\n", flush=True)
     
     results = []
     
@@ -568,7 +568,7 @@ def run_optimization(
         params_override = dict(zip(param_names, combo))
         
         param_str = " | ".join([f"{k}={v}" for k, v in params_override.items()])
-        print(f"[{i}/{len(combinations)}] {param_str}", end=" ")
+        print(f"[{i}/{len(combinations)}] {param_str}", end=" ", flush=True)
         
         try:
             result = run_single_backtest(
@@ -581,10 +581,10 @@ def run_optimization(
             results.append(result)
             
             print(f"-> T:{result['trades']} PF:{result['profit_factor']:.2f} "
-                  f"WR:{result['win_rate']:.1f}% DD:{result['max_drawdown']:.1f}%")
+                  f"WR:{result['win_rate']:.1f}% DD:{result['max_drawdown']:.1f}%", flush=True)
             
         except Exception as e:
-            print(f"-> ERROR: {e}")
+            print(f"-> ERROR: {e}", flush=True)
     
     # Filter and sort
     valid_results = [r for r in results if r['trades'] >= min_trades]

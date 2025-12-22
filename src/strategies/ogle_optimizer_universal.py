@@ -66,7 +66,7 @@ COMMISSION:
     - Applied via ForexCommission class
     - ALWAYS included in all backtests
 
-Author: Iván López
+Author: Iván Lahuerta
 Date: December 2025
 ================================================================================
 """
@@ -135,6 +135,14 @@ INSTRUMENT_DATA = {
         'spread': 0.8,
         'time_start': 0,
         'time_end': 8,
+    },
+    'USDCAD': {
+        'data_file': 'USDCAD_5m_5Yea.csv',
+        'pip_value': 0.0001,
+        'pip_decimal_places': 5,
+        'spread': 0.8,
+        'time_start': 7,
+        'time_end': 16,
     },
 }
 
@@ -241,6 +249,10 @@ PHASE5_COMBINATIONS = {
         # Combo 3: Menor DD (10.6%)
         {'name': 'BestDD', 'long_atr_min_threshold': 0.000200, 'long_atr_max_threshold': 0.000500},
     ],
+    'USDCAD': [
+        # Phase 3 Best: EMAs 24/30/36/40, PF=1.01, +$1,195
+        {'name': 'Phase3_Best', 'ema_fast_length': 24, 'ema_medium_length': 30, 'ema_slow_length': 36, 'ema_filter_price_length': 40},
+    ],
 }
 
 # DEPRECATED - Time Filter por backtesting (genera overfitting)
@@ -249,6 +261,78 @@ PHASE5_GRID_DEPRECATED = {
     'entry_start_hour': [0, 6, 7, 8, 21],
     'entry_end_hour': [3, 8, 13, 16, 18],
 }
+
+# =============================================================================
+# USDCAD SPECIFIC PHASES (Dec 22, 2025) - Based on Log Analysis
+# =============================================================================
+# BASELINE: EMAs 24/30/36/40, PF=1.01, 312 trades, +$1,195 (Phase 3)
+# 
+# LOG ANALYSIS FINDINGS (temp_reports/USDCAD_trades_20251222_084850.txt):
+#   - Ángulos negativos: WR 0%, -$5,877 → EXCLUIR
+#   - Mejor rango ángulo: 55-75 (logs: PF 1.32) → VALIDAR CON BACKTEST
+#   - ATR < 0.0003: WR 29.9%, PF 1.56 (logs) → VALIDAR
+#   - ATR < 0.0004: WR 23.3%, PF 1.11 (logs) → VALIDAR  
+#   - Viernes: WR 7.8%, -$11,548 → NO SE PUEDE FILTRAR EN OGLE
+#   - Horas rentables: 0,1,3,7,10,18,21,22 (scattered)
+#   - Peores horas: 4,8,11,12 (WR 0-8%)
+#
+# CRITERIOS MÍNIMOS (GUÍA):
+#   - 5 años completos (2020-2025) ✓
+#   - Mínimo 120 trades
+#   - PF > 1.5
+#
+# PROCESO SECUENCIAL:
+#   1. Phase 6A: Filtro ÁNGULO (probar rangos)
+#   2. Phase 6B: Filtro HORAS (usando mejor ángulo de 6A)
+#   3. Phase 6C: Filtro ATR (usando mejor ángulo+horas)
+# =============================================================================
+
+# PHASE 6A: ANGLE FILTER - First optimization (9 combinations)
+# Baseline: SIN filtro de ángulo (312 trades, PF 1.01)
+# Log analysis sugiere 55-75 tiene mejor PF, pero necesitamos ≥120 trades
+USDCAD_PHASE6A_ANGLE = {
+    'long_use_angle_filter': [True],
+    'long_min_angle': [35, 40, 45, 50, 55],    # Test lower bounds
+    'long_max_angle': [70, 75, 80, 85],        # Test upper bounds  
+}  # 5x4 = 20 combinations
+
+# PHASE 6B: HOUR FILTER - After best angle (needs to be updated with 6A results)
+# OGLE only allows RANGE (start-end), testing logical ranges
+# NOTE: Using best angle from 6A: 45-75 (145 trades, PF 1.51, $19,185)
+USDCAD_PHASE6B_HOURS = {
+    # ANGLE FROM 6A BEST
+    'long_use_angle_filter': [True],
+    'long_min_angle': [45],
+    'long_max_angle': [75],
+    # HOUR RANGE FILTER
+    'use_time_range_filter': [True],
+    # Testing ranges based on log analysis:
+    # - Night session: 21-03 (profitable hours: 0,1,21,22)
+    # - Morning: 7-11 (profitable hour: 7,10 but 8,11 are worst)
+    # - Evening: 18-22 (profitable hours: 18,21,22)
+    # - Full session: 0-23 (baseline), 0-12 (morning), 12-23 (afternoon)
+    'entry_start_hour': [0, 7, 18, 21],
+    'entry_end_hour': [4, 8, 12, 23],
+}  # 4x4 = 16 combinations
+
+# PHASE 6C: ATR FILTER REFINEMENT - After angle+hours
+# Log analysis: ATR < 0.0003 → PF 1.56 (67 trades, need more)
+#               ATR < 0.0004 → PF 1.11 (210 trades, acceptable)
+# USING BEST FROM 6A+6B: Angle 45-75, Hours 18-12
+USDCAD_PHASE6C_ATR = {
+    # FROM 6A BEST
+    'long_use_angle_filter': [True],
+    'long_min_angle': [45],
+    'long_max_angle': [75],
+    # FROM 6B BEST
+    'use_time_range_filter': [True],
+    'entry_start_hour': [18],
+    'entry_end_hour': [12],
+    # ATR FILTER OPTIMIZATION
+    'long_use_atr_filter': [True],
+    'long_atr_min_threshold': [0.000150, 0.000200, 0.000250],
+    'long_atr_max_threshold': [0.000300, 0.000350, 0.000400, 0.000450],
+}  # 3x4 = 12 combinations (per angle+hour config)
 
 
 # =============================================================================
@@ -259,28 +343,54 @@ def get_baseline_params(instrument: str) -> dict:
     config = INSTRUMENT_DATA.get(instrument, INSTRUMENT_DATA['EURUSD'])
     inst_config = INSTRUMENT_CONFIGS.get(instrument, INSTRUMENT_CONFIGS['EURUSD'])
     
+    # INSTRUMENT-SPECIFIC EMAs based on Phase 3 optimization
+    if instrument == 'USDCAD':
+        # USDCAD Phase 3 Best: PF=1.01, +$1,195
+        ema_fast = 24
+        ema_medium = 30
+        ema_slow = 36
+        ema_filter = 40
+        # USDCAD Phase 1 defaults
+        sl_mult = 3.0
+        tp_mult = 15.0
+        # USDCAD Phase 4 - ATR filter OFF by default (Phase 4 results were worse)
+        use_atr_filter = False
+        atr_min = 0.000250
+        atr_max = 0.000500
+    else:
+        # EURUSD defaults (or other instruments)
+        ema_fast = 24
+        ema_medium = 24
+        ema_slow = 24
+        ema_filter = 60
+        sl_mult = 3.0
+        tp_mult = 15.0
+        use_atr_filter = True
+        atr_min = 0.000250
+        atr_max = 0.000500
+    
     return {
-        # EMAs (OPTIMIZED Phase 3)
-        'ema_fast_length': 24,  # Phase 3: best PF
-        'ema_medium_length': 24,  # Phase 3: best PF
-        'ema_slow_length': 24,  # Phase 3: best PF
+        # EMAs (INSTRUMENT-SPECIFIC from Phase 3)
+        'ema_fast_length': ema_fast,
+        'ema_medium_length': ema_medium,
+        'ema_slow_length': ema_slow,
         'ema_confirm_length': 1,
-        'ema_filter_price_length': 60,  # Phase 3: best PF
+        'ema_filter_price_length': ema_filter,
         'ema_exit_length': 25,
         
         # ATR Risk Management (OPTIMIZED Phase 1)
         'atr_length': 10,
-        'long_atr_sl_multiplier': 3.0,  # Phase 1: best PF
-        'long_atr_tp_multiplier': 15.0,  # Phase 1: best PF
+        'long_atr_sl_multiplier': sl_mult,
+        'long_atr_tp_multiplier': tp_mult,
         
         # Direction (Long-Only)
         'enable_long_trades': True,
         'enable_short_trades': False,
         
-        # ATR Volatility Filter - OPTIMIZED Phase 4
-        'long_use_atr_filter': True,  # Enabled with optimal values
-        'long_atr_min_threshold': 0.000250,  # Phase 4: best PF
-        'long_atr_max_threshold': 0.000500,  # Phase 4: best PF
+        # ATR Volatility Filter - INSTRUMENT-SPECIFIC
+        'long_use_atr_filter': use_atr_filter,
+        'long_atr_min_threshold': atr_min,
+        'long_atr_max_threshold': atr_max,
         
         # ATR Increment/Decrement (disabled by default)
         'long_use_atr_increment_filter': False,
@@ -815,6 +925,10 @@ def main():
         '8': ('Phase 8: Angle Filter (avoid 60-80°)', PHASE8_GRID, True),
         '8b': ('Phase 8b: Hour Filter (best hours 0-3,7-8,21-23)', PHASE8B_GRID, True),
         '8c': ('Phase 8c: Refined ATR (0.00020-0.00035)', PHASE8C_GRID, True),
+        # USDCAD SPECIFIC PHASES (Dec 22, 2025)
+        '6a': ('Phase 6A: USDCAD Angle Filter (55-75 range)', USDCAD_PHASE6A_ANGLE, False),
+        '6b': ('Phase 6B: USDCAD Hour Filter (range)', USDCAD_PHASE6B_HOURS, False),
+        '6c': ('Phase 6C: USDCAD ATR Refinement', USDCAD_PHASE6C_ATR, False),
     }
     
     # Execute selected phases

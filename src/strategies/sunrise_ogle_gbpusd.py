@@ -197,10 +197,10 @@ AUTO_PLOT_SINGLE_MODE = False         # Automatically plot in single mode (LONG-
 # === LONG ATR VOLATILITY FILTER ===
 LONG_USE_ATR_FILTER = False                 # Enable ATR-based volatility filtering for long entries
 LONG_ATR_MIN_THRESHOLD = 0.000300          
-LONG_ATR_MAX_THRESHOLD = 0.000700 #0.000325        
+LONG_ATR_MAX_THRESHOLD = 0.000700         
 # ATR INCREMENT FILTER (DISABLED - Inferior Performance)
 LONG_USE_ATR_INCREMENT_FILTER = False       #  OPTIMIZED: Increments showed inferior performance
-LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000001#0.000050 # EXPANDED: Much wider range for more entries
+LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000001 # EXPANDED: Much wider range for more entries
 LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.001000 # EXPANDED: Much wider range for more entries
 # ATR DECREMENT FILTER (OPTIMIZED - Only very low changes)
 LONG_USE_ATR_DECREMENT_FILTER = False        #  OPTIMIZED: Decrements with better performance
@@ -219,7 +219,7 @@ LONG_ANGLE_SCALE_FACTOR = 10000.0           # Scaling factor for angle calculati
 # === LONG PULLBACK ENTRY SYSTEM ===
 LONG_USE_PULLBACK_ENTRY = True             # Enable 3-phase pullback entry system for long entries
 LONG_PULLBACK_MAX_CANDLES = 2              # Max red candles in pullback for long entries (1-3 recommended)
-LONG_ENTRY_WINDOW_PERIODS = 1 #10 #7             # Bars to wait for breakout after pullback (long entries)
+LONG_ENTRY_WINDOW_PERIODS = 1              # Bars to wait for breakout after pullback (long entries)
 
 # ===============================================================
 # * VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS *
@@ -232,26 +232,26 @@ WINDOW_OFFSET_MULTIPLIER = 1.0             # Window delay multiplier (0.5=fast, 
                                           # Formula: window_start = current_bar + (pullback_count × this_value)
                                           # * EXPERIMENT: Try 0.5 for aggressive, 1.5 for conservative entries
 # * WINDOW_PRICE_OFFSET_MULTIPLIER: Controls the price expansion of the two-sided channel
-WINDOW_PRICE_OFFSET_MULTIPLIER = 1.0 #0.01      # NEW: Price expansion multiplier (0.5 = 50% of candle range)
+WINDOW_PRICE_OFFSET_MULTIPLIER = 1.0       # NEW: Price expansion multiplier (0.5 = 50% of candle range)
                                           # Formula: channel_width = candle_range × this_value
 # ===============================================================
 
 # === TIME RANGE FILTER ===
 USE_TIME_RANGE_FILTER = False              # ENABLED: Time filter for complete analysis
-ENTRY_START_HOUR = 7#6                      # Start hour for entry window (UTC)
+ENTRY_START_HOUR = 7                      # Start hour for entry window (UTC)
 ENTRY_START_MINUTE = 0                     # Start minute for entry window (UTC)
-ENTRY_END_HOUR = 18#18 #15                        # End hour for entry window (UTC)
-ENTRY_END_MINUTE = 0#59                      # End minute for entry window (UTC)
+ENTRY_END_HOUR = 18                        # End hour for entry window (UTC)
+ENTRY_END_MINUTE = 0                      # End minute for entry window (UTC)
 
 
 class SunriseOgle(bt.Strategy):
     params = dict(
         # === TECHNICAL INDICATORS ===
-        ema_fast_length=18, #14              # Fast EMA period for trend detection #14
+        ema_fast_length=18,               # Fast EMA period for trend detection #14
         ema_medium_length=18,             # Medium EMA period for trend confirmation #18
-        ema_slow_length=24, #24,               # Slow EMA period for trend strength # 24
+        ema_slow_length=24,                # Slow EMA period for trend strength # 24
         ema_confirm_length=1,             # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=70,#70       # Price filter EMA to avoid counter-trend trades #50
+        ema_filter_price_length=70,       # Price filter EMA to avoid counter-trend trades #50
         ema_exit_length=25,               # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
@@ -283,8 +283,8 @@ class SunriseOgle(bt.Strategy):
         long_min_angle=LONG_MIN_ANGLE,                   # Minimum angle in degrees for EMA slope (long entries)
         long_max_angle=LONG_MAX_ANGLE,                   # Maximum angle in degrees for EMA slope (long entries)
         long_angle_scale_factor=LONG_ANGLE_SCALE_FACTOR,       # Scaling factor for angle calculation sensitivity (long entries)
-        long_atr_sl_multiplier=3.5,  #1.5                          # Stop Loss multiplier for LONG trades
-        long_atr_tp_multiplier=6.5, #10                           # Take Profit multiplier for LONG trades
+        long_atr_sl_multiplier=3.5,                            # Stop Loss multiplier for LONG trades
+        long_atr_tp_multiplier=6.5,                           # Take Profit multiplier for LONG trades
         
         # === LONG PULLBACK ENTRY SYSTEM ===
         long_use_pullback_entry=LONG_USE_PULLBACK_ENTRY,          # Enable 3-phase pullback entry system for long entries
