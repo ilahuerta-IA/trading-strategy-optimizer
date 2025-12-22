@@ -797,7 +797,123 @@ RUN_SHORT_STRATEGY = False
 
 ---
 
-## 🔄 KOI STRATEGY - COMPLETED (Dec 2025)
+## � USDCAD OGLE OPTIMIZATION (Dec 22, 2025)
+
+### Optimization Process
+
+**Phase 6A - Angle Filter:**
+- Tested: 20 combinations (angle min/max)
+- Best: 45°-75° (145 trades, PF 1.51)
+- Status: ✅ ENABLED
+
+**Phase 6B - Hour Filter:**
+- Tested: 16 combinations (start/end hours)
+- Best: 18:00-12:00 UTC (127 trades, PF 1.73)
+- Status: ✅ ENABLED
+
+**Phase 6C - ATR Filter:**
+- Tested: 12 combinations
+- Result: ALL reduced trades below 120 minimum
+- Status: ❌ DISABLED (not viable)
+
+### Final Configuration
+```python
+# === USDCAD PRODUCTION CONFIG ===
+# File: sunrise_ogle_usdcad_pro.py
+
+# EMAs (from base optimization)
+EMA_FAST_LENGTH = 24
+EMA_MEDIUM_LENGTH = 30
+EMA_SLOW_LENGTH = 36
+EMA_FILTER_PRICE_LENGTH = 40
+
+# SL/TP
+LONG_ATR_SL_MULTIPLIER = 3.0
+LONG_ATR_TP_MULTIPLIER = 15.0
+
+# Angle Filter: ENABLED
+LONG_USE_ANGLE_FILTER = True
+ANGLE_MIN_DEGREES = 45
+ANGLE_MAX_DEGREES = 75
+
+# Hour Filter: ENABLED
+USE_TIME_RANGE_FILTER = True
+ENTRY_START_HOUR = 18  # UTC
+ENTRY_END_HOUR = 12    # UTC
+
+# ATR Filter: DISABLED
+LONG_USE_ATR_FILTER = False
+
+# Risk
+RISK_PER_TRADE = 0.01  # 1%
+```
+
+### Performance Summary (Baseline 5+ Years)
+| Metric | Value | Assessment |
+|--------|-------|------------|
+| Period | 2020-01 to 2025-12 | ~6 years |
+| Total Trades | **127** | Meets minimum (>120) ✅ |
+| Win Rate | 31.5% | Expected for trend-following |
+| Profit Factor | **1.70** | Target met (>1.5) ✅ |
+| Net PnL | +$53,301 | +53% on $100K |
+| Max Drawdown | 11.68% | Acceptable (<20%) |
+
+### Robustness Test Results (Yearly Breakdown from Baseline)
+| Year | Trades | WR | PF | PnL | Status |
+|------|--------|-----|-----|------|--------|
+| 2020 | 13 | 15.4% | 0.84 | -$1,310 | ❌ |
+| 2021 | 22 | 36.4% | **2.09** | +$12,892 | ✅ |
+| 2022 | 18 | 16.7% | 0.77 | -$2,904 | ❌ |
+| 2023 | 23 | 30.4% | **1.52** | +$6,952 | ✅ |
+| 2024 | 22 | 45.5% | **2.93** | +$20,660 | ✅ |
+| 2025 | 29 | 34.5% | **1.87** | +$16,999 | ✅ |
+
+### Robustness Criteria Evaluation
+| Criteria | Result | Status |
+|----------|--------|--------|
+| PF > 1.2 in 70%+ years | 4/6 = 67% | ⚠️ MARGINAL |
+| WR > 25% in ALL years | 4/6 | ❌ |
+| DD < 25% in ALL years | 6/6 = 100% | ✅ |
+| Positive PnL in 60%+ | 4/6 = 67% | ✅ |
+
+**Verdict: MARGINAL ROBUSTNESS (2/4 criteria)**
+- 2 negative years (2020, 2022) compensated by 4 strong years
+- Overall profitable but not fully consistent
+
+### Difficulties & Solutions
+
+**Problem 1: Robustness Test Script Complexity**
+- Issue: Initial script reimplemented strategy logic (incorrectly)
+- Symptoms: 7 trades instead of 127, wrong results
+- Solution: Use subprocess to run actual production file with modified dates
+
+**Problem 2: Output Parsing**
+- Issue: Regex patterns didn't match actual output format
+- Solution: Test parsing with single period first, verify before running batch
+
+**Problem 3: Yearly Comparison**
+- Issue: Individual year tests vs baseline yearly stats mismatch
+- Solution: ALWAYS use yearly stats from baseline run (5+ years) as reference
+- Lesson: Individual backtests may have slight equity compounding differences
+
+**Correct Robustness Testing Process:**
+```powershell
+# 1. Run baseline (full period)
+python sunrise_ogle_ASSET_pro.py
+
+# 2. Extract yearly stats from output
+# The yearly table in output IS the robustness reference
+
+# 3. Compare yearly PF against criteria:
+#    - PF > 1.2 in 70%+ years
+#    - WR > 25% in all years  
+#    - DD < 25% in all tests
+#    - Positive PnL in 60%+ years
+```
+
+---
+
+## �🔄 KOI STRATEGY - COMPLETED (Dec 2025)
 
 KOI EURUSD optimization is complete with excellent results:
 

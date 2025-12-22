@@ -87,7 +87,7 @@ TODATE = '2025-12-01'                 # End date for backtesting (YYYY-MM-DD)
 STARTING_CASH = 100000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
 LIMIT_BARS = 0                        # >0: Stop after N bars processed (0 = no limit)
-ENABLE_PLOT = True                    # Show final chart with trades (requires matplotlib)
+ENABLE_PLOT = False                   # Show final chart with trades (requires matplotlib)
 
 # === FOREX CONFIGURATION ===
 ENABLE_FOREX_CALC = True              # Enable advanced forex position calculations
