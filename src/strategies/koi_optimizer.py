@@ -80,6 +80,12 @@ INSTRUMENT_DATA = {
         'pip_decimal_places': 5,
         'spread': 0.9,
     },
+    'USDCAD': {
+        'data_file': 'USDCAD_5m_5Yea.csv',
+        'pip_value': 0.0001,
+        'pip_decimal_places': 5,
+        'spread': 0.8,
+    },
 }
 
 
