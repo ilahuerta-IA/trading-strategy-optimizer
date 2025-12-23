@@ -504,4 +504,32 @@ class ForexCommission(bt.CommInfoBase):
 
 ---
 
-*Last updated: December 20, 2025*
+## PHASE 5: OGLE-KOI Dual Strategy Fusion
+
+After both strategies are optimized and validated for an asset, create a combined portfolio:
+
+### Quick Reference
+```powershell
+# Template files
+src/strategies/oglekoi_usdchf.py   # Reference template
+src/strategies/oglekoi_eurusd.py   # EURUSD dual
+src/strategies/oglekoi_usdcad.py   # USDCAD dual
+```
+
+### Key Points
+1. **Portfolio allocation**: 50% KOI + 50% OGLE
+2. **Embed KOI class**: Don't import from koi_ASSET_pro.py (causes 0 trades)
+3. **Import OGLE**: `from sunrise_ogle_ASSET_pro import SunriseOgle`
+4. **Sharpe/Sortino**: Use √(trades_per_year), NOT √252
+
+### Expected Benefits
+- Diversification from different entry logic
+- Smoother equity curve
+- Combined PF typically between individual strategies
+- Lower correlation = better risk-adjusted returns
+
+See `OGLE_OPTIMIZATION_HOWTO.md` Phase 7 for detailed instructions.
+
+---
+
+*Last updated: December 23, 2025*

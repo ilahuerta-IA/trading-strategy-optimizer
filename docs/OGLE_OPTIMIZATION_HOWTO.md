@@ -1004,6 +1004,172 @@ eris_optimizer_v2.py
 ogle_optimizer_v2.py
 koi_full_optimizer.py
 koi_balanced_search.py
+
+---
+
+## 🔀 PHASE 7: OGLE-KOI DUAL STRATEGY FUSION
+
+### Purpose
+Combine OGLE and KOI strategies into a single portfolio for diversification:
+- **OGLE**: Pullback entries on EMA crossover signals
+- **KOI**: CCI-based breakout entries with engulfing patterns
+- **Benefit**: Different entry logic = uncorrelated trades = smoother equity curve
+
+### Prerequisites
+Before creating a dual strategy for an asset:
+1. ✅ OGLE optimized and validated (PF > 1.5, robustness passed)
+2. ✅ KOI optimized and validated (PF > 1.5, robustness passed)
+3. ✅ Both have > 120 trades in 5 years
+
+### Reference Files (Templates)
+```
+src/strategies/
+├── oglekoi_usdchf.py    # First dual strategy created
+├── oglekoi_eurusd.py    # EURUSD dual
+└── oglekoi_usdcad.py    # USDCAD dual (Dec 23, 2025)
+```
+
+### Creation Process
+
+**Step 1: Copy existing template**
+```powershell
+cd "c:\Iván\Yosoybuendesarrollador\Python\Portafolio\quant_bot_project\src\strategies"
+Copy-Item oglekoi_usdchf.py oglekoi_NEWASSET.py
+```
+
+**Step 2: Update imports**
+```python
+# Change OGLE import to match asset
+from sunrise_ogle_NEWASSET_pro import SunriseOgle  # OGLE strategy
+```
+
+**Step 3: Update KOIStrategy class**
+The KOI strategy is EMBEDDED in the file (not imported) because importing from `koi_ASSET_pro.py` causes issues. Copy the optimized parameters from `koi_NEWASSET_pro.py`:
+
+```python
+class KOIStrategy(bt.Strategy):
+    params = dict(
+        # === ASSET-SPECIFIC OPTIMIZED PARAMS ===
+        cci_period=XX,           # From koi_ASSET_pro.py
+        cci_threshold_min=XX,
+        cci_threshold_max=XX,
+        sl_pips_min=XX,
+        sl_pips_max=XX,
+        session_start=XX,
+        session_end=XX,
+        breakout_window=XX,
+        breakout_pips_offset=XX,
+        atr_sl_mult=X.X,
+        atr_tp_mult=XX.X,
+        # ... etc
+    )
+```
+
+**Step 4: Update data file path**
+```python
+# In run_koi_backtest() and run_ogle_backtest()
+data_path = Path(__file__).parent.parent.parent / 'data' / 'NEWASSET_5M_5YEA.CSV'
+```
+
+**Step 5: Update pip value**
+```python
+# For JPY pairs: 0.01
+# For other pairs: 0.0001
+PIP_VALUE = 0.0001  # or 0.01 for JPY
+```
+
+**Step 6: Run and verify**
+```powershell
+python oglekoi_NEWASSET.py
+```
+
+### Expected Output Structure
+```
+=== OGLE-KOI DUAL STRATEGY BACKTEST (ASSET) ===
+Period: 2020-01-01 to 2025-12-01
+Starting Cash: $100,000.00
+Strategies: KOI (50%), OGLE (50%)
+
+[RUN] Running KOI backtest...
+  Initial Value: $50,000.00
+  Final Value: $XX,XXX.XX
+  P&L: $XX,XXX (+XX.XX%)
+
+[RUN] Running OGLE backtest...
+  (OGLE output with yearly stats)
+
+=== OGLE-KOI DUAL STRATEGY SUMMARY ===
+INDIVIDUAL STRATEGY PERFORMANCE
+  KOI:  XXX trades, PF X.XX, $XX,XXX
+  OGLE: XXX trades, PF X.XX, $XX,XXX
+  COMBINED: XXX trades, PF X.XX, $XX,XXX
+
+ADVANCED RISK METRICS
+  Trades/Year: XX.X (annualization: √XX)
+  Sharpe Ratio: X.XX [Rating]
+  Sortino Ratio: X.XX [Rating]
+  Max Drawdown: X.XX% [Rating]
+```
+
+### Sharpe/Sortino Calculation (Trade-Based)
+
+The dual strategy uses **trade-based** returns, not daily returns:
+
+```python
+# CORRECT: Trade-based (realistic for low-frequency)
+trades_per_year = total_trades / years
+sharpe = (mean_return / std_return) * np.sqrt(trades_per_year)
+sortino = (mean_return / downside_std) * np.sqrt(trades_per_year)
+
+# WRONG: Daily-based (inflates ratios)
+sharpe = (mean_return / std_return) * np.sqrt(252)  # DON'T USE
+```
+
+**Why trade-based?**
+- 47 trades/year ≠ 252 trading days
+- Daily returns would inflate Sharpe by √(252/47) = 2.3x
+- Trade-based is more honest for trend-following strategies
+
+### USDCAD Dual Results (Dec 23, 2025)
+
+| Strategy | Trades | WR% | PF | Net P&L |
+|----------|--------|-----|-----|----------|
+| KOI | 147 | 28.6% | 1.46 | $10,913 |
+| OGLE | 127 | 31.5% | 1.70 | $25,218 |
+| **COMBINED** | **274** | **29.9%** | **1.61** | **$36,148** |
+
+**Risk Metrics (Trade-Based):**
+- Trades/Year: 47.0 (√47 annualization)
+- Sharpe: 1.27 [Good]
+- Sortino: 9.33 [Excellent]
+- Max DD: 4.51% [Excellent]
+- Calmar: 1.21 [Good]
+
+**All Years Profitable:**
+| Year | Trades | PF | PnL |
+|------|--------|-----|------|
+| 2020 | 40 | 1.19 | +$1,521 |
+| 2021 | 43 | 1.75 | +$6,833 |
+| 2022 | 42 | 1.31 | +$2,827 |
+| 2023 | 53 | 1.55 | +$6,082 |
+| 2024 | 37 | 2.77 | +$12,869 |
+| 2025 | 59 | 1.39 | +$5,999 |
+
+### Common Issues
+
+**Problem: 0 trades from KOI**
+- Cause: Importing KOIStrategy from `koi_ASSET_pro.py`
+- Solution: Embed KOIStrategy class directly in dual file
+
+**Problem: OGLE import fails**
+- Cause: Wrong import path
+- Solution: `from sunrise_ogle_ASSET_pro import SunriseOgle`
+
+**Problem: Inflated Sharpe/Sortino**
+- Cause: Using √252 daily annualization
+- Solution: Use √(trades_per_year) trade-based annualization
+
+---
 ogle_robustness_tests.py
 koi_robustness_test.py
 
