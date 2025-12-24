@@ -171,10 +171,16 @@ PHASE3_GRID = {
     'ema_filter_price_length': [40, 50, 60, 70],
 }
 
-# Fase 4: ATR Filter - 16 combinaciones
+# Fase 4: ATR Filter - 16 combinaciones (standard pairs: 0.0001 pip value)
 PHASE4_GRID = {
     'long_atr_min_threshold': [0.000150, 0.000200, 0.000250, 0.000300],
     'long_atr_max_threshold': [0.000500, 0.000700, 0.000900, 0.001100],
+}
+
+# Fase 4 JPY: ATR Filter for JPY pairs - values 100x larger (0.01 pip value)
+PHASE4_GRID_JPY = {
+    'long_atr_min_threshold': [0.015, 0.020, 0.025, 0.030],
+    'long_atr_max_threshold': [0.050, 0.070, 0.090, 0.110],
 }
 
 # =============================================================================
@@ -252,6 +258,14 @@ PHASE5_COMBINATIONS = {
     'USDCAD': [
         # Phase 3 Best: EMAs 24/30/36/40, PF=1.01, +$1,195
         {'name': 'Phase3_Best', 'ema_fast_length': 24, 'ema_medium_length': 30, 'ema_slow_length': 36, 'ema_filter_price_length': 40},
+    ],
+    'USDJPY': [
+        # Phase 1-4 Best: SL=1.5, TP=15.0, Window=1, Pullback=1, EMAs 12/24/24/50, ATR 0.015-0.05
+        {'name': 'Phase4_Best', 
+         'long_atr_sl_multiplier': 1.5, 'long_atr_tp_multiplier': 15.0,
+         'long_entry_window_periods': 1, 'long_pullback_max_candles': 1,
+         'ema_fast_length': 12, 'ema_medium_length': 24, 'ema_slow_length': 24, 'ema_filter_price_length': 50,
+         'long_use_atr_filter': True, 'long_atr_min_threshold': 0.015, 'long_atr_max_threshold': 0.05},
     ],
 }
 
@@ -357,6 +371,17 @@ def get_baseline_params(instrument: str) -> dict:
         use_atr_filter = False
         atr_min = 0.000250
         atr_max = 0.000500
+    elif instrument == 'USDJPY':
+        # USDJPY defaults - ATR values 100x larger for JPY pairs
+        ema_fast = 24
+        ema_medium = 24
+        ema_slow = 24
+        ema_filter = 60
+        sl_mult = 3.0
+        tp_mult = 15.0
+        use_atr_filter = True
+        atr_min = 0.025  # 100x larger for JPY
+        atr_max = 0.050  # 100x larger for JPY
     else:
         # EURUSD defaults (or other instruments)
         ema_fast = 24
@@ -912,11 +937,15 @@ def main():
         return
     
     # Define optimization phases (1-4)
+    # Use JPY-specific ATR grid for JPY pairs
+    is_jpy_pair = 'JPY' in instrument
+    phase4_grid = PHASE4_GRID_JPY if is_jpy_pair else PHASE4_GRID
+    
     phases = {
         '1': ('Phase 1: SL/TP Multipliers', PHASE1_GRID, False),
         '2': ('Phase 2: Entry Window + Pullback', PHASE2_GRID, False),
         '3': ('Phase 3: EMAs', PHASE3_GRID, False),
-        '4': ('Phase 4: ATR Filter', PHASE4_GRID, False),
+        '4': ('Phase 4: ATR Filter', phase4_grid, False),
         # NEW PHASES (from BestPnL baseline)
         '6': ('Phase 6: Entry Window Extended (BestPnL baseline)', PHASE6_GRID, True),
         '7': ('Phase 7: ATR Increment Filter (BestPnL baseline)', PHASE7_GRID, True),

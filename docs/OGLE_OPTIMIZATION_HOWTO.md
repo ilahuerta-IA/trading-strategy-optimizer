@@ -562,6 +562,44 @@ These are the optimized values for USDCHF that work:
 8. **SAVE** JSON results for future reference
 9. **VALIDATE** log findings with real backtest before applying
 10. **ALL documentation in English**
+11. **NEVER** change `RISK_PERCENT` from 0.005 (0.5%) - See axiom below
+
+---
+
+## 🚫 AXIOM: NEVER MODIFY ORIGINAL STRATEGY PARAMETERS
+
+### Position Sizing (RISK_PERCENT)
+```python
+# ✅ CORRECT - Always use 0.5% risk per trade
+RISK_PERCENT = 0.005  # 0.5% portfolio risk per trade
+
+# ❌ WRONG - NEVER use fixed lot sizing
+RISK_PERCENT = 0.00   # This disables dynamic sizing!
+```
+
+**Why this matters:**
+- `RISK_PERCENT = 0.005` = Dynamic position sizing based on stop loss distance
+- `RISK_PERCENT = 0.00` = Fixed 1 lot (breaks risk management)
+- Backtests with fixed lots are NOT comparable to production
+- All optimization results assume 0.5% risk sizing
+
+### What CAN be optimized:
+- ✅ EMAs (fast, medium, slow, filter)
+- ✅ ATR multipliers (SL, TP)
+- ✅ ATR thresholds (min, max)
+- ✅ Time filters (hours)
+- ✅ Angle filters (min, max degrees)
+- ✅ Pullback/Window parameters
+
+### What CANNOT be changed:
+- ❌ `RISK_PERCENT` (always 0.005 = 0.5%)
+- ❌ Commission model (always Darwinex Zero $2.50/lot)
+- ❌ Core strategy logic (entry/exit rules)
+- ❌ Position sizing formula
+
+### Related Documentation
+- [JPY_PNL_GUIDE.md](JPY_PNL_GUIDE.md) - JPY pairs P&L calculation (ERIS approach)
+- [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md) - General optimization process
 
 ---
 

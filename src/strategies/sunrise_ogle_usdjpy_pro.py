@@ -1,50 +1,12 @@
-"""Advanced Sunrise OGLE Strategy - Template (Long-Only)
-========================================================
-MULTI-ASSET TEMPLATE - Copy and modify for different forex pairs.
-Default configuration: USDCHF (values from sunrise_ogle_usdchf.py)
+"""Advanced Sunrise OGLE Strategy - USDJPY Production (Long-Only)
+================================================================
+USJPY OPTIMIZED VERSION - Parameters tuned for JPY pair characteristics.
+Based on template with JPY-specific adjustments (0.01 pip value, 100.0 angle scale).
 
 SUPPORTED INSTRUMENTS:
 - USDCHF (default) - 0.0001 pip value, 5 decimals
 - USDJPY - 0.01 pip value, 3 decimals, JPY P&L conversion
 - EURUSD, GBPUSD, NZDUSD, AUDUSD - 0.0001 pip value, 5 decimals
-
-=============================================================================
-JPY PAIRS P&L CALCULATION - CRITICAL GUIDE (ERIS APPROACH)
-=============================================================================
-For JPY pairs (USDJPY, EURJPY, GBPJPY), Backtrader's default P&L calculation
-is incorrect because JPY is the quote currency and prices are ~150 vs ~1.0.
-
-PROBLEM:
-- Standard forex P&L: pnl = size * (exit_price - entry_price)
-- For USDJPY at 150.00, this gives P&L in JPY, not USD
-- Must convert: pnl_usd = pnl_jpy / current_jpy_rate
-
-ERIS SOLUTION (Validated Approach):
-1. POSITION SIZE: Divide bt_size by forex_jpy_rate (~150)
-   - real_contracts calculated normally by risk sizing
-   - bt_size = real_contracts / forex_jpy_rate
-   - This "shrinks" the position for Backtrader's internal accounting
-
-2. P&L CALCULATION: Multiply P&L by JPY_RATE_COMPENSATION (150.0)
-   - pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
-   - pnl_usd = pnl_jpy / newprice
-   - The compensation "restores" the P&L to correct USD values
-
-3. WHY THIS WORKS:
-   - Position shrunk by 150x, P&L multiplied by 150x = correct USD P&L
-   - Commission calculated on actual lot size (before shrinking)
-   - Drawdown and equity tracking remain accurate
-
-IMPLEMENTATION CHECKLIST for JPY pairs:
-[ ] Set is_jpy_pair=True in ForexCommission
-[ ] Set forex_jpy_rate=150.0 in strategy params
-[ ] ForexCommission.profitandloss() uses JPY_RATE_COMPENSATION
-[ ] bt_size calculation divides by forex_jpy_rate
-
-REFERENCE FILES:
-- eris_usdjpy.py: Original ERIS implementation (validated)
-- sunrise_ogle_usdjpy_pro.py: OGLE implementation for USDJPY
-=============================================================================
 
 ENTRY SYSTEM: VOLATILITY EXPANSION CHANNEL (4-PHASE STATE MACHINE)
 ------------------------------------------------------------------
@@ -111,12 +73,12 @@ import numpy as np
 # -------------------------------------------------------
 
 # === INSTRUMENT SELECTION ===
-# Default: USDCHF - change DATA_FILENAME and FOREX_INSTRUMENT together
-DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
+# USDJPY - JPY pair with 0.01 pip value and 3 decimal places
+DATA_FILENAME = 'USDJPY_5m_5Yea.csv'
 
 # === BACKTEST SETTINGS ===
-FROMDATE = '2020-07-01'               # Start date for backtesting (YYYY-MM-DD)
-TODATE = '2025-07-01'                 # End date for backtesting (YYYY-MM-DD)
+FROMDATE = '2020-01-01'               # Start date for backtesting (YYYY-MM-DD)
+TODATE = '2025-12-01'                 # End date for backtesting (YYYY-MM-DD)
 STARTING_CASH = 100000.0              # Initial account balance in USD
 QUICK_TEST = False                    # True: Reduce to last 10 days for quick testing
 LIMIT_BARS = 0                        # >0: Stop after N bars processed (0 = no limit)
@@ -124,8 +86,8 @@ ENABLE_PLOT = True                    # Show final chart with trades (requires m
 
 # === FOREX CONFIGURATION ===
 ENABLE_FOREX_CALC = True              # Enable advanced forex position calculations
-FOREX_INSTRUMENT = 'USDCHF'           # Current instrument (USDCHF, USDJPY, EURUSD, etc.)
-PIP_VALUE = 0.0001                    # Standard for CHF pairs (0.01 for JPY pairs)
+FOREX_INSTRUMENT = 'USDJPY'           # JPY pair
+PIP_VALUE = 0.01                      # JPY pairs use 0.01 pip value
 TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calculations
 
 # === COMMISSION SETTINGS (Darwinex Zero) ===
@@ -135,7 +97,7 @@ TEST_FOREX_MODE = False               # True: Quick 30-day test with forex calcu
 # - Commission: $2.50 per lot per order (entry + exit)
 USE_FIXED_COMMISSION = True           # Enable commission simulation
 COMMISSION_PER_LOT_PER_ORDER = 2.50   # USD per lot per order
-SPREAD_PIPS = 0.7                     # USDCHF spread for cost calculation
+SPREAD_PIPS = 1.0                     # USDJPY spread for cost calculation
 MARGIN_PERCENT = 3.33                 # 3.33% margin = 30:1 leverage
 
 # === TRADING DIRECTION ===
@@ -147,7 +109,7 @@ VERBOSE_DEBUG = False                 # Print detailed debug info to console (se
 
 # === TRADE REPORTING ===
 EXPORT_TRADE_REPORTS = True           # Export detailed trade reports to temp_reports directory
-TRADE_REPORT_ENABLED = False          # Secondary flag for trade reporting (legacy compatibility)
+TRADE_REPORT_ENABLED = True           # Secondary flag for trade reporting
 
 # === VISUAL SETTINGS ===
 PLOT_SLTP_LINES = True                # Show SL/TP lines on chart (red/green dashed)
@@ -176,55 +138,55 @@ _CURRENT_CONFIG = INSTRUMENT_CONFIGS.get(FOREX_INSTRUMENT, {
     'spread': 1.0
 })
 
-# === LONG ATR VOLATILITY FILTER (USDCHF OPTIMIZED) ===
-LONG_USE_ATR_FILTER = True                   # Enable ATR-based volatility filtering
-LONG_ATR_MIN_THRESHOLD = 0.000300            # Minimum ATR for entry
-LONG_ATR_MAX_THRESHOLD = 0.000900            # Maximum ATR for entry (optimized Phase 4)
+# === LONG ATR VOLATILITY FILTER (USDJPY - BEST REAL: ATR 0.028-0.045 + Inc<0.006) ===
+LONG_USE_ATR_FILTER = True                   # ENABLED
+LONG_ATR_MIN_THRESHOLD = 0.030               # BEST REAL: PF=1.38
+LONG_ATR_MAX_THRESHOLD = 0.045               # BEST REAL: PF=1.38
 
-# ATR INCREMENT FILTER (DISABLED for USDCHF)
-LONG_USE_ATR_INCREMENT_FILTER = False        # Disabled - inferior performance
-LONG_ATR_INCREMENT_MIN_THRESHOLD = 0.000011
-LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.000080
+# ATR INCREMENT FILTER (ENABLED)
+LONG_USE_ATR_INCREMENT_FILTER = False         # ENABLED: Inc < 0.006
+LONG_ATR_INCREMENT_MIN_THRESHOLD = -999.0    # No minimum
+LONG_ATR_INCREMENT_MAX_THRESHOLD = 0.006     # Max 0.006
 
-# ATR DECREMENT FILTER (DISABLED for USDCHF)
-LONG_USE_ATR_DECREMENT_FILTER = False        # Disabled - inferior performance
-LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.000030
-LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.000001
+# ATR DECREMENT FILTER (DISABLED for USDJPY)
+LONG_USE_ATR_DECREMENT_FILTER = False        # Disabled - optimize separately
+LONG_ATR_DECREMENT_MIN_THRESHOLD = -0.005
+LONG_ATR_DECREMENT_MAX_THRESHOLD = -0.0001
 
-# === LONG ENTRY FILTERS (USDCHF OPTIMIZED) ===
+# === LONG ENTRY FILTERS (USDJPY - INITIAL CONFIG) ===
 LONG_USE_EMA_ORDER_CONDITION = False         # Require confirm_EMA > all other EMAs
 LONG_USE_PRICE_FILTER_EMA = True             # Require close > filter_EMA (trend alignment)
 LONG_USE_CANDLE_DIRECTION_FILTER = False     # Require previous candle bullish
-LONG_USE_ANGLE_FILTER = False                # Require minimum EMA slope angle
-LONG_MIN_ANGLE = 40.0                        # Minimum angle in degrees
-LONG_MAX_ANGLE = 80.0                        # Maximum angle in degrees
-LONG_ANGLE_SCALE_FACTOR = 10000.0            # Scale factor for angle calculation
+LONG_USE_ANGLE_FILTER = True                # ENABLED
+LONG_MIN_ANGLE = 20.0                         # Minimum angle in degrees
+LONG_MAX_ANGLE = 90.0                        # Maximum angle in degrees
+LONG_ANGLE_SCALE_FACTOR = 100.0              # JPY pairs: Scale factor 100.0 (1 pip = 0.01)
 
 # === LONG EMA POSITION FILTER ===
 LONG_USE_EMA_BELOW_PRICE_FILTER = False      # Require EMAs below price
 
-# === LONG PULLBACK ENTRY SYSTEM (USDCHF OPTIMIZED) ===
+# === LONG PULLBACK ENTRY SYSTEM (USDJPY - Phase 2 OPTIMIZED) ===
 LONG_USE_PULLBACK_ENTRY = True               # Enable pullback entry system
-LONG_PULLBACK_MAX_CANDLES = 2                # Max red candles in pullback
-LONG_ENTRY_WINDOW_PERIODS = 2                # Bars to wait for breakout
+LONG_PULLBACK_MAX_CANDLES = 1                # Phase 2: Best PnL +$5,375 (681 trades)
+LONG_ENTRY_WINDOW_PERIODS = 2                # Phase 2: Best PnL +$5,375 (681 trades)
 
 # --- VOLATILITY EXPANSION CHANNEL - KEY TIMING PARAMETERS ---
-USE_WINDOW_TIME_OFFSET = False               # DISABLED for USDCHF
+USE_WINDOW_TIME_OFFSET = False               # ENABLED
 WINDOW_OFFSET_MULTIPLIER = 1.0               # Window delay multiplier
 WINDOW_PRICE_OFFSET_MULTIPLIER = 0.01        # Price expansion multiplier
 
-# === TIME RANGE FILTER (USDCHF OPTIMIZED: 07:00-13:00 UTC) ===
-USE_TIME_RANGE_FILTER = True                 # Enable time filter
-ENTRY_START_HOUR = 7                         # Start hour (UTC)
+# === TIME RANGE FILTER (USDJPY - OPTIMIZED from log analysis) ===
+USE_TIME_RANGE_FILTER = True                 # ENABLED - Best hours
+ENTRY_START_HOUR = 1                         # Start hour (UTC) - Asia late session
 ENTRY_START_MINUTE = 0                       # Start minute
-ENTRY_END_HOUR = 13                          # End hour (UTC)
-ENTRY_END_MINUTE = 0                         # End minute
+ENTRY_END_HOUR = 15                          # End hour (UTC) - End of London session
+ENTRY_END_MINUTE = 0                         # End minute (01:00-15:00 UTC)
 
-# === RISK MANAGEMENT (USDCHF OPTIMIZED) ===
+# === RISK MANAGEMENT (USDJPY - Phase 1 OPTIMIZED) ===
 ATR_LENGTH = 10                              # ATR calculation period
-LONG_ATR_SL_MULTIPLIER = 2.5                 # SL = ATR x 2.5
-LONG_ATR_TP_MULTIPLIER = 10.0                # TP = ATR x 10.0 (R:R = 1:4)
-RISK_PERCENT = 0.005                         # 0.5% risk per trade
+LONG_ATR_SL_MULTIPLIER = 1.5                 # SL = ATR x 1.5 (Phase 1 BEST: PF=1.20)
+LONG_ATR_TP_MULTIPLIER = 15.0                # TP = ATR x 15.0 (Phase 1 BEST: +$3,086)
+RISK_PERCENT = 0.003                         # 0.5% risk per trade (NEVER change this)
 
 
 # =============================================================================
@@ -281,49 +243,39 @@ class ForexCommission(bt.CommInfoBase):
         return 0.0
 
     def profitandloss(self, size, price, newprice):
-        """
-        Calculate P&L with quote currency conversion.
+        """Calculate P&L in USD from JPY-denominated gains/losses.
         
-        JPY PAIRS (ERIS APPROACH):
-        - Position size was divided by ~150 in bt_size calculation
-        - Compensate by multiplying P&L by JPY_RATE_COMPENSATION (150.0)
-        - Then divide by newprice to convert JPY -> USD
-        
-        STANDARD PAIRS:
-        - Direct calculation: size * (newprice - price) / newprice
+        Since bt_size is divided by ~150 for margin management,
+        we multiply P&L by 150 to compensate and get correct USD P&L.
+        This matches the ERIS strategy approach.
         """
-        if self.p.is_jpy_pair:
-            # ERIS approach: compensate for shrunk position size
-            JPY_RATE_COMPENSATION = 150.0  # Must match forex_jpy_rate in strategy
+        # Size was divided by forex_jpy_rate (~150), so we multiply back
+        JPY_RATE_COMPENSATION = 150.0
+        pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
+        if newprice > 0:
+            pnl_usd = pnl_jpy / newprice
+            return pnl_usd
+        return pnl_jpy
+
+    def cashadjust(self, size, price, newprice):
+        """Adjust cash for non-stocklike instruments (forex)."""
+        if not self._stocklike:
+            # Same compensation for cash adjustment
+            JPY_RATE_COMPENSATION = 150.0
             pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
             if newprice > 0:
                 return pnl_jpy / newprice
-            return pnl_jpy
-        else:
-            # Standard forex P&L calculation
-            pnl_quote = size * (newprice - price)
-            if newprice > 0:
-                return pnl_quote / newprice
-            return pnl_quote
-
-    def cashadjust(self, size, price, newprice):
-        """
-        Adjust cash for non-stocklike instruments.
-        Uses profitandloss() which handles JPY conversion via ERIS approach.
-        """
-        if not self._stocklike:
-            return self.profitandloss(size, price, newprice)
         return 0.0
 
 
 class SunriseOgle(bt.Strategy):
     params = dict(
-        # === TECHNICAL INDICATORS (USDCHF OPTIMIZED - Phase 3) ===
-        ema_fast_length=24,              # Fast EMA period (optimized from 18)
-        ema_medium_length=30,            # Medium EMA period (optimized from 18)
-        ema_slow_length=36,              # Slow EMA period (optimized from 24)
+        # === TECHNICAL INDICATORS (USDJPY - Phase 3 OPTIMIZED) ===
+        ema_fast_length=12,              # Phase 3 BEST: PF=1.13
+        ema_medium_length=24,            # Phase 3 BEST: +$3,621
+        ema_slow_length=24,              # Phase 3 BEST: DD=3.9%
         ema_confirm_length=1,            # Confirmation EMA (usually 1 for immediate response)
-        ema_filter_price_length=40,      # Price filter EMA (optimized from 50)
+        ema_filter_price_length=50,      # Phase 3 BEST: Filter EMA
         ema_exit_length=25,              # Exit EMA for crossover exit strategy
         
         # === ATR RISK MANAGEMENT ===
@@ -387,11 +339,9 @@ class SunriseOgle(bt.Strategy):
         forex_pip_decimal_places=_CURRENT_CONFIG['pip_decimal_places'],
         forex_lot_size=_CURRENT_CONFIG['lot_size'],
         forex_atr_scale=_CURRENT_CONFIG['atr_scale'],
+        forex_jpy_rate=150.0,             # USDJPY rate for size/P&L normalization
         spread_pips=SPREAD_PIPS,
         use_forex_position_calc=True,
-        # JPY P&L CORRECTION: Rate used to shrink position & compensate P&L
-        # Set to 150.0 for JPY pairs, 1.0 for standard pairs (auto-detected)
-        forex_jpy_rate=150.0 if _CURRENT_CONFIG.get('is_jpy', False) else 1.0,
 
         # === ACCOUNT SETTINGS ===
         account_currency='USD',
@@ -826,6 +776,9 @@ class SunriseOgle(bt.Strategy):
             # CRITICAL FIX: Store original signal trigger candle for validation
             self.signal_trigger_candle = None
 
+            # Track initial cash (will be set on first bar)
+            self._initial_cash = None
+            
             # Basic stats
             self.trades = 0
             self.wins = 0
@@ -1141,6 +1094,10 @@ class SunriseOgle(bt.Strategy):
 
     def next(self):
         """Main strategy logic using volatility expansion channel entry system with 4-phase state machine"""
+        # Capture initial cash on first bar (before any trades)
+        if self._initial_cash is None:
+            self._initial_cash = self.broker.get_value()
+        
         # Track portfolio value and timestamp for plotting
         if hasattr(self, '_portfolio_values'):
             self._portfolio_values.append(self.broker.get_value())
@@ -1390,36 +1347,51 @@ class SunriseOgle(bt.Strategy):
                 
                 self.initial_stop_level = self.stop_level
 
-                # Position sizing calculation
-                if self.p.enable_risk_sizing:
-                    if signal_direction == 'LONG':
-                        raw_risk = entry_price - self.stop_level
-                        
-                    if raw_risk <= 0:
-                        self._reset_entry_state()
-                        return
-                    equity = self.broker.get_value()
-                    risk_val = equity * self.p.risk_percent
-                    risk_per_contract = raw_risk * self.p.contract_size
-                    if risk_per_contract <= 0:
-                        self._reset_entry_state()
-                        return
-                    contracts = max(int(risk_val / risk_per_contract), 1)
-                else:
-                    contracts = int(self.p.size)
+                # =============================================================
+                # POSITION SIZING - JPY CORRECTED (Same as ERIS)
+                # =============================================================
+                # For JPY pairs, pip value must be converted to USD:
+                # 1 pip = 0.01 JPY per unit, so 1 lot (100k) = 1000 JPY per pip
+                # In USD: 1000 JPY / USDJPY rate = ~$6.67 per pip per lot
+                # =============================================================
                 
-                if contracts <= 0:
+                if signal_direction == 'LONG':
+                    raw_risk = entry_price - self.stop_level
+                    
+                if raw_risk <= 0:
                     self._reset_entry_state()
                     return
                 
-                # Calculate position size
-                # For JPY pairs: divide by forex_jpy_rate to shrink position
-                # P&L is compensated in ForexCommission.profitandloss()
-                real_contracts = contracts * self.p.contract_size
-                if self.p.forex_jpy_rate > 1.0:  # JPY pair detected
-                    bt_size = int(real_contracts / self.p.forex_jpy_rate)
+                # Calculate pip risk (distance in pips)
+                pip_risk = raw_risk / self.p.forex_pip_value  # e.g., 0.50 / 0.01 = 50 pips
+                
+                # Calculate pip value per lot (CORRECTED for JPY)
+                # JPY pairs: 1 pip move on 1 lot = 100,000 * 0.01 = 1,000 JPY
+                # Convert to USD by dividing by current price
+                pip_value_in_jpy = self.p.forex_lot_size * self.p.forex_pip_value  # 1000 JPY
+                value_per_pip_per_lot = pip_value_in_jpy / entry_price  # ~$6.67 USD
+                
+                # Risk calculation
+                equity = self.broker.get_value()
+                risk_amount = equity * self.p.risk_percent  # e.g., $500 for 0.5% of $100k
+                
+                # Calculate optimal lot size
+                if pip_risk > 0 and value_per_pip_per_lot > 0:
+                    optimal_lots = risk_amount / (pip_risk * value_per_pip_per_lot)
                 else:
-                    bt_size = real_contracts
+                    self._reset_entry_state()
+                    return
+                
+                # Round to standard lot sizes (min 0.01)
+                optimal_lots = max(0.01, round(optimal_lots, 2))
+                
+                # Convert to Backtrader size
+                # For JPY pairs: normalize size for Backtrader to work correctly
+                real_contracts = int(optimal_lots * self.p.forex_lot_size)
+                bt_size = int(real_contracts / self.p.forex_jpy_rate)
+                
+                if bt_size < 100:
+                    bt_size = 100  # Minimum size
 
                 # Place market order based on signal direction
                 if signal_direction == 'LONG':
@@ -1738,7 +1710,9 @@ class SunriseOgle(bt.Strategy):
         profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
         
         final_value = self.broker.get_value()
-        total_pnl = final_value - STARTING_CASH
+        # Use actual initial cash (supports dual-strategy mode with split capital)
+        initial_cash = self._initial_cash if self._initial_cash else STARTING_CASH
+        total_pnl = final_value - initial_cash
         
         # =================================================================
         # ADVANCED METRICS: Drawdown, Sharpe Ratio
@@ -1779,8 +1753,8 @@ class SunriseOgle(bt.Strategy):
         monte_carlo_dd_99 = 0.0
         
         # Calculate CAGR
-        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 1 and STARTING_CASH > 0:
-            total_return = final_value / STARTING_CASH
+        if hasattr(self, '_portfolio_values') and len(self._portfolio_values) > 1 and initial_cash > 0:
+            total_return = final_value / initial_cash
             if hasattr(self, '_trade_pnls') and self._trade_pnls:
                 first_date = self._trade_pnls[0]['date']
                 last_date = self._trade_pnls[-1]['date']
@@ -1822,7 +1796,7 @@ class SunriseOgle(bt.Strategy):
             
             for _ in range(n_simulations):
                 shuffled_pnl = np.random.permutation(pnl_list)
-                equity = STARTING_CASH
+                equity = initial_cash
                 peak = equity
                 max_dd = 0.0
                 

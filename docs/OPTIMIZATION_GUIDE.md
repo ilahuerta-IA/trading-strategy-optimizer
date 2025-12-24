@@ -476,6 +476,32 @@ python koi_eurusd_robustness.py
 5. **2 EMAs is usually enough** - fast + filter/slow, avoid unnecessary complexity
 6. **Commission matters** - $2.50/lot/order significantly impacts PF, especially with many trades
 7. **Robustness testing is mandatory** - Never deploy without passing 70%+ period tests
+8. **NEVER change RISK_PERCENT** - Always 0.005 (0.5%) for comparable results
+
+---
+
+## 🚫 AXIOM: Original Strategy Parameters
+
+**NEVER modify these during optimization:**
+
+| Parameter | Fixed Value | Reason |
+|-----------|-------------|--------|
+| `RISK_PERCENT` | 0.005 (0.5%) | Dynamic position sizing |
+| Commission | $2.50/lot/order | Darwinex Zero standard |
+| `use_forex_position_calc` | True | Correct lot calculation |
+
+```python
+# ✅ ALWAYS
+RISK_PERCENT = 0.005  # 0.5% risk per trade
+
+# ❌ NEVER (breaks comparability)
+RISK_PERCENT = 0.00   # Fixed 1 lot - WRONG!
+RISK_PERCENT = 0.01   # 1% - different risk profile
+```
+
+**Related guides:**
+- `docs/JPY_PNL_GUIDE.md` - JPY pairs P&L calculation
+- `docs/OGLE_OPTIMIZATION_HOWTO.md` - Complete optimization process
 
 ---
 
