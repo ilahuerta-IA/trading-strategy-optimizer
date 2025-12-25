@@ -48,7 +48,12 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Import commission class and ForexCSVData from template
+# Import commission class and ForexCSVData
+# Use JPY version for USDJPY (has correct P&L compensation)
+try:
+    from koi_usdjpy_pro import ForexCommission as ForexCommissionJPY, ForexCSVData
+except ImportError:
+    ForexCommissionJPY = None
 from koi_template import ForexCommission, ForexCSVData
 
 
@@ -61,30 +66,40 @@ INSTRUMENT_DATA = {
         'pip_value': 0.0001,
         'pip_decimal_places': 5,
         'spread': 0.7,
+        'is_jpy': False,
+        'jpy_rate': 1.0,
     },
     'EURUSD': {
         'data_file': 'EURUSD_5m_5Yea.csv',
         'pip_value': 0.0001,
         'pip_decimal_places': 5,
         'spread': 0.6,
+        'is_jpy': False,
+        'jpy_rate': 1.0,
     },
     'USDJPY': {
         'data_file': 'USDJPY_5m_5Yea.csv',
         'pip_value': 0.01,
         'pip_decimal_places': 3,
         'spread': 1.0,
+        'is_jpy': True,
+        'jpy_rate': 150.0,
     },
     'GBPUSD': {
         'data_file': 'GBPUSD_5m_5Yea.csv',
         'pip_value': 0.0001,
         'pip_decimal_places': 5,
         'spread': 0.9,
+        'is_jpy': False,
+        'jpy_rate': 1.0,
     },
     'USDCAD': {
         'data_file': 'USDCAD_5m_5Yea.csv',
         'pip_value': 0.0001,
         'pip_decimal_places': 5,
         'spread': 0.8,
+        'is_jpy': False,
+        'jpy_rate': 1.0,
     },
 }
 
@@ -120,10 +135,12 @@ PHASE4_GRID = {
     'breakout_candles': [3, 5, 7],
 }
 
-# Phase 5: SL Range Filter Optimization
+# Phase 5: SL Range Filter Optimization (USDJPY uses larger SL due to JPY pip value)
 PHASE5_GRID = {
-    'min_sl_pips': [8.0, 10.0, 10.5, 12.0],
-    'max_sl_pips': [14.0, 14.5, 16.0, 20.0],
+    'use_min_sl_filter': [True],  # Must enable filter!
+    'use_max_sl_filter': [True],  # Must enable filter!
+    'min_sl_pips': [5.0, 8.0, 10.0, 12.0],
+    'max_sl_pips': [15.0, 20.0, 25.0, 30.0],
 }
 
 
@@ -162,17 +179,17 @@ class KoiOptimized(bt.Strategy):
         # Forex
         pip_value=0.0001,
         lot_size=100000,
+        forex_jpy_rate=1.0,  # JPY rate for position/P&L adjustment
         
         # Filters
         use_session_filter=False,
-        session_start=0,
-        session_end=23,
+        profitable_hours=list(range(24)),  # Default: all hours
         
-        use_min_sl_filter=True,
-        min_sl_pips=10.5,
+        use_min_sl_filter=False,  # Disable for optimization phases 1-3
+        min_sl_pips=5.0,
         
-        use_max_sl_filter=True,
-        max_sl_pips=14.5,
+        use_max_sl_filter=False,  # Disable for optimization phases 1-3
+        max_sl_pips=20.0,
         
         use_atr_filter=False,
         atr_min=0.00030,
@@ -281,10 +298,10 @@ class KoiOptimized(bt.Strategy):
         if self.order or self.position or self.stop_order or self.limit_order:
             return
         
-        # Session filter
+        # Session filter (profitable hours list)
         if self.p.use_session_filter:
             hour = dt.hour
-            if hour < self.p.session_start or hour >= self.p.session_end:
+            if hour not in self.p.profitable_hours:
                 if self.state != "SCANNING":
                     self._reset_state()
                 return
@@ -371,7 +388,14 @@ class KoiOptimized(bt.Strategy):
             optimal_lots = max_lots
         
         optimal_lots = max(0.01, round(optimal_lots, 2))
-        bt_size = int(optimal_lots * self.p.lot_size)
+        real_contracts = int(optimal_lots * self.p.lot_size)
+        
+        # CRITICAL: Divide by forex_jpy_rate for JPY pairs (from JPY_PNL_GUIDE.md)
+        if self.p.forex_jpy_rate > 1.0:
+            bt_size = int(real_contracts / self.p.forex_jpy_rate)
+        else:
+            bt_size = real_contracts
+        
         if bt_size < 1000:
             bt_size = 1000
         
@@ -481,12 +505,27 @@ def run_single_backtest(
     
     cerebro.adddata(data)
     cerebro.broker.set_cash(starting_cash)
-    cerebro.broker.addcommissioninfo(ForexCommission())
+    
+    # Use JPY commission for JPY pairs
+    is_jpy = config.get('is_jpy', False)
+    jpy_rate = config.get('jpy_rate', 1.0)
+    
+    if is_jpy and ForexCommissionJPY is not None:
+        cerebro.broker.addcommissioninfo(
+            ForexCommissionJPY(
+                commission=2.50,
+                is_jpy_pair=True,
+                jpy_rate=jpy_rate
+            )
+        )
+    else:
+        cerebro.broker.addcommissioninfo(ForexCommission())
     
     # Base params
     base_params = {
         'pip_value': config['pip_value'],
         'lot_size': 100000,
+        'forex_jpy_rate': jpy_rate,  # Pass JPY rate to strategy
         'print_signals': False,
     }
     

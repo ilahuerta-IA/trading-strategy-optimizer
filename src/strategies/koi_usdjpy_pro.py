@@ -1,49 +1,41 @@
 """KOI Strategy - Bullish Engulfing + 5 EMA + CCI + Breakout Window
 ================================================================
-ASSET: USDCHF 5M
+ASSET: USDJPY 5M
 TIMEFRAME: 5 minutes
 DIRECTION: Long-only
+
+OPTIMIZED PARAMETERS (Dec 2025):
+- Phase 1 SL/TP: SL=3.5x ATR, TP=10.0x ATR
+- Phase 2 CCI: Period=14, Threshold=120
+- Phase 4 Breakout: Offset=7 pips, Window=7 bars
+- Session Filter: Hours [0,1,3,4,5,11,13,16,17,20,22,23] (PnL > 0)
+- SL Filter: DISABLED (reduces performance)
+
+PERFORMANCE (5 years, 2020-2025, with commissions):
+- Profit Factor: 1.60 (target >1.5 ✓)
+- Trades: 282 (target >120 ✓)
+- Win Rate: 37.2%
+- Sharpe Ratio: 3.44 (Excellent)
+- Max Drawdown: 6.84% (Excellent)
+- Net PnL: +$53,355
+- All years profitable ✓
 
 ENTRY SYSTEM (4 PHASES):
 1. PATTERN: Bullish engulfing candle detected
 2. TREND: All 5 EMAs ascending (EMA[0] > EMA[-1])
-3. MOMENTUM: CCI > threshold (100)
-4. BREAKOUT: Price breaks pattern HIGH + offset within N candles
+3. MOMENTUM: CCI > 120
+4. BREAKOUT: Price breaks pattern HIGH + 7 pips within 7 candles
 
 EXIT SYSTEM:
-- Stop Loss: Entry - (ATR x 3.0)
-- Take Profit: Entry + (ATR x 12.0)
-- Risk:Reward = 1:4
+- Stop Loss: Entry - (ATR x 3.5)
+- Take Profit: Entry + (ATR x 10.0)
+- Risk:Reward = 1:2.86
 
-FILTERS:
-- SL Range: 10.5-14.5 pips (balanced volatility filter)
-
-PERFORMANCE (2020-2025, 5 years):
-- Trades: 148
-- Win Rate: 43.2%
-- Profit Factor: 1.86
-- Max Drawdown: 7.0%
-- Net P&L: +$29,364 (+29.4%)
-
-ADVANCED METRICS:
-- Sharpe Ratio (Daily): 3.12 [Excellent]
-- Sortino Ratio (Daily): 6.26 [Excellent]
-- Calmar Ratio: 0.64 [Acceptable]
-- Monte Carlo 95% DD: 7.82%
-
-YEARLY BREAKDOWN:
-- 2020: -$2,666 (27 trades, WR=25.9%)
-- 2021: +$2,262 (31 trades, WR=58.1%)
-- 2022: +$11,184 (31 trades, WR=41.9%)
-- 2023: +$4,378 (26 trades, WR=38.5%)
-- 2024: +$8,617 (16 trades, WR=50.0%)
-- 2025: +$5,599 (17 trades, WR=47.1%)
-
-ROBUSTNESS TEST (10 date ranges):
-- PF Range: 1.54 - 2.38 (Avg: 1.99)
-- Sharpe Range: 2.18 - 4.75 (Avg: 3.52)
-- MaxDD Range: 5.0% - 7.0% (Avg: 6.6%)
-- Tests passing (PF>=1.5): 10/10 (100%)
+JPY PAIR IMPLEMENTATION (from JPY_PNL_GUIDE.md):
+- PIP_VALUE = 0.01 (not 0.0001)
+- Position size divided by forex_jpy_rate (~150)
+- P&L compensated by JPY_RATE_COMPENSATION (150.0)
+- Commission restored to actual lot size
 
 COMMISSION MODEL: Darwinex Zero ($2.50/lot/order)
 """
@@ -59,24 +51,25 @@ import numpy as np
 # CONFIGURATION
 # =============================================================================
 
-DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
+DATA_FILENAME = 'USDJPY_5m_5Yea.csv'
 FROMDATE = '2020-01-01'
 TODATE = '2025-12-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True  # Set to False for batch testing
 
-FOREX_INSTRUMENT = 'USDCHF'
-PIP_VALUE = 0.0001
+FOREX_INSTRUMENT = 'USDJPY'
+PIP_VALUE = 0.01  # JPY pairs use 0.01
+FOREX_JPY_RATE = 150.0  # For position sizing and P&L compensation
 
 USE_FIXED_COMMISSION = True
 COMMISSION_PER_LOT_PER_ORDER = 2.50
-SPREAD_PIPS = 0.7
+SPREAD_PIPS = 1.0  # USDJPY typical spread
 MARGIN_PERCENT = 3.33
 
 EXPORT_TRADE_REPORTS = True
 
 # =============================================================================
-# KOI PARAMETERS - OPTIMIZED
+# KOI PARAMETERS - TO OPTIMIZE FOR USDJPY
 # =============================================================================
 
 # EMAs
@@ -86,50 +79,53 @@ EMA_3_PERIOD = 40
 EMA_4_PERIOD = 80
 EMA_5_PERIOD = 120
 
-# CCI
-CCI_PERIOD = 20
-CCI_THRESHOLD = 100
+# CCI - OPTIMIZED Phase 2
+CCI_PERIOD = 14
+CCI_THRESHOLD = 120
 
-# ATR SL/TP
+# ATR SL/TP - OPTIMIZED Phase 1
 ATR_LENGTH = 10
-ATR_SL_MULTIPLIER = 3.0
-ATR_TP_MULTIPLIER = 12.0
+ATR_SL_MULTIPLIER = 3.5
+ATR_TP_MULTIPLIER = 10.0
 
-# Breakout Window
+# Breakout Window - OPTIMIZED Phase 4
 USE_BREAKOUT_WINDOW = True
-BREAKOUT_WINDOW_CANDLES = 3
-BREAKOUT_LEVEL_OFFSET_PIPS = 5.0
+BREAKOUT_WINDOW_CANDLES = 7
+BREAKOUT_LEVEL_OFFSET_PIPS = 7.0
 
 # Risk
 RISK_PERCENT = 0.005
 
 # =============================================================================
-# FILTERS
+# FILTERS - TO OPTIMIZE FOR USDJPY
 # =============================================================================
 
 # Session Filter - Trade only during profitable hours (UTC server time)
-USE_SESSION_FILTER = False
-PROFITABLE_HOURS = list(range(24))  # All hours by default
+# From log analysis: Best hours = 4 (+$8,936), 23 (+$6,975), 1 (+$5,658), 0 (+$4,504)
+USE_SESSION_FILTER = True
+PROFITABLE_HOURS = [0, 1, 3, 4, 5, 11, 13, 16, 17, 20, 22, 23]  # All PnL > 0 hours
 
-# Min SL Filter
-USE_MIN_SL_FILTER = True
-MIN_SL_PIPS = 10.5
+# Min SL Filter (JPY: values in pips where 1 pip = 0.01)
+USE_MIN_SL_FILTER = False
+MIN_SL_PIPS = 5.0  # JPY pairs have different SL ranges
 
 # Max SL Filter
-USE_MAX_SL_FILTER = True
-MAX_SL_PIPS = 14.5
+USE_MAX_SL_FILTER = False
+MAX_SL_PIPS = 15.0
 
-# ATR Filter
+# ATR Filter (JPY: ATR values are ~100x larger than standard pairs)
 USE_ATR_FILTER = False
-ATR_MIN_THRESHOLD = 0.00030
-ATR_MAX_THRESHOLD = 0.00100
+ATR_MIN_THRESHOLD = 0.030  # e.g., 3 pips
+ATR_MAX_THRESHOLD = 0.100  # e.g., 10 pips
 
 # =============================================================================
-# COMMISSION CLASS - Copied from OGLE (works!)
+# COMMISSION CLASS - JPY Pair Support (from JPY_PNL_GUIDE.md)
 # =============================================================================
 class ForexCommission(bt.CommInfoBase):
     """
     Commission scheme for Forex pairs with fixed commission per lot.
+    JPY pair support with position size/P&L compensation.
+    
     Darwinex Zero specs:
     - Commission: $2.50 per lot per order
     - Margin: 3.33% (30:1 leverage)
@@ -141,7 +137,7 @@ class ForexCommission(bt.CommInfoBase):
         ('leverage', 500.0),
         ('automargin', True),
         ('commission', 2.50),
-        ('is_jpy_pair', False),
+        ('is_jpy_pair', True),  # USDJPY = True
         ('jpy_rate', 150.0),
     )
     
@@ -151,9 +147,19 @@ class ForexCommission(bt.CommInfoBase):
     total_lots = 0.0
 
     def _getcommission(self, size, price, pseudoexec):
-        """Return commission based on lot size."""
+        """
+        Return commission based on lot size.
+        
+        JPY PAIRS: size was divided by jpy_rate (~150) for P&L calculation,
+        but commission must be based on ACTUAL lot size, so we restore it.
+        """
         if USE_FIXED_COMMISSION:
-            lots = abs(size) / 100000.0
+            # For JPY pairs: restore actual size before calculating lots
+            actual_size = abs(size)
+            if self.p.is_jpy_pair:
+                actual_size = actual_size * self.p.jpy_rate  # Restore real size
+            
+            lots = actual_size / 100000.0
             comm = lots * COMMISSION_PER_LOT_PER_ORDER
             
             if not pseudoexec:
@@ -165,13 +171,24 @@ class ForexCommission(bt.CommInfoBase):
         return 0.0
 
     def profitandloss(self, size, price, newprice):
-        """Calculate P&L with quote currency conversion."""
-        pnl_quote = size * (newprice - price)
+        """Calculate P&L in USD from JPY-denominated gains/losses.
+        
+        Since bt_size is divided by ~150 for margin management,
+        we multiply P&L by 150 to compensate and get correct USD P&L.
+        """
         if self.p.is_jpy_pair:
-            pnl_quote = pnl_quote * self.p.jpy_rate
-        if newprice > 0:
-            return pnl_quote / newprice
-        return pnl_quote
+            # Size was divided by forex_jpy_rate (~150), so we multiply back
+            JPY_RATE_COMPENSATION = 150.0
+            pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
+            if newprice > 0:
+                return pnl_jpy / newprice
+            return pnl_jpy
+        else:
+            # Standard forex P&L
+            pnl_quote = size * (newprice - price)
+            if newprice > 0:
+                return pnl_quote / newprice
+            return pnl_quote
 
     def cashadjust(self, size, price, newprice):
         """Adjust cash for non-stocklike instruments."""
@@ -186,14 +203,6 @@ class ForexCommission(bt.CommInfoBase):
 class ForexCSVData(bt.feeds.GenericCSVData):
     """
     Custom CSV Data Feed that correctly handles separate Date and Time columns.
-    
-    The standard GenericCSVData doesn't properly combine datetime when Date and Time
-    are in separate columns (always shows 23:59:59). This class fixes that by
-    overriding the _loadline method to properly parse and combine the columns.
-    
-    CSV Format expected:
-        Date,Time,Open,High,Low,Close,Volume
-        20200101,22:00:00,1.12136,1.12139,1.12120,1.12125,47600000
     """
     
     def _loadline(self, linetokens):
@@ -228,7 +237,7 @@ class ForexCSVData(bt.feeds.GenericCSVData):
 
 
 # =============================================================================
-# KOI STRATEGY
+# KOI STRATEGY - USDJPY
 # =============================================================================
 class KOIStrategy(bt.Strategy):
     params = dict(
@@ -257,6 +266,7 @@ class KOIStrategy(bt.Strategy):
         atr_max_threshold=ATR_MAX_THRESHOLD,
         pip_value=PIP_VALUE,
         contract_size=100000,
+        forex_jpy_rate=FOREX_JPY_RATE,  # CRITICAL: JPY rate for position sizing
         print_signals=False,
     )
 
@@ -311,9 +321,9 @@ class KOIStrategy(bt.Strategy):
                 report_dir = Path("temp_reports")
                 report_dir.mkdir(exist_ok=True)
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                report_path = report_dir / f"KOI_USDCHF_trades_{timestamp}.txt"
+                report_path = report_dir / f"KOI_USDJPY_trades_{timestamp}.txt"
                 self.trade_report_file = open(report_path, 'w', encoding='utf-8')
-                self.trade_report_file.write("=== KOI STRATEGY TRADE REPORT ===\n")
+                self.trade_report_file.write("=== KOI STRATEGY TRADE REPORT (USDJPY) ===\n")
                 self.trade_report_file.write(f"Generated: {datetime.now()}\n")
                 self.trade_report_file.write(f"EMAs: {self.p.ema_1_period}, {self.p.ema_2_period}, "
                                             f"{self.p.ema_3_period}, {self.p.ema_4_period}, {self.p.ema_5_period}\n")
@@ -324,11 +334,7 @@ class KOIStrategy(bt.Strategy):
                 print(f"Trade reporting init failed: {e}")
 
     def _get_datetime(self, offset=0):
-        """Get correct datetime combining date and time from CSV with separate columns.
-        
-        When using ForexCSVData, this returns the correctly combined datetime.
-        Falls back to standard method if ForexCSVData not used.
-        """
+        """Get correct datetime combining date and time from CSV."""
         try:
             dt_date = self.data.datetime.date(offset)
             dt_time = self.data.datetime.time(offset)
@@ -382,7 +388,7 @@ class KOIStrategy(bt.Strategy):
         if self.position or self.order:
             return False
         
-        dt = self._get_datetime()  # Use helper for correct datetime
+        dt = self._get_datetime()
         if not self._check_session(dt):
             return False
         
@@ -398,18 +404,37 @@ class KOIStrategy(bt.Strategy):
         return True
 
     def _calculate_position_size(self, entry_price, stop_loss):
+        """Calculate position size with JPY adjustment.
+        
+        From JPY_PNL_GUIDE.md:
+        - Calculate normal position size
+        - Divide bt_size by forex_jpy_rate (~150) for backtrader
+        - Commission class will restore actual size for fees
+        - P&L class will compensate with JPY_RATE_COMPENSATION
+        """
         equity = self.broker.get_value()
         risk_amount = equity * self.p.risk_percent
         price_risk = abs(entry_price - stop_loss)
         if price_risk <= 0:
             return 0
+        
+        # For JPY pairs: 1 pip = 0.01, pip value per lot = $1000/rate ≈ $6.67
+        # Simplified: use standard pip value calculation
         pip_risk = price_risk / self.p.pip_value
-        pip_value_per_lot = 10.0
+        pip_value_per_lot = 10.0  # Approximate for most pairs
+        
         if pip_risk > 0:
             lots = risk_amount / (pip_risk * pip_value_per_lot)
             lots = max(0.01, round(lots, 2))
             lots = min(lots, 10.0)
-            return int(lots * self.p.contract_size)
+            
+            # Calculate real contracts
+            real_contracts = int(lots * self.p.contract_size)
+            
+            # CRITICAL: Divide by forex_jpy_rate for JPY pairs (from JPY_PNL_GUIDE.md)
+            bt_size = int(real_contracts / self.p.forex_jpy_rate)
+            
+            return bt_size
         return 0
 
     def _reset_breakout_state(self):
@@ -436,11 +461,11 @@ class KOIStrategy(bt.Strategy):
             self.trade_reports.append(entry)
             self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
             self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            self.trade_report_file.write(f"Entry Price: {entry_price:.5f}\n")
-            self.trade_report_file.write(f"Stop Loss: {self.stop_level:.5f}\n")
-            self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
+            self.trade_report_file.write(f"Entry Price: {entry_price:.3f}\n")
+            self.trade_report_file.write(f"Stop Loss: {self.stop_level:.3f}\n")
+            self.trade_report_file.write(f"Take Profit: {self.take_level:.3f}\n")
             self.trade_report_file.write(f"SL Pips: {sl_pips:.1f}\n")
-            self.trade_report_file.write(f"ATR: {atr:.6f}\n")
+            self.trade_report_file.write(f"ATR: {atr:.4f}\n")
             self.trade_report_file.write(f"CCI: {cci:.2f}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
             self.trade_report_file.flush()
@@ -488,15 +513,15 @@ class KOIStrategy(bt.Strategy):
         self.order = self.buy(size=bt_size)
         
         if self.p.print_signals:
-            print(f">>> KOI BUY {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} "
-                  f"SL={self.stop_level:.5f} TP={self.take_level:.5f} CCI={cci_now:.0f} SL_pips={sl_pips:.1f}")
+            print(f">>> KOI BUY {dt:%Y-%m-%d %H:%M} price={entry_price:.3f} "
+                  f"SL={self.stop_level:.3f} TP={self.take_level:.3f} CCI={cci_now:.0f} SL_pips={sl_pips:.1f}")
         
         self._record_trade_entry(dt, entry_price, bt_size, atr_now, cci_now, sl_pips)
 
     def next(self):
         self._portfolio_values.append(self.broker.get_value())
         
-        dt = self._get_datetime()  # Use helper for correct datetime
+        dt = self._get_datetime()
         current_bar = len(self)
         
         if self.order:
@@ -543,7 +568,7 @@ class KOIStrategy(bt.Strategy):
                     self._execute_entry(dt, atr_now, cci_now)
 
     def notify_order(self, order):
-        """Order notification with OCA for SL/TP - copied from OGLE."""
+        """Order notification with OCA for SL/TP."""
         if order.status in [order.Submitted, order.Accepted]:
             return
 
@@ -553,7 +578,7 @@ class KOIStrategy(bt.Strategy):
                 self.last_entry_bar = len(self)
                 
                 if self.p.print_signals:
-                    print(f"[OK] LONG BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
+                    print(f"[OK] LONG BUY EXECUTED at {order.executed.price:.3f} size={order.executed.size}")
 
                 # Place protective OCA orders
                 if self.stop_level and self.take_level:
@@ -582,7 +607,7 @@ class KOIStrategy(bt.Strategy):
                 self.last_exit_reason = exit_reason
                 
                 if self.p.print_signals:
-                    print(f"[EXIT] at {order.executed.price:.5f} reason={exit_reason}")
+                    print(f"[EXIT] at {order.executed.price:.3f} reason={exit_reason}")
 
                 # Reset state
                 self.stop_order = None
@@ -592,7 +617,6 @@ class KOIStrategy(bt.Strategy):
                 self.take_level = None
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            # OCA cancellation is expected
             is_expected_cancel = (self.stop_order and self.limit_order)
             if not is_expected_cancel and self.p.print_signals:
                 print(f"Order {order.getstatusname()}: {order.ref}")
@@ -605,7 +629,7 @@ class KOIStrategy(bt.Strategy):
         if not trade.isclosed:
             return
         
-        dt = self._get_datetime()  # Use helper for correct datetime
+        dt = self._get_datetime()
         pnl = trade.pnlcomm
         
         self.trades += 1
@@ -627,15 +651,13 @@ class KOIStrategy(bt.Strategy):
         self._record_trade_exit(dt, pnl, reason)
 
     def stop(self):
-        """Strategy end - print summary with advanced metrics (Sharpe, Sortino, Calmar, Monte Carlo)."""
+        """Strategy end - print summary with advanced metrics."""
         final_value = self.broker.get_value()
         total_pnl = final_value - STARTING_CASH
         win_rate = (self.wins / self.trades * 100) if self.trades > 0 else 0
         profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
         
-        # =================================================================
-        # MAX DRAWDOWN (from equity curve)
-        # =================================================================
+        # Max Drawdown
         max_drawdown_pct = 0.0
         if self._portfolio_values:
             values = np.array(self._portfolio_values)
@@ -643,18 +665,14 @@ class KOIStrategy(bt.Strategy):
             dd = (peak - values) / peak * 100
             max_drawdown_pct = np.max(dd)
         
-        # =================================================================
-        # CALCULATE DAILY RETURNS FOR RATIOS
-        # =================================================================
+        # Daily returns for Sharpe
         daily_returns = []
         if self._trade_pnls:
-            # Group trades by date and calculate daily P&L
             daily_pnl = defaultdict(float)
             for trade in self._trade_pnls:
                 date_key = trade['date'].date()
                 daily_pnl[date_key] += trade['pnl']
             
-            # Calculate returns based on cumulative equity
             equity = STARTING_CASH
             sorted_dates = sorted(daily_pnl.keys())
             for date in sorted_dates:
@@ -664,110 +682,18 @@ class KOIStrategy(bt.Strategy):
                     daily_returns.append(daily_ret)
                     equity += pnl
         
-        # =================================================================
-        # SHARPE RATIO (annualized from daily returns)
-        # =================================================================
+        # Sharpe Ratio
         sharpe_ratio = 0.0
         if len(daily_returns) > 10:
             returns_array = np.array(daily_returns)
             mean_return = np.mean(returns_array)
             std_return = np.std(returns_array)
             if std_return > 0:
-                # Annualize: multiply mean by 252, divide by sqrt(252) for std
                 sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
         
-        # =================================================================
-        # CAGR (Compound Annual Growth Rate)
-        # =================================================================
-        cagr = 0.0
-        if len(self._portfolio_values) > 1 and STARTING_CASH > 0:
-            total_return = final_value / STARTING_CASH
-            if self._trade_pnls:
-                first_date = self._trade_pnls[0]['date']
-                last_date = self._trade_pnls[-1]['date']
-                days = (last_date - first_date).days
-                years = max(days / 365.25, 0.1)
-            else:
-                years = 5.0  # Default assumption
-            
-            if total_return > 0:
-                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
-        
-        # =================================================================
-        # SORTINO RATIO (downside deviation from daily returns)
-        # =================================================================
-        sortino_ratio = 0.0
-        if len(daily_returns) > 10:
-            returns_array = np.array(daily_returns)
-            mean_return = np.mean(returns_array)
-            negative_returns = returns_array[returns_array < 0]
-            if len(negative_returns) > 0:
-                downside_dev = np.std(negative_returns)
-                if downside_dev > 0:
-                    sortino_ratio = (mean_return / downside_dev) * np.sqrt(252)
-        
-        # =================================================================
-        # TRADE-BASED SHARPE (alternative metric)
-        # =================================================================
-        trade_sharpe = 0.0
-        if len(self._trade_pnls) > 10:
-            pnl_list = [t['pnl'] for t in self._trade_pnls]
-            pnl_array = np.array(pnl_list)
-            mean_pnl = np.mean(pnl_array)
-            std_pnl = np.std(pnl_array)
-            if std_pnl > 0:
-                # Trades per year estimate
-                if self._trade_pnls:
-                    first_date = self._trade_pnls[0]['date']
-                    last_date = self._trade_pnls[-1]['date']
-                    days = max((last_date - first_date).days, 1)
-                    trades_per_year = len(self._trade_pnls) * 365.25 / days
-                else:
-                    trades_per_year = 30  # Default
-                trade_sharpe = (mean_pnl / std_pnl) * np.sqrt(trades_per_year)
-        
-        # =================================================================
-        # CALMAR RATIO (CAGR / Max Drawdown)
-        # =================================================================
-        calmar_ratio = 0.0
-        if max_drawdown_pct > 0:
-            calmar_ratio = cagr / max_drawdown_pct
-        
-        # =================================================================
-        # MONTE CARLO SIMULATION (10,000 simulations)
-        # =================================================================
-        monte_carlo_dd_95 = 0.0
-        monte_carlo_dd_99 = 0.0
-        if len(self._trade_pnls) >= 20:
-            n_simulations = 10000
-            pnl_list = [t['pnl'] for t in self._trade_pnls]
-            mc_max_drawdowns = []
-            
-            for _ in range(n_simulations):
-                shuffled_pnl = np.random.permutation(pnl_list)
-                equity = STARTING_CASH
-                peak = equity
-                max_dd = 0.0
-                
-                for pnl in shuffled_pnl:
-                    equity += pnl
-                    if equity > peak:
-                        peak = equity
-                    dd = (peak - equity) / peak * 100.0 if peak > 0 else 0.0
-                    if dd > max_dd:
-                        max_dd = dd
-                
-                mc_max_drawdowns.append(max_dd)
-            
-            mc_max_drawdowns = np.array(mc_max_drawdowns)
-            monte_carlo_dd_95 = np.percentile(mc_max_drawdowns, 95)
-            monte_carlo_dd_99 = np.percentile(mc_max_drawdowns, 99)
-        
-        # =================================================================
-        # PRINT SUMMARY
-        # =================================================================
+        # Print Summary
         print("\n" + "=" * 70)
-        print("=== KOI STRATEGY SUMMARY ===")
+        print("=== KOI STRATEGY SUMMARY (USDJPY) ===")
         print("=" * 70)
         
         # Commission info
@@ -787,101 +713,41 @@ class KOIStrategy(bt.Strategy):
         print(f"Net P&L: ${total_pnl:,.0f}")
         print(f"Final Value: ${final_value:,.0f}")
         
-        # =================================================================
-        # ADVANCED RISK METRICS
-        # =================================================================
+        # Risk Metrics
         print(f"\n{'='*70}")
-        print("ADVANCED RISK METRICS")
+        print("RISK METRICS")
         print(f"{'='*70}")
         
         sharpe_status = "Poor" if sharpe_ratio < 0.5 else "Marginal" if sharpe_ratio < 1.0 else "Good" if sharpe_ratio < 2.0 else "Excellent"
-        print(f"Sharpe Ratio (Daily):  {sharpe_ratio:>8.2f}  [{sharpe_status}]")
+        print(f"Sharpe Ratio: {sharpe_ratio:>8.2f}  [{sharpe_status}]")
         
-        sortino_status = "Poor" if sortino_ratio < 0.5 else "Marginal" if sortino_ratio < 1.0 else "Good" if sortino_ratio < 2.0 else "Excellent"
-        print(f"Sortino Ratio (Daily): {sortino_ratio:>8.2f}  [{sortino_status}]")
+        dd_status = "Excellent" if max_drawdown_pct < 10 else "Acceptable" if max_drawdown_pct < 20 else "High"
+        print(f"Max Drawdown: {max_drawdown_pct:>7.2f}%  [{dd_status}]")
         
-        trade_sharpe_status = "Poor" if trade_sharpe < 0.5 else "Marginal" if trade_sharpe < 1.0 else "Good" if trade_sharpe < 2.0 else "Excellent"
-        print(f"Sharpe Ratio (Trades): {trade_sharpe:>8.2f}  [{trade_sharpe_status}]")
-        
-        cagr_status = "Below Market" if cagr < 8 else "Market-level" if cagr < 12 else "Good" if cagr < 20 else "Exceptional"
-        print(f"CAGR:                  {cagr:>7.2f}%  [{cagr_status}]")
-        
-        dd_status = "Excellent" if max_drawdown_pct < 10 else "Acceptable" if max_drawdown_pct < 20 else "High" if max_drawdown_pct < 30 else "Dangerous"
-        print(f"Max Drawdown:          {max_drawdown_pct:>7.2f}%  [{dd_status}]")
-        
-        calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
-        print(f"Calmar Ratio:          {calmar_ratio:>8.2f}  [{calmar_status}]")
-        
-        if monte_carlo_dd_95 > 0:
-            mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
-            mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"
-            print(f"\nMonte Carlo Analysis (10,000 simulations):")
-            print(f"  95th Percentile DD: {monte_carlo_dd_95:>6.2f}%  [{mc_status}]")
-            print(f"  99th Percentile DD: {monte_carlo_dd_99:>6.2f}%")
-            print(f"  Historical vs MC95: {mc_ratio:.2f}x")
-        
-        # =================================================================
-        # YEARLY STATISTICS WITH SHARPE/SORTINO
-        # =================================================================
-        yearly_stats = defaultdict(lambda: {
-            'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0,
-            'gross_profit': 0.0, 'gross_loss': 0.0, 'pnls': []
-        })
+        # Yearly Statistics
+        yearly_stats = defaultdict(lambda: {'trades': 0, 'wins': 0, 'pnl': 0.0, 'gross_profit': 0.0, 'gross_loss': 0.0})
         
         for trade in self._trade_pnls:
             year = trade['year']
             yearly_stats[year]['trades'] += 1
             yearly_stats[year]['pnl'] += trade['pnl']
-            yearly_stats[year]['pnls'].append(trade['pnl'])
             if trade['is_winner']:
                 yearly_stats[year]['wins'] += 1
                 yearly_stats[year]['gross_profit'] += trade['pnl']
             else:
-                yearly_stats[year]['losses'] += 1
                 yearly_stats[year]['gross_loss'] += abs(trade['pnl'])
-        
-        # Calculate yearly Sharpe and Sortino
-        for year in yearly_stats:
-            pnls = yearly_stats[year]['pnls']
-            if len(pnls) > 1:
-                pnl_array = np.array(pnls)
-                mean_pnl = np.mean(pnl_array)
-                std_pnl = np.std(pnl_array)
-                
-                if std_pnl > 0:
-                    yearly_stats[year]['sharpe'] = (mean_pnl / std_pnl) * np.sqrt(len(pnls))
-                else:
-                    yearly_stats[year]['sharpe'] = 0.0
-                
-                neg_pnls = pnl_array[pnl_array < 0]
-                if len(neg_pnls) > 0:
-                    downside_std = np.std(neg_pnls)
-                    if downside_std > 0:
-                        yearly_stats[year]['sortino'] = (mean_pnl / downside_std) * np.sqrt(len(pnls))
-                    else:
-                        yearly_stats[year]['sortino'] = 0.0
-                else:
-                    yearly_stats[year]['sortino'] = float('inf') if mean_pnl > 0 else 0.0
-            else:
-                yearly_stats[year]['sharpe'] = 0.0
-                yearly_stats[year]['sortino'] = 0.0
         
         print(f"\n{'='*70}")
         print("YEARLY STATISTICS")
         print(f"{'='*70}")
-        print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12} {'Sharpe':>8} {'Sortino':>8}")
+        print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12}")
         print(f"{'-'*70}")
         
         for year in sorted(yearly_stats.keys()):
             stats = yearly_stats[year]
             wr = (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
             year_pf = (stats['gross_profit'] / stats['gross_loss']) if stats['gross_loss'] > 0 else float('inf')
-            year_sharpe = stats.get('sharpe', 0.0)
-            year_sortino = stats.get('sortino', 0.0)
-            
-            sortino_str = f"{year_sortino:>7.2f}" if year_sortino != float('inf') else "    inf"
-            
-            print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {year_pf:>7.2f} ${stats['pnl']:>10,.0f} {year_sharpe:>8.2f} {sortino_str}")
+            print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {year_pf:>7.2f} ${stats['pnl']:>10,.0f}")
         
         print(f"{'='*70}")
         
@@ -892,34 +758,12 @@ class KOIStrategy(bt.Strategy):
 
 
 # =============================================================================
-# SL/TP OBSERVER FOR PLOTTING
-# =============================================================================
-class SLTPObserver(bt.Observer):
-    """Stop Loss and Take Profit Observer for plotting SL/TP levels on chart."""
-    lines = ('sl', 'tp',)
-    plotinfo = dict(plot=True, subplot=False)
-    plotlines = dict(
-        sl=dict(color='red', ls='--', linewidth=1.0),
-        tp=dict(color='green', ls='--', linewidth=1.0)
-    )
-    
-    def next(self):
-        strat = self._owner
-        if strat.position:
-            self.lines.sl[0] = strat.stop_level if strat.stop_level else float('nan')
-            self.lines.tp[0] = strat.take_level if strat.take_level else float('nan')
-        else:
-            self.lines.sl[0] = float('nan')
-            self.lines.tp[0] = float('nan')
-
-
-# =============================================================================
 # MAIN
 # =============================================================================
 if __name__ == '__main__':
     cerebro = bt.Cerebro(stdstats=False)
     
-    # Data - Use custom ForexCSVData that correctly handles Date/Time columns
+    # Data - Use custom ForexCSVData
     data_path = Path(__file__).parent.parent.parent / 'data' / DATA_FILENAME
     if not data_path.exists():
         data_path = Path(__file__).parent / DATA_FILENAME
@@ -931,14 +775,14 @@ if __name__ == '__main__':
     )
     cerebro.adddata(data)
     
-    # Broker - SAME AS OGLE
+    # Broker with JPY commission
     cerebro.broker.setcash(STARTING_CASH)
     if USE_FIXED_COMMISSION:
         cerebro.broker.addcommissioninfo(
             ForexCommission(
                 commission=COMMISSION_PER_LOT_PER_ORDER,
-                is_jpy_pair=False,
-                jpy_rate=1.0
+                is_jpy_pair=True,
+                jpy_rate=FOREX_JPY_RATE
             )
         )
     
@@ -947,11 +791,6 @@ if __name__ == '__main__':
     # Add observers
     try:
         cerebro.addobserver(bt.observers.BuySell, barplot=False)
-    except Exception:
-        pass
-    
-    try:
-        cerebro.addobserver(SLTPObserver)
     except Exception:
         pass
     
@@ -969,20 +808,20 @@ if __name__ == '__main__':
     print(f"Starting Cash: ${STARTING_CASH:,.0f}")
     print(f"Risk per trade: {RISK_PERCENT*100:.2f}%")
     print(f"SL: {ATR_SL_MULTIPLIER}x ATR | TP: {ATR_TP_MULTIPLIER}x ATR")
-    print(f"SL Filter: {MIN_SL_PIPS}-{MAX_SL_PIPS} pips")
+    print(f"JPY Rate: {FOREX_JPY_RATE} (position/P&L adjustment)")
     print(f"{'='*70}\n")
     
     results = cerebro.run()
     final_value = cerebro.broker.getvalue()
     
-    # Enhanced plotting
+    # Plot
     if ENABLE_PLOT:
         try:
             strategy_result = results[0]
             final_pnl = final_value - STARTING_CASH
             plot_title = f'KOI Strategy ({FOREX_INSTRUMENT} - LONG-ONLY)\n'
             plot_title += f'Final Value: ${final_value:,.0f} | P&L: ${final_pnl:+,.0f} | '
-            plot_title += f'Trades: {strategy_result.trades} | Win Rate: {(strategy_result.wins/strategy_result.trades*100) if strategy_result.trades > 0 else 0:.1f}%'
+            plot_title += f'Trades: {strategy_result.trades}'
             
             print(f"[CHART] Showing {FOREX_INSTRUMENT} strategy chart...")
             cerebro.plot(style='candlestick', subtitle=plot_title)

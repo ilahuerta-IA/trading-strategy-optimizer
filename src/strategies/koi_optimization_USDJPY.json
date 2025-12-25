@@ -1,0 +1,141 @@
+{
+  "instrument": "USDJPY",
+  "timestamp": "2025-12-25T11:41:49.028753",
+  "phases": {
+    "phase_5": {
+      "name": "Phase 5: SL Range Filter",
+      "top_results": [
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 12.0,
+            "max_sl_pips": 30.0
+          },
+          "trades": 207,
+          "profit_factor": 1.047,
+          "win_rate": 21.26,
+          "total_pnl": 1775.73,
+          "max_drawdown": 7.49
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 8.0,
+            "max_sl_pips": 30.0
+          },
+          "trades": 231,
+          "profit_factor": 1.033,
+          "win_rate": 21.21,
+          "total_pnl": 1324.68,
+          "max_drawdown": 7.43
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 5.0,
+            "max_sl_pips": 30.0
+          },
+          "trades": 238,
+          "profit_factor": 1.029,
+          "win_rate": 21.01,
+          "total_pnl": 1189.07,
+          "max_drawdown": 7.56
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 10.0,
+            "max_sl_pips": 30.0
+          },
+          "trades": 222,
+          "profit_factor": 1.006,
+          "win_rate": 20.27,
+          "total_pnl": 248.58,
+          "max_drawdown": 7.75
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 8.0,
+            "max_sl_pips": 15.0
+          },
+          "trades": 71,
+          "profit_factor": 0.934,
+          "win_rate": 19.72,
+          "total_pnl": -588.34,
+          "max_drawdown": 3.37
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 12.0,
+            "max_sl_pips": 20.0
+          },
+          "trades": 104,
+          "profit_factor": 0.933,
+          "win_rate": 20.19,
+          "total_pnl": -1039.89,
+          "max_drawdown": 3.79
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 5.0,
+            "max_sl_pips": 15.0
+          },
+          "trades": 78,
+          "profit_factor": 0.923,
+          "win_rate": 19.23,
+          "total_pnl": -723.95,
+          "max_drawdown": 3.5
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 8.0,
+            "max_sl_pips": 20.0
+          },
+          "trades": 129,
+          "profit_factor": 0.913,
+          "win_rate": 20.16,
+          "total_pnl": -1615.7,
+          "max_drawdown": 3.99
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 5.0,
+            "max_sl_pips": 20.0
+          },
+          "trades": 136,
+          "profit_factor": 0.908,
+          "win_rate": 19.85,
+          "total_pnl": -1751.31,
+          "max_drawdown": 4.46
+        },
+        {
+          "params": {
+            "use_min_sl_filter": true,
+            "use_max_sl_filter": true,
+            "min_sl_pips": 12.0,
+            "max_sl_pips": 25.0
+          },
+          "trades": 164,
+          "profit_factor": 0.897,
+          "win_rate": 19.51,
+          "total_pnl": -2876.59,
+          "max_drawdown": 9.34
+        }
+      ]
+    }
+  }
+}
