@@ -21,7 +21,7 @@ OPTIMIZATION PHASES:
 
 OUTPUT:
     - Console: Progress and TOP 10 results
-    - JSON: koi_optimization_results_{INSTRUMENT}.json
+    - JSON: koi_results_{INSTRUMENT}_phase{N}.json (one file per phase)
 
 KNOWN ISSUES & SOLUTIONS (DO NOT REPEAT):
     1. Use GenericCSVData, NOT PandasData
@@ -85,6 +85,14 @@ INSTRUMENT_DATA = {
         'is_jpy': True,
         'jpy_rate': 150.0,
     },
+    'EURJPY': {
+        'data_file': 'EURJPY_5m_5Yea.csv',
+        'pip_value': 0.01,
+        'pip_decimal_places': 3,
+        'spread': 1.0,
+        'is_jpy': True,
+        'jpy_rate': 150.0,
+    },
     'GBPUSD': {
         'data_file': 'GBPUSD_5m_5Yea.csv',
         'pip_value': 0.0001,
@@ -98,6 +106,14 @@ INSTRUMENT_DATA = {
         'pip_value': 0.0001,
         'pip_decimal_places': 5,
         'spread': 0.8,
+        'is_jpy': False,
+        'jpy_rate': 1.0,
+    },
+    'AUDCAD': {
+        'data_file': 'AUDCAD_5m_5Yea.csv',
+        'pip_value': 0.0001,
+        'pip_decimal_places': 5,
+        'spread': 1.5,
         'is_jpy': False,
         'jpy_rate': 1.0,
     },
@@ -650,6 +666,42 @@ def run_optimization(
 
 
 # =============================================================================
+# SAVE RESULTS (per phase - like OGLE optimizer)
+# =============================================================================
+def save_phase_results(instrument: str, phase: str, phase_name: str, results: list, fromdate: str, todate: str):
+    """Save results for a single phase to individual JSON file."""
+    output_file = Path(__file__).parent / f'koi_results_{instrument}_phase{phase}.json'
+    
+    json_results = {
+        'instrument': instrument,
+        'phase': phase,
+        'phase_name': phase_name,
+        'timestamp': datetime.now().isoformat(),
+        'date_range': {'from': fromdate, 'to': todate},
+        'top_results': [
+            {
+                'rank': i + 1,
+                'params': r['params'],
+                'trades': r['trades'],
+                'profit_factor': round(r['profit_factor'], 3),
+                'win_rate': round(r['win_rate'], 2),
+                'total_pnl': round(r['total_pnl'], 2),
+                'max_drawdown': round(r['max_drawdown'], 2),
+                'negative_years': r.get('negative_years', 0),
+                'yearly_pnl': {str(k): round(v, 2) for k, v in r.get('yearly_pnl', {}).items()},
+            }
+            for i, r in enumerate(results[:10])
+        ]
+    }
+    
+    with open(output_file, 'w') as f:
+        json.dump(json_results, f, indent=2)
+    
+    print(f"\n✅ Phase {phase} results saved to: {output_file}")
+    return output_file
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 def main():
@@ -706,38 +758,20 @@ def main():
             'name': phase_name,
             'results': results[:20],
         }
-    
-    # Save results
-    output_file = Path(__file__).parent / f'koi_optimization_{args.instrument}.json'
-    
-    json_results = {
-        'instrument': args.instrument,
-        'timestamp': datetime.now().isoformat(),
-        'phases': {}
-    }
-    
-    for phase_key, phase_data in all_results.items():
-        json_results['phases'][phase_key] = {
-            'name': phase_data['name'],
-            'top_results': [
-                {
-                    'params': r['params'],
-                    'trades': r['trades'],
-                    'profit_factor': round(r['profit_factor'], 3),
-                    'win_rate': round(r['win_rate'], 2),
-                    'total_pnl': round(r['total_pnl'], 2),
-                    'max_drawdown': round(r['max_drawdown'], 2),
-                }
-                for r in phase_data['results'][:10]
-            ]
-        }
-    
-    with open(output_file, 'w') as f:
-        json.dump(json_results, f, indent=2)
+        
+        # Save results for THIS phase (individual JSON file)
+        save_phase_results(
+            instrument=args.instrument,
+            phase=str(phase_num),
+            phase_name=phase_name,
+            results=results,
+            fromdate=args.fromdate,
+            todate=args.todate,
+        )
     
     print(f"\n{'='*70}")
     print("OPTIMIZATION COMPLETE")
-    print(f"Results saved to: {output_file}")
+    print(f"Results saved to: koi_results_{args.instrument}_phase*.json")
 
 
 if __name__ == "__main__":

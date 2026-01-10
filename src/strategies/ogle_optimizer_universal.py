@@ -120,6 +120,14 @@ INSTRUMENT_DATA = {
         'time_start': 0,
         'time_end': 8,
     },
+    'EURJPY': {
+        'data_file': 'EURJPY_5m_5Yea.csv',
+        'pip_value': 0.01,
+        'pip_decimal_places': 3,
+        'spread': 1.0,
+        'time_start': 0,
+        'time_end': 8,
+    },
     'GBPUSD': {
         'data_file': 'GBPUSD_5m_5Yea.csv',
         'pip_value': 0.0001,
@@ -141,6 +149,14 @@ INSTRUMENT_DATA = {
         'pip_value': 0.0001,
         'pip_decimal_places': 5,
         'spread': 0.8,
+        'time_start': 7,
+        'time_end': 16,
+    },
+    'AUDCAD': {
+        'data_file': 'AUDCAD_5m_5Yea.csv',
+        'pip_value': 0.0001,
+        'pip_decimal_places': 5,
+        'spread': 1.5,
         'time_start': 7,
         'time_end': 16,
     },
@@ -371,6 +387,19 @@ def get_baseline_params(instrument: str) -> dict:
         use_atr_filter = False
         atr_min = 0.000250
         atr_max = 0.000500
+    elif instrument == 'AUDCAD':
+        # AUDCAD Phase 3 Best: PF=1.01, +$1,195
+        ema_fast = 24
+        ema_medium = 30
+        ema_slow = 36
+        ema_filter = 40
+        # AUDCAD Phase 1 defaults
+        sl_mult = 3.0
+        tp_mult = 15.0
+        # AUDCAD Phase 4 - ATR filter OFF by default (Phase 4 results were worse)
+        use_atr_filter = False
+        atr_min = 0.000250
+        atr_max = 0.000500
     elif instrument == 'USDJPY':
         # USDJPY defaults - ATR values 100x larger for JPY pairs
         ema_fast = 24
@@ -380,6 +409,17 @@ def get_baseline_params(instrument: str) -> dict:
         sl_mult = 3.0
         tp_mult = 15.0
         use_atr_filter = True
+        atr_min = 0.025  # 100x larger for JPY
+        atr_max = 0.050  # 100x larger for JPY
+    elif instrument == 'EURJPY':
+        # EURJPY defaults - ATR values 100x larger for JPY pairs
+        ema_fast = 18
+        ema_medium = 18
+        ema_slow = 24
+        ema_filter = 70
+        sl_mult = 3.0
+        tp_mult = 6.5
+        use_atr_filter = False
         atr_min = 0.025  # 100x larger for JPY
         atr_max = 0.050  # 100x larger for JPY
     else:
@@ -504,8 +544,8 @@ def get_bestpnl_baseline_params(instrument: str) -> dict:
 def run_single_backtest(
     instrument: str,
     params_override: dict,
-    fromdate: str = '2020-01-01',
-    todate: str = '2025-12-01',
+    fromdate: str = '2020-07-01',
+    todate: str = '2025-07-01',
     starting_cash: float = 100000.0,
     use_bestpnl_baseline: bool = False,
 ) -> dict:
@@ -632,8 +672,8 @@ def run_optimization(
     instrument: str,
     param_grid: dict,
     phase_name: str = "",
-    fromdate: str = '2020-01-01',
-    todate: str = '2025-12-01',
+    fromdate: str = '2020-07-01',
+    todate: str = '2025-07-01',
     min_trades: int = 30,
     use_bestpnl_baseline: bool = False,
 ) -> list:
@@ -767,7 +807,7 @@ USAGE: python ogle_optimizer_universal.py <INSTRUMENT> <PHASE>
 ================================================================================
 
 AVAILABLE INSTRUMENTS:
-    EURUSD, USDCHF, USDJPY, GBPUSD, AUDUSD
+    EURUSD, USDCHF, USDJPY, EURJPY, GBPUSD, AUDUSD
 
 OPTIMIZATION PHASES:
     1     = SL/TP Multipliers (25 combinations)
@@ -911,8 +951,8 @@ def main():
         return
     
     # Configure dates
-    fromdate = '2020-01-01'
-    todate = '2025-12-01'
+    fromdate = '2020-07-01'
+    todate = '2025-07-01'
     min_trades = 30
     
     # Quick mode
