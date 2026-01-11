@@ -58,6 +58,44 @@ from koi_template import ForexCommission, ForexCSVData
 
 
 # =============================================================================
+# DIA ETF COMMISSION CLASS - Darwinex Zero ($0.02/contract/order)
+# =============================================================================
+class DIACommission(bt.CommInfoBase):
+    """
+    Commission scheme for DIA ETF trading.
+    
+    Darwinex Zero specs for DIA:
+    - Commission: $0.02 per contract per order
+    - Margin: 20% (5:1 leverage)
+    - Contract size: 1 share
+    """
+    params = (
+        ('stocklike', True),
+        ('commtype', bt.CommInfoBase.COMM_FIXED),
+        ('percabs', True),
+        ('leverage', 5.0),
+        ('automargin', 0.20),
+        ('commission', 0.02),
+    )
+    
+    commission_calls = 0
+    total_commission = 0.0
+    total_contracts = 0.0
+
+    def _getcommission(self, size, price, pseudoexec):
+        """Return commission: $0.02 per contract."""
+        contracts = abs(size)
+        comm = contracts * self.p.commission
+        
+        if not pseudoexec:
+            DIACommission.commission_calls += 1
+            DIACommission.total_commission += comm
+            DIACommission.total_contracts += contracts
+        
+        return comm
+
+
+# =============================================================================
 # INSTRUMENT CONFIGURATIONS
 # =============================================================================
 INSTRUMENT_DATA = {
@@ -117,6 +155,18 @@ INSTRUMENT_DATA = {
         'is_jpy': False,
         'jpy_rate': 1.0,
     },
+    # === ETFs ===
+    'DIA': {
+        'data_file': 'DIA_5m_5Yea.csv',
+        'pip_value': 0.01,  # 2 decimal places for stock price
+        'pip_decimal_places': 2,
+        'spread': 0.0,
+        'is_jpy': False,
+        'jpy_rate': 1.0,
+        'is_etf': True,
+        'commission_per_contract': 0.02,
+        'margin_percent': 20.0,
+    },
 }
 
 
@@ -157,6 +207,21 @@ PHASE5_GRID = {
     'use_max_sl_filter': [True],  # Must enable filter!
     'min_sl_pips': [5.0, 8.0, 10.0, 12.0],
     'max_sl_pips': [15.0, 20.0, 25.0, 30.0],
+}
+
+# Phase 4 DIA: Breakout Window for DIA (pips = price points for ETFs)
+# DIA price ~$400+, so "pips" are actually dollar amounts
+PHASE4_GRID_DIA = {
+    'breakout_offset_pips': [0, 0.5, 1.0, 2.0, 3.0],  # $ offset
+    'breakout_candles': [3, 5, 7, 10],
+}
+
+# Phase 5 DIA: SL Range Filter for DIA (in $ not pips)
+PHASE5_GRID_DIA = {
+    'use_min_sl_filter': [True],
+    'use_max_sl_filter': [True],
+    'min_sl_pips': [1.0, 2.0, 3.0, 5.0],  # $ min SL
+    'max_sl_pips': [8.0, 10.0, 15.0, 20.0],  # $ max SL
 }
 
 
@@ -510,23 +575,50 @@ def run_single_backtest(
     if not data_path.exists():
         raise FileNotFoundError(f"Data file not found: {data_path}")
     
-    # Use ForexCSVData to correctly handle Date/Time columns
-    data = ForexCSVData(
-        dataname=str(data_path),
-        fromdate=datetime.strptime(fromdate, '%Y-%m-%d'),
-        todate=datetime.strptime(todate, '%Y-%m-%d'),
-        timeframe=bt.TimeFrame.Minutes,
-        compression=5,
-    )
+    # Use GenericCSVData for ETFs (more compatible), ForexCSVData for forex
+    is_etf = config.get('is_etf', False)
+    
+    if is_etf:
+        # ETFs: Use standard GenericCSVData
+        data = bt.feeds.GenericCSVData(
+            dataname=str(data_path),
+            fromdate=datetime.strptime(fromdate, '%Y-%m-%d'),
+            todate=datetime.strptime(todate, '%Y-%m-%d'),
+            dtformat='%Y%m%d',
+            tmformat='%H:%M:%S',
+            datetime=0,
+            time=1,
+            open=2,
+            high=3,
+            low=4,
+            close=5,
+            volume=6,
+            openinterest=-1,
+            timeframe=bt.TimeFrame.Minutes,
+            compression=5,
+        )
+    else:
+        # Forex: Use ForexCSVData (handles Date/Time columns better)
+        data = ForexCSVData(
+            dataname=str(data_path),
+            fromdate=datetime.strptime(fromdate, '%Y-%m-%d'),
+            todate=datetime.strptime(todate, '%Y-%m-%d'),
+            timeframe=bt.TimeFrame.Minutes,
+            compression=5,
+        )
     
     cerebro.adddata(data)
     cerebro.broker.set_cash(starting_cash)
     
-    # Use JPY commission for JPY pairs
+    # Select commission based on instrument type
+    is_etf = config.get('is_etf', False)
     is_jpy = config.get('is_jpy', False)
     jpy_rate = config.get('jpy_rate', 1.0)
     
-    if is_jpy and ForexCommissionJPY is not None:
+    if is_etf:
+        # DIA/ETFs: $0.02/contract/order
+        cerebro.broker.addcommissioninfo(DIACommission())
+    elif is_jpy and ForexCommissionJPY is not None:
         cerebro.broker.addcommissioninfo(
             ForexCommissionJPY(
                 commission=2.50,
@@ -537,13 +629,21 @@ def run_single_backtest(
     else:
         cerebro.broker.addcommissioninfo(ForexCommission())
     
-    # Base params
-    base_params = {
-        'pip_value': config['pip_value'],
-        'lot_size': 100000,
-        'forex_jpy_rate': jpy_rate,  # Pass JPY rate to strategy
-        'print_signals': False,
-    }
+    # Base params - adjust for ETFs vs Forex
+    if is_etf:
+        base_params = {
+            'pip_value': config['pip_value'],
+            'lot_size': 1,  # ETF: 1 share
+            'forex_jpy_rate': 1.0,
+            'print_signals': False,
+        }
+    else:
+        base_params = {
+            'pip_value': config['pip_value'],
+            'lot_size': 100000,
+            'forex_jpy_rate': jpy_rate,
+            'print_signals': False,
+        }
     
     # Merge with overrides
     final_params = {**base_params, **params_override}
@@ -732,14 +832,25 @@ def main():
     print("=" * 70)
     print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
+    # Show commission info
+    inst_config = INSTRUMENT_DATA.get(args.instrument, {})
+    if inst_config.get('is_etf', False):
+        print(f"Commission: ${inst_config.get('commission_per_contract', 0.02)}/contract/order (Darwinex Zero)")
+        print(f"Margin: {inst_config.get('margin_percent', 20)}%")
+    else:
+        print(f"Commission: $2.50/lot/order (Darwinex Zero)")
+    
     all_results = {}
+    
+    # Select appropriate grids for DIA vs Forex
+    is_etf = inst_config.get('is_etf', False)
     
     phases = {
         1: ('Phase 1: SL/TP', PHASE1_GRID),
         2: ('Phase 2: CCI', PHASE2_GRID),
         3: ('Phase 3: EMAs', PHASE3_GRID),
-        4: ('Phase 4: Breakout', PHASE4_GRID),
-        5: ('Phase 5: SL Range Filter', PHASE5_GRID),
+        4: ('Phase 4: Breakout', PHASE4_GRID_DIA if is_etf else PHASE4_GRID),
+        5: ('Phase 5: SL Range Filter', PHASE5_GRID_DIA if is_etf else PHASE5_GRID),
     }
     
     phases_to_run = list(phases.keys()) if args.all else [args.phase]

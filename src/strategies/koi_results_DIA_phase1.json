@@ -1,0 +1,172 @@
+{
+  "instrument": "DIA",
+  "phase": "1",
+  "phase_name": "Phase 1: SL/TP",
+  "timestamp": "2026-01-11T13:17:12.876778",
+  "date_range": {
+    "from": "2024-01-01",
+    "to": "2025-01-01"
+  },
+  "top_results": [
+    {
+      "rank": 1,
+      "params": {
+        "atr_sl_mult": 2.0,
+        "atr_tp_mult": 8.0
+      },
+      "trades": 28,
+      "profit_factor": 1.791,
+      "win_rate": 32.14,
+      "total_pnl": 14938.2,
+      "max_drawdown": 6.9,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2024": 14938.2
+      }
+    },
+    {
+      "rank": 2,
+      "params": {
+        "atr_sl_mult": 2.5,
+        "atr_tp_mult": 8.0
+      },
+      "trades": 28,
+      "profit_factor": 1.492,
+      "win_rate": 32.14,
+      "total_pnl": 10979.91,
+      "max_drawdown": 8.22,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2024": 10979.91
+      }
+    },
+    {
+      "rank": 3,
+      "params": {
+        "atr_sl_mult": 2.0,
+        "atr_tp_mult": 10.0
+      },
+      "trades": 28,
+      "profit_factor": 1.479,
+      "win_rate": 25.0,
+      "total_pnl": 9857.92,
+      "max_drawdown": 9.56,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2024": 9857.92
+      }
+    },
+    {
+      "rank": 4,
+      "params": {
+        "atr_sl_mult": 3.5,
+        "atr_tp_mult": 8.0
+      },
+      "trades": 27,
+      "profit_factor": 1.249,
+      "win_rate": 37.04,
+      "total_pnl": 7338.07,
+      "max_drawdown": 12.74,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2024": 7338.07
+      }
+    },
+    {
+      "rank": 5,
+      "params": {
+        "atr_sl_mult": 2.5,
+        "atr_tp_mult": 10.0
+      },
+      "trades": 28,
+      "profit_factor": 1.226,
+      "win_rate": 25.0,
+      "total_pnl": 5533.66,
+      "max_drawdown": 11.42,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2024": 5533.66
+      }
+    },
+    {
+      "rank": 6,
+      "params": {
+        "atr_sl_mult": 3.0,
+        "atr_tp_mult": 8.0
+      },
+      "trades": 28,
+      "profit_factor": 1.151,
+      "win_rate": 32.14,
+      "total_pnl": 4368.86,
+      "max_drawdown": 11.78,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2024": 4368.86
+      }
+    },
+    {
+      "rank": 7,
+      "params": {
+        "atr_sl_mult": 2.0,
+        "atr_tp_mult": 12.0
+      },
+      "trades": 28,
+      "profit_factor": 0.992,
+      "win_rate": 17.86,
+      "total_pnl": -187.23,
+      "max_drawdown": 12.27,
+      "negative_years": 1,
+      "yearly_pnl": {
+        "2024": -187.23
+      }
+    },
+    {
+      "rank": 8,
+      "params": {
+        "atr_sl_mult": 3.0,
+        "atr_tp_mult": 10.0
+      },
+      "trades": 28,
+      "profit_factor": 0.953,
+      "win_rate": 25.0,
+      "total_pnl": -1496.19,
+      "max_drawdown": 13.7,
+      "negative_years": 1,
+      "yearly_pnl": {
+        "2024": -1496.19
+      }
+    },
+    {
+      "rank": 9,
+      "params": {
+        "atr_sl_mult": 2.0,
+        "atr_tp_mult": 15.0
+      },
+      "trades": 28,
+      "profit_factor": 0.893,
+      "win_rate": 14.29,
+      "total_pnl": -2544.27,
+      "max_drawdown": 12.79,
+      "negative_years": 1,
+      "yearly_pnl": {
+        "2024": -2544.27
+      }
+    },
+    {
+      "rank": 10,
+      "params": {
+        "atr_sl_mult": 3.5,
+        "atr_tp_mult": 10.0
+      },
+      "trades": 27,
+      "profit_factor": 0.85,
+      "win_rate": 25.93,
+      "total_pnl": -5156.93,
+      "max_drawdown": 15.31,
+      "negative_years": 1,
+      "yearly_pnl": {
+        "2024": -5156.93
+      }
+    }
+  ]
+}

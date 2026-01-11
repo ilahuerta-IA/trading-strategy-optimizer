@@ -1,0 +1,221 @@
+{
+  "instrument": "DIA",
+  "phase": "1",
+  "timestamp": "2026-01-11T13:17:45.266028",
+  "date_range": {
+    "from": "2020-07-01",
+    "to": "2025-07-01"
+  },
+  "top_results": [
+    {
+      "rank": 1,
+      "params": {
+        "long_atr_sl_multiplier": 3.5,
+        "long_atr_tp_multiplier": 15.0
+      },
+      "trades": 116,
+      "profit_factor": 2.485,
+      "win_rate": 41.38,
+      "total_pnl": 162790.22,
+      "max_drawdown": 16.36,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2020": 13171.31,
+        "2021": 11636.56,
+        "2022": 3955.02,
+        "2023": 31208.12,
+        "2024": 54742.85,
+        "2025": 48076.36
+      }
+    },
+    {
+      "rank": 2,
+      "params": {
+        "long_atr_sl_multiplier": 3.0,
+        "long_atr_tp_multiplier": 15.0
+      },
+      "trades": 115,
+      "profit_factor": 2.245,
+      "win_rate": 37.39,
+      "total_pnl": 148961.92,
+      "max_drawdown": 19.27,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2020": 16082.31,
+        "2021": 16526.81,
+        "2022": 953.96,
+        "2023": 23750.6,
+        "2024": 39568.76,
+        "2025": 52079.48
+      }
+    },
+    {
+      "rank": 3,
+      "params": {
+        "long_atr_sl_multiplier": 2.5,
+        "long_atr_tp_multiplier": 15.0
+      },
+      "trades": 106,
+      "profit_factor": 2.188,
+      "win_rate": 33.02,
+      "total_pnl": 124546.52,
+      "max_drawdown": 22.4,
+      "negative_years": 1,
+      "yearly_pnl": {
+        "2020": 14883.54,
+        "2021": 4026.96,
+        "2022": -3595.11,
+        "2023": 27137.24,
+        "2024": 37577.75,
+        "2025": 44516.15
+      }
+    },
+    {
+      "rank": 4,
+      "params": {
+        "long_atr_sl_multiplier": 3.5,
+        "long_atr_tp_multiplier": 12.0
+      },
+      "trades": 126,
+      "profit_factor": 1.929,
+      "win_rate": 42.86,
+      "total_pnl": 109944.09,
+      "max_drawdown": 8.92,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2020": 8545.07,
+        "2021": 11190.36,
+        "2022": 12201.02,
+        "2023": 18689.87,
+        "2024": 37955.73,
+        "2025": 21362.03
+      }
+    },
+    {
+      "rank": 5,
+      "params": {
+        "long_atr_sl_multiplier": 3.0,
+        "long_atr_tp_multiplier": 12.0
+      },
+      "trades": 124,
+      "profit_factor": 1.846,
+      "win_rate": 39.52,
+      "total_pnl": 108233.61,
+      "max_drawdown": 9.65,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2020": 10758.17,
+        "2021": 17959.92,
+        "2022": 11654.87,
+        "2023": 15953.15,
+        "2024": 26622.48,
+        "2025": 25285.03
+      }
+    },
+    {
+      "rank": 6,
+      "params": {
+        "long_atr_sl_multiplier": 1.5,
+        "long_atr_tp_multiplier": 15.0
+      },
+      "trades": 87,
+      "profit_factor": 1.801,
+      "win_rate": 21.84,
+      "total_pnl": 68828.97,
+      "max_drawdown": 19.23,
+      "negative_years": 1,
+      "yearly_pnl": {
+        "2020": 5942.38,
+        "2021": 9549.54,
+        "2022": -13375.9,
+        "2023": 15372.42,
+        "2024": 12228.17,
+        "2025": 39112.37
+      }
+    },
+    {
+      "rank": 7,
+      "params": {
+        "long_atr_sl_multiplier": 2.5,
+        "long_atr_tp_multiplier": 12.0
+      },
+      "trades": 111,
+      "profit_factor": 1.775,
+      "win_rate": 34.23,
+      "total_pnl": 79884.29,
+      "max_drawdown": 14.68,
+      "negative_years": 1,
+      "yearly_pnl": {
+        "2020": 9753.82,
+        "2021": 5702.07,
+        "2022": -2715.41,
+        "2023": 18676.94,
+        "2024": 24213.48,
+        "2025": 24253.4
+      }
+    },
+    {
+      "rank": 8,
+      "params": {
+        "long_atr_sl_multiplier": 2.0,
+        "long_atr_tp_multiplier": 15.0
+      },
+      "trades": 104,
+      "profit_factor": 1.639,
+      "win_rate": 25.0,
+      "total_pnl": 64402.1,
+      "max_drawdown": 21.38,
+      "negative_years": 2,
+      "yearly_pnl": {
+        "2020": 5957.51,
+        "2021": -1761.68,
+        "2022": -8385.33,
+        "2023": 18386.86,
+        "2024": 16661.09,
+        "2025": 33543.65
+      }
+    },
+    {
+      "rank": 9,
+      "params": {
+        "long_atr_sl_multiplier": 2.5,
+        "long_atr_tp_multiplier": 10.0
+      },
+      "trades": 119,
+      "profit_factor": 1.581,
+      "win_rate": 36.13,
+      "total_pnl": 64030.39,
+      "max_drawdown": 14.06,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2020": 7659.69,
+        "2021": 6005.4,
+        "2022": 981.83,
+        "2023": 13595.59,
+        "2024": 21028.58,
+        "2025": 14759.29
+      }
+    },
+    {
+      "rank": 10,
+      "params": {
+        "long_atr_sl_multiplier": 3.5,
+        "long_atr_tp_multiplier": 10.0
+      },
+      "trades": 136,
+      "profit_factor": 1.567,
+      "win_rate": 42.65,
+      "total_pnl": 67741.87,
+      "max_drawdown": 10.47,
+      "negative_years": 0,
+      "yearly_pnl": {
+        "2020": 6226.55,
+        "2021": 8322.7,
+        "2022": 7392.85,
+        "2023": 14761.47,
+        "2024": 21173.17,
+        "2025": 9865.14
+      }
+    }
+  ]
+}

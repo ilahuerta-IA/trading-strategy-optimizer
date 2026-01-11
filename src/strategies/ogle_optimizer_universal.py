@@ -91,6 +91,54 @@ from sunrise_ogle_template import SunriseOgle, ForexCommission, INSTRUMENT_CONFI
 
 
 # =============================================================================
+# DIA ETF COMMISSION CLASS - Darwinex Zero ($0.02/contract/order)
+# =============================================================================
+class DIACommission(bt.CommInfoBase):
+    """
+    Commission scheme for DIA ETF trading.
+    
+    Darwinex Zero specs for DIA:
+    - Commission: $0.02 per contract per order
+    - Margin: 20% (5:1 leverage)
+    - Contract size: 1 share
+    - Swap long: -0.02%/day
+    - Swap short: 0.01%/day
+    """
+    params = (
+        ('stocklike', True),  # ETF behaves like stock
+        ('commtype', bt.CommInfoBase.COMM_FIXED),
+        ('percabs', True),
+        ('leverage', 5.0),  # 20% margin = 5:1 leverage
+        ('automargin', 0.20),  # 20% margin requirement
+        ('commission', 0.02),  # $0.02 per contract
+    )
+    
+    # Debug counters (class-level)
+    commission_calls = 0
+    total_commission = 0.0
+    total_contracts = 0.0
+
+    def _getcommission(self, size, price, pseudoexec):
+        """
+        Return commission based on number of contracts.
+        DIA: $0.02 per contract per order.
+        """
+        contracts = abs(size)
+        comm = contracts * self.p.commission
+        
+        if not pseudoexec:
+            DIACommission.commission_calls += 1
+            DIACommission.total_commission += comm
+            DIACommission.total_contracts += contracts
+        
+        return comm
+
+    def get_margin(self, price):
+        """Return margin requirement for DIA (20% of price)."""
+        return price * self.p.automargin
+
+
+# =============================================================================
 # CONFIGURACIÓN DE INSTRUMENTOS
 # =============================================================================
 INSTRUMENT_DATA = {
@@ -160,6 +208,18 @@ INSTRUMENT_DATA = {
         'time_start': 7,
         'time_end': 16,
     },
+    # === ETFs ===
+    'DIA': {
+        'data_file': 'DIA_5m_5Yea.csv',
+        'pip_value': 0.01,  # 2 decimal places for stock price
+        'pip_decimal_places': 2,
+        'spread': 0.0,  # No spread for ETFs
+        'time_start': 14,  # US market hours (UTC) - 9:30 AM ET
+        'time_end': 21,   # US market hours (UTC) - 4:00 PM ET
+        'is_etf': True,   # Flag for ETF-specific handling
+        'commission_per_contract': 0.02,  # $0.02/contract/order
+        'margin_percent': 20.0,  # 20% margin
+    },
 }
 
 
@@ -197,6 +257,13 @@ PHASE4_GRID = {
 PHASE4_GRID_JPY = {
     'long_atr_min_threshold': [0.015, 0.020, 0.025, 0.030],
     'long_atr_max_threshold': [0.050, 0.070, 0.090, 0.110],
+}
+
+# Fase 4 DIA: ATR Filter for DIA ETF - values much larger (stock price ~$400+)
+# DIA typical ATR is 2-10 USD (vs forex 0.0005-0.001)
+PHASE4_GRID_DIA = {
+    'long_atr_min_threshold': [0.5, 1.0, 1.5, 2.0],
+    'long_atr_max_threshold': [3.0, 5.0, 7.0, 10.0],
 }
 
 # =============================================================================
@@ -371,7 +438,19 @@ USDCAD_PHASE6C_ATR = {
 def get_baseline_params(instrument: str) -> dict:
     """Get baseline parameters for an instrument."""
     config = INSTRUMENT_DATA.get(instrument, INSTRUMENT_DATA['EURUSD'])
-    inst_config = INSTRUMENT_CONFIGS.get(instrument, INSTRUMENT_CONFIGS['EURUSD'])
+    
+    # Check if ETF or Forex for inst_config
+    is_etf = config.get('is_etf', False)
+    if is_etf:
+        # ETF doesn't use INSTRUMENT_CONFIGS, create custom config
+        inst_config = {
+            'pip_value': config['pip_value'],
+            'pip_decimal_places': config['pip_decimal_places'],
+            'lot_size': 1,  # 1 share
+            'atr_scale': 1.0,  # No scaling for ETF
+        }
+    else:
+        inst_config = INSTRUMENT_CONFIGS.get(instrument, INSTRUMENT_CONFIGS['EURUSD'])
     
     # INSTRUMENT-SPECIFIC EMAs based on Phase 3 optimization
     if instrument == 'USDCAD':
@@ -422,6 +501,18 @@ def get_baseline_params(instrument: str) -> dict:
         use_atr_filter = False
         atr_min = 0.025  # 100x larger for JPY
         atr_max = 0.050  # 100x larger for JPY
+    elif instrument == 'DIA':
+        # DIA ETF defaults (from sunrise_ogle_dia.py)
+        # Price ~$400+, ATR typical 2-10 USD
+        ema_fast = 14
+        ema_medium = 18
+        ema_slow = 24
+        ema_filter = 70
+        sl_mult = 4.5
+        tp_mult = 6.5
+        use_atr_filter = False  # Start without filter, optimize in Phase 4
+        atr_min = 0.5  # DIA ATR in USD (not pips)
+        atr_max = 5.0  # DIA ATR in USD
     else:
         # EURUSD defaults (or other instruments)
         ema_fast = 24
@@ -472,7 +563,7 @@ def get_baseline_params(instrument: str) -> dict:
         'long_use_angle_filter': False,
         'long_min_angle': 35.0,
         'long_max_angle': 85.0,
-        'long_angle_scale_factor': 10000.0,
+        'long_angle_scale_factor': 10.0 if is_etf else 10000.0,  # ETFs use smaller scale
         'long_use_ema_below_price_filter': False,
         
         # Pullback Entry System (OPTIMIZED Phase 2)
@@ -494,18 +585,18 @@ def get_baseline_params(instrument: str) -> dict:
         # Position Sizing
         'size': 1,
         'enable_risk_sizing': True,
-        'risk_percent': 0.005,
-        'margin_pct': 3.33,
-        'contract_size': 100000,
+        'risk_percent': 0.005 if not is_etf else 0.01,  # ETFs use 1% risk
+        'margin_pct': 3.33 if not is_etf else 20.0,  # ETFs use 20% margin
+        'contract_size': 100000 if not is_etf else 1,  # ETFs use 1 share
         
-        # Forex Settings (auto-configured from INSTRUMENT_CONFIGS)
+        # Forex/ETF Settings (auto-configured from INSTRUMENT_CONFIGS)
         'forex_instrument': instrument,
         'forex_pip_value': inst_config['pip_value'],
         'forex_pip_decimal_places': inst_config['pip_decimal_places'],
         'forex_lot_size': inst_config['lot_size'],
         'forex_atr_scale': inst_config['atr_scale'],
         'spread_pips': config['spread'],
-        'use_forex_position_calc': True,  # ⚠️ CRITICAL: ALWAYS True
+        'use_forex_position_calc': not is_etf,  # False for ETFs
         
         # Display (disabled for optimization - CRITICAL for speed)
         'print_signals': False,
@@ -594,7 +685,15 @@ def run_single_backtest(
     
     cerebro.adddata(data)
     cerebro.broker.set_cash(starting_cash)
-    cerebro.broker.addcommissioninfo(ForexCommission())  # ⚠️ ALWAYS include commission
+    
+    # Select commission based on instrument type
+    is_etf = config.get('is_etf', False)
+    if is_etf:
+        # DIA/ETFs: $0.02/contract/order
+        cerebro.broker.addcommissioninfo(DIACommission())
+    else:
+        # Forex: $2.50/lot/order
+        cerebro.broker.addcommissioninfo(ForexCommission())
     
     # Combine baseline with overrides
     if use_bestpnl_baseline:
@@ -967,7 +1066,14 @@ def main():
     print("=" * 70, flush=True)
     print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
     print(f"Data range: {fromdate} to {todate}", flush=True)
-    print(f"Commission: $2.50/lot/order (Darwinex Zero)", flush=True)
+    
+    # Show appropriate commission
+    inst_config = INSTRUMENT_DATA.get(instrument, {})
+    if inst_config.get('is_etf', False):
+        print(f"Commission: ${inst_config.get('commission_per_contract', 0.02)}/contract/order (Darwinex Zero)", flush=True)
+        print(f"Margin: {inst_config.get('margin_percent', 20)}%", flush=True)
+    else:
+        print(f"Commission: $2.50/lot/order (Darwinex Zero)", flush=True)
     
     # Phase 5 special: Final combinations with logs
     if phase == '5':
@@ -977,9 +1083,16 @@ def main():
         return
     
     # Define optimization phases (1-4)
-    # Use JPY-specific ATR grid for JPY pairs
+    # Use instrument-specific ATR grid
     is_jpy_pair = 'JPY' in instrument
-    phase4_grid = PHASE4_GRID_JPY if is_jpy_pair else PHASE4_GRID
+    is_etf = INSTRUMENT_DATA[instrument].get('is_etf', False)
+    
+    if is_etf:
+        phase4_grid = PHASE4_GRID_DIA
+    elif is_jpy_pair:
+        phase4_grid = PHASE4_GRID_JPY
+    else:
+        phase4_grid = PHASE4_GRID
     
     phases = {
         '1': ('Phase 1: SL/TP Multipliers', PHASE1_GRID, False),
