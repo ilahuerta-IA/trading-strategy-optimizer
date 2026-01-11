@@ -216,12 +216,14 @@ PHASE4_GRID_DIA = {
     'breakout_candles': [3, 5, 7, 10],
 }
 
-# Phase 5 DIA: SL Range Filter for DIA (in $ not pips)
+# Phase 5 DIA: SL Range Filter for DIA
+# pip_value=0.01 so sl_pips = dollars * 100
+# E.g., $5 SL = 500 pips, $10 SL = 1000 pips
 PHASE5_GRID_DIA = {
     'use_min_sl_filter': [True],
     'use_max_sl_filter': [True],
-    'min_sl_pips': [1.0, 2.0, 3.0, 5.0],  # $ min SL
-    'max_sl_pips': [8.0, 10.0, 15.0, 20.0],  # $ max SL
+    'min_sl_pips': [100, 200, 300, 500],     # $1, $2, $3, $5 min SL
+    'max_sl_pips': [800, 1000, 1500, 2000],  # $8, $10, $15, $20 max SL
 }
 
 
