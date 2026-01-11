@@ -44,15 +44,12 @@ import numpy as np
 # CONFIGURATION
 # =============================================================================
 
-DATA_FILENAME = 'USDCHF_5m_5Yea.csv'
 FROMDATE = '2020-01-01'
 TODATE = '2025-12-01'
 STARTING_CASH = 100000.0
 ENABLE_PLOT = True  # Set to False for batch testing
 
-FOREX_INSTRUMENT = 'USDCHF'
-PIP_VALUE = 0.0001
-
+# Commission Settings
 USE_FIXED_COMMISSION = True
 COMMISSION_PER_LOT_PER_ORDER = 2.50
 SPREAD_PIPS = 0.7
