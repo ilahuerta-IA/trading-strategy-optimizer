@@ -28,7 +28,7 @@ KNOWN ISSUES & SOLUTIONS (DO NOT REPEAT):
     2. Disable filters first, then add one by one
     3. Always disable print_signals for speed
 
-Author: Iván López
+Author: Iván Lahuerta
 Date: December 2025
 """
 
@@ -158,6 +158,17 @@ INSTRUMENT_DATA = {
     # === ETFs ===
     'DIA': {
         'data_file': 'DIA_5m_5Yea.csv',
+        'pip_value': 0.01,  # 2 decimal places for stock price
+        'pip_decimal_places': 2,
+        'spread': 0.0,
+        'is_jpy': False,
+        'jpy_rate': 1.0,
+        'is_etf': True,
+        'commission_per_contract': 0.02,
+        'margin_percent': 20.0,
+    },
+    'TLT': {
+        'data_file': 'TLT_5m_5Yea.csv',
         'pip_value': 0.01,  # 2 decimal places for stock price
         'pip_decimal_places': 2,
         'spread': 0.0,

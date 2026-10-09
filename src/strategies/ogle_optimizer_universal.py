@@ -220,6 +220,17 @@ INSTRUMENT_DATA = {
         'commission_per_contract': 0.02,  # $0.02/contract/order
         'margin_percent': 20.0,  # 20% margin
     },
+    'TLT': {
+        'data_file': 'TLT_5m_5Yea.csv',
+        'pip_value': 0.01,  # 2 decimal places for stock price
+        'pip_decimal_places': 2,
+        'spread': 0.0,  # No spread for ETFs
+        'time_start': 14,  # US market hours (UTC) - 9:30 AM ET
+        'time_end': 21,   # US market hours (UTC) - 4:00 PM ET
+        'is_etf': True,   # Flag for ETF-specific handling
+        'commission_per_contract': 0.02,  # $0.02/contract/order
+        'margin_percent': 20.0,  # 20% margin
+    },
 }
 
 
@@ -247,6 +258,13 @@ PHASE3_GRID = {
     'ema_filter_price_length': [40, 50, 60, 70],
 }
 
+PHASE3_GRID_TLT = {
+    'ema_fast_length': [3, 5, 7],              # 3 valores
+    'ema_medium_length': [5, 7, 9, 12],        # 4 valores
+    'ema_slow_length': [7, 9, 12],             # 3 valores
+    'ema_filter_price_length': [30, 40, 50, 60],  # 4 valores
+}
+
 # Fase 4: ATR Filter - 16 combinaciones (standard pairs: 0.0001 pip value)
 PHASE4_GRID = {
     'long_atr_min_threshold': [0.000150, 0.000200, 0.000250, 0.000300],
@@ -271,7 +289,7 @@ PHASE4_GRID_DIA = {
 # =============================================================================
 # BestPnL baseline: ATR 0.00015-0.0005, 376 trades, PF 1.16, $22,434 PnL, DD 11.4%, 1 neg year
 
-# Phase 6: Entry Window Extended (1-10) - 10 combinations
+# Phase 6: Entry Window Extended (1-10) - 10 combinaciones
 # Testing if different entry windows improve PF from BestPnL baseline
 PHASE6_GRID = {
     'long_entry_window_periods': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -513,6 +531,19 @@ def get_baseline_params(instrument: str) -> dict:
         use_atr_filter = False  # Start without filter, optimize in Phase 4
         atr_min = 0.5  # DIA ATR in USD (not pips)
         atr_max = 5.0  # DIA ATR in USD
+    elif instrument == 'TLT':
+        # TLT ETF defaults (from sunrise_ogle_tlt.py)
+        # Price ~$100+, ATR typical 0.5-2 USD
+        ema_fast = 5
+        ema_medium = 7
+        ema_slow = 9
+        ema_filter = 40
+        sl_mult = 2.5
+        tp_mult = 6.5
+        use_atr_filter = False  # Start without filter, optimize in Phase 4
+        atr_min = 0.5  # TLT ATR in USD (not pips)
+        atr_max = 5.0  # TLT ATR in USD
+
     else:
         # EURUSD defaults (or other instruments)
         ema_fast = 24
@@ -1094,10 +1125,16 @@ def main():
     else:
         phase4_grid = PHASE4_GRID
     
+    # Use instrument-specific EMA grid for Phase 3
+    if instrument == 'TLT':
+        phase3_grid = PHASE3_GRID_TLT
+    else:
+        phase3_grid = PHASE3_GRID
+
     phases = {
         '1': ('Phase 1: SL/TP Multipliers', PHASE1_GRID, False),
         '2': ('Phase 2: Entry Window + Pullback', PHASE2_GRID, False),
-        '3': ('Phase 3: EMAs', PHASE3_GRID, False),
+        '3': ('Phase 3: EMAs', phase3_grid, False),  # <- Usa el grid específico
         '4': ('Phase 4: ATR Filter', phase4_grid, False),
         # NEW PHASES (from BestPnL baseline)
         '6': ('Phase 6: Entry Window Extended (BestPnL baseline)', PHASE6_GRID, True),

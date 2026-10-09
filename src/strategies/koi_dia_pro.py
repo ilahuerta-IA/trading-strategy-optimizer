@@ -983,30 +983,13 @@ if __name__ == '__main__':
     if not data_path.exists():
         data_path = Path(__file__).parent / DATA_FILENAME
     
-    if IS_ETF:
-        # ETFs use GenericCSVData (simpler format, no forex-specific handling)
-        data = bt.feeds.GenericCSVData(
-            dataname=str(data_path),
-            fromdate=datetime.strptime(FROMDATE, '%Y-%m-%d'),
-            todate=datetime.strptime(TODATE, '%Y-%m-%d'),
-            dtformat='%Y%m%d',
-            tmformat='%H:%M:%S',
-            datetime=0,
-            time=1,
-            open=2,
-            high=3,
-            low=4,
-            close=5,
-            volume=6,
-            openinterest=-1,
-        )
-    else:
-        # Forex uses custom ForexCSVData for proper Date/Time handling
-        data = ForexCSVData(
-            dataname=str(data_path),
-            fromdate=datetime.strptime(FROMDATE, '%Y-%m-%d'),
-            todate=datetime.strptime(TODATE, '%Y-%m-%d'),
-        )
+    # All instruments use ForexCSVData for proper Date/Time column handling
+    # GenericCSVData doesn't combine Date+Time columns correctly (shows 23:59:59)
+    data = ForexCSVData(
+        dataname=str(data_path),
+        fromdate=datetime.strptime(FROMDATE, '%Y-%m-%d'),
+        todate=datetime.strptime(TODATE, '%Y-%m-%d'),
+    )
     cerebro.adddata(data)
     
     # Broker - Select commission based on instrument type
